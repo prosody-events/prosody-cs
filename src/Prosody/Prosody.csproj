@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Prosody</AssemblyName>
+    <RootNamespace>Prosody</RootNamespace>
+    <VersionPrefix>0.1.0</VersionPrefix>
+
+    <!-- NuGet Package -->
+    <PackageId>Prosody</PackageId>
+    <Description>A high-level Kafka client library with OpenTelemetry integration for distributed tracing</Description>
+    <Authors>Josh Griffith</Authors>
+    <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing</PackageTags>
+    <PackageLicenseExpression>UNLICENSED</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/cincpro/prosody-cs</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Prosody.Tests" />
+  </ItemGroup>
+
+  <!-- Native library configuration -->
+  <PropertyGroup>
+    <ProsodyNativeLibraryName>prosody_cs</ProsodyNativeLibraryName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ProsodyNativeArtifactTarget Visible="false" Pack="true" />
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ProsodyNativeArtifactTarget Include="win-x64" RustTarget="x86_64-pc-windows-msvc" Prefix="" Ext=".dll" />
+    <ProsodyNativeArtifactTarget Include="win-arm64" RustTarget="aarch64-pc-windows-msvc" Prefix="" Ext=".dll" />
+    <ProsodyNativeArtifactTarget Include="linux-x64" RustTarget="x86_64-unknown-linux-gnu" Prefix="lib" Ext=".so" />
+    <ProsodyNativeArtifactTarget Include="linux-arm64" RustTarget="aarch64-unknown-linux-gnu" Prefix="lib" Ext=".so" />
+    <ProsodyNativeArtifactTarget Include="osx-x64" RustTarget="x86_64-apple-darwin" Prefix="lib" Ext=".dylib" />
+    <ProsodyNativeArtifactTarget Include="osx-arm64" RustTarget="aarch64-apple-darwin" Prefix="lib" Ext=".dylib" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)" />
+
+    <ProsodyNativeArtifact Include="@(ProsodyNativeArtifactTarget)">
+      <LibraryPath>..\..\native\artifacts\%(Identity)\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
+      <RustOutputDebugPath>..\..\native\target\%(RustTarget)\debug\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
+      <RustOutputReleasePath>..\..\native\target\%(RustTarget)\release\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
+
+      <Link>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</Link>
+      <PackagePath>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</PackagePath>
+      <Pack>%(Pack)</Pack>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </ProsodyNativeArtifact>
+
+    <!-- During development, reference native libraries from Rust output -->
+    <Content Include="@(ProsodyNativeArtifact->'%(RustOutputDebugPath)'-&gt;Exists())" Condition="'$(Configuration)' == 'Debug'" />
+    <Content Include="@(ProsodyNativeArtifact->'%(RustOutputReleasePath)'-&gt;Exists())" Condition="'$(Configuration)' == 'Release'" />
+  </ItemGroup>
+
+  <!-- When packaging, use artifacts directory -->
+  <Target Name="ProsodyBeforePack" BeforeTargets="DispatchToInnerBuilds" Condition="'$(ContinuePackingAfterGeneratingNuspec)' != ''">
+    <ItemGroup>
+      <Content Include="@(ProsodyNativeArtifact->'%(LibraryPath)'-&gt;Exists())" />
+      <Content Remove="@(ProsodyNativeArtifact->'%(RustOutputDebugPath)'-&gt;Exists())" />
+      <Content Remove="@(ProsodyNativeArtifact->'%(RustOutputReleasePath)'-&gt;Exists())" />
+    </ItemGroup>
+  </Target>
+
+</Project>

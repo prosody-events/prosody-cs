@@ -1,0 +1,31 @@
+# Build results
+bin/
+obj/
+/packages/
+
+# IDE
+.idea/
+*.user
+*.suo
+*.userprefs
+*.sln.docstates
+riderModule.iml
+/_ReSharper.Caches/
+.vs/
+.claude/
+
+# Rust
+native/target/
+native/artifacts/
+native/Cargo.lock
+
+# Generated files
+src/Prosody/Native/NativeMethods.g.cs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+TestResults/
+*.trx
