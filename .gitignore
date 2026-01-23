@@ -17,7 +17,6 @@ riderModule.iml
 # Rust
 native/target/
 native/artifacts/
-native/Cargo.lock
 
 # Generated files
 src/Prosody/Native/NativeMethods.g.cs
