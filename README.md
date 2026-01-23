@@ -44,7 +44,7 @@ prosody-cs/
 
 ### Prerequisites
 
-- .NET 8.0+ SDK
+- .NET 8.0+ SDK (supports net8.0, net9.0, net10.0)
 - Rust toolchain (for building native library)
 
 ### Build Native Library
