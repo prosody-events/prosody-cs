@@ -45,6 +45,8 @@ unsafe_code = "warn"
 absolute_paths = "warn"
 blocks_in_conditions = "allow"
 cargo = { level = "warn", priority = -1 }
+# Transitive dependencies pull in multiple versions - not actionable
+multiple_crate_versions = "allow"
 cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_sign_loss = "allow"

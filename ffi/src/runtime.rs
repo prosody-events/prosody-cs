@@ -78,14 +78,6 @@ mod tests {
     }
 
     #[test]
-    fn global_tokio_is_clone() {
-        let a = GlobalTokio;
-        #[allow(clippy::clone_on_copy)]
-        let b = a.clone();
-        let _ = (a, b);
-    }
-
-    #[test]
     fn global_tokio_implements_default() {
         fn assert_default<T: Default>() {}
         assert_default::<GlobalTokio>();

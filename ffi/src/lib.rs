@@ -36,18 +36,21 @@
 //! - `admin`: Admin client operations
 //! - `logging`: Logging bridge to C# `ILogger`
 
-use interoptopus::extra_type;
+use interoptopus::{extra_type, pattern};
 use interoptopus::inventory::Inventory;
 use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
-// Phase 2: Foundational Infrastructure
 pub mod error;
 pub mod runtime;
+pub mod service;
+pub mod types;
 
 // Re-export key types for convenience
 pub use error::{CSharpHandlerError, FFIErrorCode};
 pub use runtime::GlobalTokio;
+pub use service::ProsodyClientService;
+pub use types::{ConsumerState, FFIClientOptions, FFIMessage, FFITimer};
 
 /// Global Tokio runtime for all async operations.
 ///
@@ -56,7 +59,7 @@ pub use runtime::GlobalTokio;
 /// Lazily initialized on first use - critical for fork safety.
 ///
 /// Reference: prosody-rb/ext/prosody/src/lib.rs:43-49
-#[allow(clippy::expect_used)]
+#[expect(clippy::expect_used, reason = "Runtime initialization failure is unrecoverable - library cannot function without it")]
 pub static RUNTIME: LazyLock<Runtime> =
     LazyLock::new(|| Runtime::new().expect("Failed to create Tokio runtime"));
 
@@ -70,11 +73,12 @@ pub static RUNTIME: LazyLock<Runtime> =
 ///
 /// # Registered Items
 ///
-/// ## Types (Phase 3)
+/// ## Types
 /// - [`FFIErrorCode`]: Error codes for FFI operations
+/// - [`ConsumerState`]: Consumer lifecycle state
 ///
-/// ## Services (Phase 4+)
-/// - `ProsodyClientService`: Main client service (to be added)
+/// ## Services
+/// - [`ProsodyClientService`]: Main client service
 /// - `Context`: Event context API (to be added)
 /// - `AdminClientService`: Admin operations (to be added)
 ///
@@ -90,13 +94,13 @@ pub static RUNTIME: LazyLock<Runtime> =
 #[must_use]
 pub fn ffi_inventory() -> Inventory {
     Inventory::builder()
-        // Phase 3: Register foundational types
         .register(extra_type!(FFIErrorCode))
-        // Future phases will add:
-        // - Phase 4: ProsodyClientService via pattern!(ProsodyClientService)
-        // - Phase 7: Callback functions via function!(...)
-        // - Phase 8: Context service via pattern!(Context)
-        // - Phase 9: AdminClientService via pattern!(AdminClientService)
+        .register(extra_type!(ConsumerState))
+        .register(pattern!(ProsodyClientService))
+        // Future additions:
+        // - Callback functions via function!(...)
+        // - Context service via pattern!(Context)
+        // - AdminClientService via pattern!(AdminClientService)
         .validate()
         .build()
 }
