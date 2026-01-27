@@ -29,8 +29,9 @@
   </ItemGroup>
 
   <!-- Native library configuration -->
+  <!-- Library name matches Interoptopus-generated bindings: prosody_ffi -->
   <PropertyGroup>
-    <ProsodyNativeLibraryName>prosody_cs</ProsodyNativeLibraryName>
+    <ProsodyNativeLibraryName>prosody_ffi</ProsodyNativeLibraryName>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -49,10 +50,11 @@
   <ItemGroup>
     <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)" />
 
+    <!-- Native library paths: prosody-ffi directory (renamed from native/) -->
     <ProsodyNativeArtifact Include="@(ProsodyNativeArtifactTarget)">
-      <LibraryPath>..\..\native\artifacts\%(Identity)\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
-      <RustOutputDebugPath>..\..\native\target\%(RustTarget)\debug\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
-      <RustOutputReleasePath>..\..\native\target\%(RustTarget)\release\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
+      <LibraryPath>..\..\prosody-ffi\artifacts\%(Identity)\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
+      <RustOutputDebugPath>..\..\prosody-ffi\target\%(RustTarget)\debug\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
+      <RustOutputReleasePath>..\..\prosody-ffi\target\%(RustTarget)\release\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
 
       <Link>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</Link>
       <PackagePath>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</PackagePath>

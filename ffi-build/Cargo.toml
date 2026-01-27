@@ -1,0 +1,20 @@
+[package]
+name = "prosody-ffi-build"
+version = "0.1.0"
+edition = "2024"
+description = "Build crate for C# bindings generation"
+publish = false
+
+# This crate exists solely to run build.rs for C# binding generation.
+# It has no library code - the empty lib.rs satisfies Cargo's requirement.
+[lib]
+path = "src/lib.rs"
+
+# For build.rs to import ffi_inventory() from prosody-ffi
+[build-dependencies]
+prosody-ffi = { path = "../ffi" }
+interoptopus = "0.15.0-alpha.24"
+interoptopus_backend_csharp = "0.15.0-alpha.24"
+
+# No runtime dependencies needed - this crate only runs build.rs
+[dependencies]

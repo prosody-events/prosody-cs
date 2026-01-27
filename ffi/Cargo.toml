@@ -6,15 +6,17 @@ edition = "2024"
 homepage = "https://github.com/cincpro/prosody-cs"
 keywords = ["bindings", "client", "csharp", "kafka", "prosody"]
 license = "UNLICENSED"
-name = "prosody-cs"
+name = "prosody-ffi"
 readme = "../README.md"
 repository = "https://github.com/cincpro/prosody-cs"
 version = "0.1.0"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Interoptopus FFI bindings framework (0.15.x for native async support)
+interoptopus = "0.15.0-alpha.24"
 chrono = "0.4"
 futures = "0.3"
 once_cell = "1.21"
@@ -30,9 +32,6 @@ tokio = { version = "1.46", features = ["rt-multi-thread", "sync"] }
 tracing = { version = "0.1", features = ["log-always"] }
 tracing-opentelemetry = "0.32"
 tracing-subscriber = "0.3"
-
-[build-dependencies]
-csbindgen = "1.9"
 
 [lints.rust]
 missing_docs = "warn"
@@ -82,7 +81,3 @@ unneeded_field_pattern = "warn"
 unreachable = "warn"
 unwrap_used = "deny"
 verbose_file_reads = "warn"
-
-[profile.release]
-codegen-units = 1
-lto = "fat"

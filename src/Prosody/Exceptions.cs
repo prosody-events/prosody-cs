@@ -8,6 +8,14 @@ public class ProsodyException : Exception
     /// <summary>
     /// Initializes a new instance of the <see cref="ProsodyException"/> class.
     /// </summary>
+    public ProsodyException() : base()
+    {
+    }
+
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ProsodyException"/> class.
+    /// </summary>
     /// <param name="message">The error message.</param>
     public ProsodyException(string message) : base(message)
     {
@@ -19,6 +27,32 @@ public class ProsodyException : Exception
     /// <param name="message">The error message.</param>
     /// <param name="innerException">The inner exception.</param>
     public ProsodyException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
+/// Exception thrown when a connection to Kafka or Cassandra fails.
+/// </summary>
+/// <remarks>
+/// Maps from <c>FFIErrorCode.ConnectionFailed</c> in the native layer.
+/// </remarks>
+public class ProsodyConnectionException : ProsodyException
+{
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ProsodyConnectionException"/> class.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    public ProsodyConnectionException(string message) : base(message)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ProsodyConnectionException"/> class.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="innerException">The inner exception.</param>
+    public ProsodyConnectionException(string message, Exception innerException) : base(message, innerException)
     {
     }
 }

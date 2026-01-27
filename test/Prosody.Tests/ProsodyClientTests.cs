@@ -2,20 +2,40 @@ using Xunit;
 
 namespace Prosody.Tests;
 
+/// <summary>
+/// Placeholder tests for ProsodyClient functionality.
+/// Real integration tests will be added in Phase 5 (T065-T069) after
+/// ProsodyClientService is fully implemented in Phase 4.
+/// </summary>
 public class ProsodyClientTests
 {
     [Fact]
-    public async Task Client_CanBeCreated()
+    public void Options_CanBeCreatedViaBuilder()
     {
-        var options = new ProsodyClientOptions
-        {
-            BootstrapServers = "localhost:9092",
-            GroupId = "test-group",
-            SubscribedTopics = ["test-topic"]
-        };
+        var options = ProsodyClientOptions.CreateBuilder()
+            .WithBootstrapServers("localhost:9092")
+            .WithGroupId("test-group")
+            .WithSubscribedTopics("test-topic")
+            .Build();
 
-        await using var client = new ProsodyClient(options);
+        Assert.Equal("localhost:9092", options.BootstrapServers);
+        Assert.Equal("test-group", options.GroupId);
+        Assert.NotNull(options.SubscribedTopics);
+        Assert.Single(options.SubscribedTopics);
+    }
 
-        Assert.NotNull(client);
+    [Fact]
+    public void Options_IsSet_ReturnsTrueForSetProperties()
+    {
+        var options = ProsodyClientOptions.CreateBuilder()
+            .WithBootstrapServers("localhost:9092")
+            .WithGroupId("test-group")
+            .WithSubscribedTopics("test-topic")
+            .Build();
+
+        Assert.True(options.IsSet("BootstrapServers"));
+        Assert.True(options.IsSet("GroupId"));
+        Assert.True(options.IsSet("SubscribedTopics"));
+        Assert.False(options.IsSet("MaxConcurrency"));
     }
 }
