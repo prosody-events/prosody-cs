@@ -11,8 +11,11 @@ readme = "../README.md"
 repository = "https://github.com/cincpro/prosody-cs"
 version = "0.1.0"
 
+# rlib-only: The cdylib output is produced by the ffi-cdylib crate.
+# This separation avoids Cargo filename collisions when ffi-build uses
+# this crate as a build-dependency. See: https://github.com/rust-lang/cargo/issues/6313
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 # Interoptopus FFI bindings framework (0.15.x for native async support)

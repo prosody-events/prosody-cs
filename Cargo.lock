@@ -1811,6 +1811,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "prosody-ffi-cdylib"
+version = "0.1.0"
+dependencies = [
+ "prosody-ffi",
+]
+
+[[package]]
 name = "prost"
 version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

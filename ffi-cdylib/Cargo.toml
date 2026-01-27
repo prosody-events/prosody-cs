@@ -1,0 +1,26 @@
+[package]
+name = "prosody-ffi-cdylib"
+version = "0.1.0"
+edition = "2024"
+description = "C dynamic library wrapper for prosody-ffi"
+publish = false
+
+# This crate exists solely to produce the cdylib (.dylib/.so/.dll) output.
+# It re-exports everything from prosody-ffi, which contains the actual FFI definitions.
+#
+# This separation is the idiomatic Rust pattern for FFI crates that need to be
+# both consumed by C/C#/etc (cdylib) AND used as a build-dependency for binding
+# generation (rlib). Keeping cdylib in a "leaf node" crate prevents Cargo from
+# building the same library twice with different settings.
+#
+# See: https://github.com/rust-lang/cargo/issues/6313
+
+[lib]
+name = "prosody_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+prosody-ffi = { path = "../ffi" }
+
+[lints]
+workspace = true

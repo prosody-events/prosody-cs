@@ -10,7 +10,9 @@ publish = false
 [lib]
 path = "src/lib.rs"
 
-# For build.rs to import ffi_inventory() from prosody-ffi
+# For build.rs to import ffi_inventory() from prosody-ffi.
+# prosody-ffi is rlib-only, so no filename collision occurs.
+# The cdylib output is produced by ffi-cdylib (a separate leaf crate).
 [build-dependencies]
 prosody-ffi = { path = "../ffi" }
 interoptopus = "0.15.0-alpha.24"
@@ -18,3 +20,6 @@ interoptopus_backend_csharp = "0.15.0-alpha.24"
 
 # No runtime dependencies needed - this crate only runs build.rs
 [dependencies]
+
+[lints]
+workspace = true
