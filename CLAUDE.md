@@ -1,38 +1,36 @@
 # prosody-cs Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-01-26
+Auto-generated from all feature plans. Last updated: 2026-01-28
 
 ## Active Technologies
 
-- Rust 2024 Edition (1.85+), C# .NET 8.0/9.0/10.0 (001-csharp-interoptopus-bindings)
+- Rust 2024 Edition (1.85+), C# .NET 8.0/9.0/10.0
+- UniFFI for FFI bindings (via uniffi-bindgen-cs)
 
 ## Project Structure
 
 ```text
-ffi/                    # Rust FFI crate (prosody-ffi) - FFI definitions (rlib only)
-ffi-cdylib/             # Rust cdylib wrapper (prosody-ffi-cdylib) - produces .dylib/.so/.dll
-ffi-build/              # Rust build crate (prosody-ffi-build) - C# binding generation
-src/Prosody/            # C# library
-test/Prosody.Tests/     # C# tests
+ffi/                           # Rust FFI crate (prosody-ffi) - produces cdylib
+src/Prosody/                   # C# library
+src/Prosody/Generated/         # Generated C# bindings (uniffi-bindgen-cs output)
+test/Prosody.Tests/            # C# tests
 ```
-
-The three-crate Rust pattern (ffi + ffi-cdylib + ffi-build) avoids Cargo filename
-collisions. See: https://github.com/rust-lang/cargo/issues/6313
 
 ## Commands
 
 ```bash
-# Build cdylib (produces libprosody_ffi.dylib/.so/.dll for C# to load)
-cargo build -p prosody-ffi-cdylib
+# Build cdylib (produces libprosody_ffi.dylib/.so/.dll)
+cargo build -p prosody-ffi --release
 
-# Generate C# bindings (via build.rs)
-cargo build -p prosody-ffi-build
+# Generate C# bindings (use --config for namespace and access modifier)
+uniffi-bindgen-cs --library target/release/libprosody_ffi.dylib --config uniffi.toml -o src/Prosody/Generated
 
 # Run Rust tests
 cargo test -p prosody-ffi
 
 # Run lints
 cargo clippy --workspace
+cargo clippy --workspace --all-targets  # includes tests
 
 # Build C# project
 dotnet build
@@ -71,7 +69,7 @@ If you believe an exception is truly necessary:
 
 ### Warnings from macro-generated code
 
-Some warnings may come from proc-macro generated code (e.g., Interoptopus `#[ffi_service]`).
+Some warnings may come from proc-macro generated code (e.g., UniFFI macros).
 These must still be addressed - either by:
 1. Adjusting the source code to avoid triggering the warning
 2. Requesting an exception with `#[expect]` if unavoidable

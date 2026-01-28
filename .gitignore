@@ -24,8 +24,8 @@ release/
 *.rlib
 *.prof*
 
-# Generated C# bindings (Interoptopus output)
-src/Prosody/Native/ProsodyFFI.cs
+# Generated C# bindings (UniFFI output via uniffi-bindgen-cs)
+src/Prosody/Generated/prosody_ffi.cs
 
 # Environment and secrets
 .env*

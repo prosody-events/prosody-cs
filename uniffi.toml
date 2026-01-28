@@ -1,0 +1,3 @@
+[bindings.csharp]
+access_modifier = "public"
+namespace = "Prosody.Native"
