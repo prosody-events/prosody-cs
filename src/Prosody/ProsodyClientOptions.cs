@@ -1,3 +1,5 @@
+using Prosody.Native;
+
 namespace Prosody;
 
 /// <summary>
@@ -966,6 +968,174 @@ public sealed class ProsodyClientOptions
     /// <param name="propertyName">Name of the property to check.</param>
     /// <returns>True if the property was explicitly set via a builder method.</returns>
     public bool IsSet(string propertyName) => _builder.IsSet(propertyName);
+
+    // === Internal FFI Conversion ===
+
+    /// <summary>
+    /// Converts this configuration to the FFI struct for native interop.
+    /// </summary>
+    /// <remarks>
+    /// Due to C# struct semantics, Option fields must be explicitly initialized to None.
+    /// This method ensures all Option fields start as None, then sets Some(value) only
+    /// for properties that were explicitly configured via the builder.
+    /// </remarks>
+    internal FFIClientOptions ToFFI()
+    {
+        // Required fields - use empty string if not set (validation happens in Rust)
+        var bootstrapServers = BootstrapServers ?? string.Empty;
+        var groupId = GroupId ?? string.Empty;
+        var subscribedTopics = SubscribedTopics is { Count: > 0 }
+            ? string.Join(",", SubscribedTopics)
+            : string.Empty;
+
+        // Create struct with all Options explicitly set to None, then override with values
+        return new FFIClientOptions
+        {
+            // Required string fields
+            bootstrap_servers = bootstrapServers,
+            group_id = groupId,
+            subscribed_topics = subscribedTopics,
+
+            // Optional string fields - None unless explicitly set
+            allowed_events = AllowedEvents is { Count: > 0 }
+                ? OptionConstPtrI8.Some(string.Join(",", AllowedEvents))
+                : OptionConstPtrI8.None,
+            source_system = SourceSystem is not null
+                ? OptionConstPtrI8.Some(SourceSystem)
+                : OptionConstPtrI8.None,
+            failure_topic = FailureTopic is not null
+                ? OptionConstPtrI8.Some(FailureTopic)
+                : OptionConstPtrI8.None,
+            cassandra_nodes = CassandraNodes is not null
+                ? OptionConstPtrI8.Some(CassandraNodes)
+                : OptionConstPtrI8.None,
+            cassandra_keyspace = CassandraKeyspace is not null
+                ? OptionConstPtrI8.Some(CassandraKeyspace)
+                : OptionConstPtrI8.None,
+            cassandra_datacenter = CassandraDatacenter is not null
+                ? OptionConstPtrI8.Some(CassandraDatacenter)
+                : OptionConstPtrI8.None,
+            cassandra_rack = CassandraRack is not null
+                ? OptionConstPtrI8.Some(CassandraRack)
+                : OptionConstPtrI8.None,
+            cassandra_user = CassandraUser is not null
+                ? OptionConstPtrI8.Some(CassandraUser)
+                : OptionConstPtrI8.None,
+            cassandra_password = CassandraPassword is not null
+                ? OptionConstPtrI8.Some(CassandraPassword)
+                : OptionConstPtrI8.None,
+
+            // Boolean options
+            mock = Mock.HasValue ? OptionBool.Some(Mock.Value) : OptionBool.None,
+            monopolization_enabled = MonopolizationEnabled.HasValue
+                ? OptionBool.Some(MonopolizationEnabled.Value)
+                : OptionBool.None,
+            defer_enabled = DeferEnabled.HasValue
+                ? OptionBool.Some(DeferEnabled.Value)
+                : OptionBool.None,
+
+            // Mode (i32: 0=Pipeline, 1=LowLatency, 2=BestEffort)
+            mode = Mode.HasValue ? OptionI32.Some((int)Mode.Value) : OptionI32.None,
+
+            // U32 options (int -> uint)
+            max_concurrency = MaxConcurrency.HasValue
+                ? OptionU32.Some((uint)MaxConcurrency.Value)
+                : OptionU32.None,
+            max_uncommitted = MaxUncommitted.HasValue
+                ? OptionU32.Some((uint)MaxUncommitted.Value)
+                : OptionU32.None,
+            max_enqueued_per_key = MaxEnqueuedPerKey.HasValue
+                ? OptionU32.Some((uint)MaxEnqueuedPerKey.Value)
+                : OptionU32.None,
+            idempotence_cache_size = IdempotenceCacheSize.HasValue
+                ? OptionU32.Some((uint)IdempotenceCacheSize.Value)
+                : OptionU32.None,
+            max_retries = MaxRetries.HasValue
+                ? OptionU32.Some((uint)MaxRetries.Value)
+                : OptionU32.None,
+            scheduler_cache_size = SchedulerCacheSize.HasValue
+                ? OptionU32.Some((uint)SchedulerCacheSize.Value)
+                : OptionU32.None,
+            monopolization_cache_size = MonopolizationCacheSize.HasValue
+                ? OptionU32.Some((uint)MonopolizationCacheSize.Value)
+                : OptionU32.None,
+            defer_cache_size = DeferCacheSize.HasValue
+                ? OptionU32.Some((uint)DeferCacheSize.Value)
+                : OptionU32.None,
+
+            // I32 options (probe_port can be -1 to disable)
+            probe_port = ProbePort.HasValue ? OptionI32.Some(ProbePort.Value) : OptionI32.None,
+
+            // U64 options (TimeSpan -> milliseconds)
+            send_timeout_ms = SendTimeout.HasValue
+                ? OptionU64.Some((ulong)SendTimeout.Value.TotalMilliseconds)
+                : OptionU64.None,
+            stall_threshold_ms = StallThreshold.HasValue
+                ? OptionU64.Some((ulong)StallThreshold.Value.TotalMilliseconds)
+                : OptionU64.None,
+            shutdown_timeout_ms = ShutdownTimeout.HasValue
+                ? OptionU64.Some((ulong)ShutdownTimeout.Value.TotalMilliseconds)
+                : OptionU64.None,
+            poll_interval_ms = PollInterval.HasValue
+                ? OptionU64.Some((ulong)PollInterval.Value.TotalMilliseconds)
+                : OptionU64.None,
+            commit_interval_ms = CommitInterval.HasValue
+                ? OptionU64.Some((ulong)CommitInterval.Value.TotalMilliseconds)
+                : OptionU64.None,
+            timeout_ms = Timeout.HasValue
+                ? OptionU64.Some((ulong)Timeout.Value.TotalMilliseconds)
+                : OptionU64.None,
+            slab_size_ms = SlabSize.HasValue
+                ? OptionU64.Some((ulong)SlabSize.Value.TotalMilliseconds)
+                : OptionU64.None,
+            retry_base_ms = RetryBase.HasValue
+                ? OptionU64.Some((ulong)RetryBase.Value.TotalMilliseconds)
+                : OptionU64.None,
+            max_retry_delay_ms = MaxRetryDelay.HasValue
+                ? OptionU64.Some((ulong)MaxRetryDelay.Value.TotalMilliseconds)
+                : OptionU64.None,
+            cassandra_retention_seconds = CassandraRetention.HasValue
+                ? OptionU64.Some((ulong)CassandraRetention.Value.TotalSeconds)
+                : OptionU64.None,
+            scheduler_max_wait_ms = SchedulerMaxWait.HasValue
+                ? OptionU64.Some((ulong)SchedulerMaxWait.Value.TotalMilliseconds)
+                : OptionU64.None,
+            monopolization_window_ms = MonopolizationWindow.HasValue
+                ? OptionU64.Some((ulong)MonopolizationWindow.Value.TotalMilliseconds)
+                : OptionU64.None,
+            defer_base_ms = DeferBase.HasValue
+                ? OptionU64.Some((ulong)DeferBase.Value.TotalMilliseconds)
+                : OptionU64.None,
+            defer_max_delay_ms = DeferMaxDelay.HasValue
+                ? OptionU64.Some((ulong)DeferMaxDelay.Value.TotalMilliseconds)
+                : OptionU64.None,
+            defer_failure_window_ms = DeferFailureWindow.HasValue
+                ? OptionU64.Some((ulong)DeferFailureWindow.Value.TotalMilliseconds)
+                : OptionU64.None,
+            defer_seek_timeout_ms = DeferSeekTimeout.HasValue
+                ? OptionU64.Some((ulong)DeferSeekTimeout.Value.TotalMilliseconds)
+                : OptionU64.None,
+
+            // U32 weight options (double 0.0-1.0 -> u32: value * 10000)
+            scheduler_failure_weight = SchedulerFailureWeight.HasValue
+                ? OptionU32.Some((uint)(SchedulerFailureWeight.Value * 10000))
+                : OptionU32.None,
+            scheduler_wait_weight = SchedulerWaitWeight.HasValue
+                ? OptionU32.Some((uint)(SchedulerWaitWeight.Value * 10000))
+                : OptionU32.None,
+            monopolization_threshold = MonopolizationThreshold.HasValue
+                ? OptionU32.Some((uint)(MonopolizationThreshold.Value * 10000))
+                : OptionU32.None,
+            defer_failure_threshold = DeferFailureThreshold.HasValue
+                ? OptionU32.Some((uint)(DeferFailureThreshold.Value * 10000))
+                : OptionU32.None,
+
+            // I64 options
+            defer_discard_threshold = DeferDiscardThreshold.HasValue
+                ? OptionI64.Some(DeferDiscardThreshold.Value)
+                : OptionI64.None,
+        };
+    }
 }
 
 /// <summary>
