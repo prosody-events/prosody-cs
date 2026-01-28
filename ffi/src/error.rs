@@ -9,6 +9,8 @@
 //! - prosody-rb: `ext/prosody/src/handler/mod.rs` - `RubyHandlerError` enum
 //! - prosody-py: `src/handler.rs` - `PythonHandlerError` enum
 
+use std::io::{Error as IoError, ErrorKind};
+
 use interoptopus::ffi_type;
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
@@ -84,6 +86,37 @@ impl From<&HighLevelClientError> for FFIErrorCode {
             | HighLevelClientError::Consumer(_)
             | HighLevelClientError::SchedulerConfiguration(_) => Self::ConnectionFailed,
         }
+    }
+}
+
+impl From<IoError> for FFIErrorCode {
+    fn from(error: IoError) -> Self {
+        match error.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::InvalidInput
+            | ErrorKind::InvalidData => Self::InvalidArgument,
+            ErrorKind::ConnectionRefused
+            | ErrorKind::ConnectionReset
+            | ErrorKind::ConnectionAborted
+            | ErrorKind::NotConnected
+            | ErrorKind::BrokenPipe
+            | ErrorKind::TimedOut => Self::ConnectionFailed,
+            ErrorKind::Interrupted => Self::Cancelled,
+            _ => Self::Internal,
+        }
+    }
+}
+
+impl From<String> for FFIErrorCode {
+    fn from(_: String) -> Self {
+        Self::Internal
+    }
+}
+
+impl From<&str> for FFIErrorCode {
+    fn from(_: &str) -> Self {
+        Self::Internal
     }
 }
 
@@ -195,5 +228,59 @@ mod tests {
         assert_eq!(FFIErrorCode::InvalidContext as i32, 7_i32);
         assert_eq!(FFIErrorCode::AlreadySubscribed as i32, 8_i32);
         assert_eq!(FFIErrorCode::NotSubscribed as i32, 9_i32);
+    }
+
+    #[test]
+    fn from_io_error_not_found_maps_to_invalid_argument() {
+        let error = IoError::new(ErrorKind::NotFound, "not found");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn from_io_error_permission_denied_maps_to_invalid_argument() {
+        let error = IoError::new(ErrorKind::PermissionDenied, "denied");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn from_io_error_connection_refused_maps_to_connection_failed() {
+        let error = IoError::new(ErrorKind::ConnectionRefused, "refused");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::ConnectionFailed);
+    }
+
+    #[test]
+    fn from_io_error_connection_reset_maps_to_connection_failed() {
+        let error = IoError::new(ErrorKind::ConnectionReset, "reset");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::ConnectionFailed);
+    }
+
+    #[test]
+    fn from_io_error_timed_out_maps_to_connection_failed() {
+        let error = IoError::new(ErrorKind::TimedOut, "timeout");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::ConnectionFailed);
+    }
+
+    #[test]
+    fn from_io_error_interrupted_maps_to_cancelled() {
+        let error = IoError::new(ErrorKind::Interrupted, "interrupted");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn from_io_error_other_maps_to_internal() {
+        let error = IoError::other("other");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::Internal);
+    }
+
+    #[test]
+    fn from_string_maps_to_internal() {
+        let error = String::from("some error");
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::Internal);
+    }
+
+    #[test]
+    fn from_str_maps_to_internal() {
+        let error = "some error";
+        assert_eq!(FFIErrorCode::from(error), FFIErrorCode::Internal);
     }
 }

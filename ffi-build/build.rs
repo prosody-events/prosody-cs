@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 ///
 /// # Known Issues (TODO: open GitHub issues)
 ///
-/// 1. **OptionBool cast syntax**: Generated code has `_(byte) (Some ? 1 : 0)`
+/// 1. **`OptionBool` cast syntax**: Generated code has `_(byte) (Some ? 1 : 0)`
 ///    instead of `(byte) (_Some ? 1 : 0)`.
 ///
 /// 2. **string.Empty reference**: Generated code has `_Some._string.Empty`
@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// 3. **IntPtr.Zero reference**: Generated code has `_IntPtr.Zero`
 ///    instead of `IntPtr.Zero`.
 ///
-/// 4. **Visibility::ForceInternal inconsistent**: The `visibility_types` setting
+/// 4. **`Visibility::ForceInternal` inconsistent**: The `visibility_types` setting
 ///    only applies to some partial declarations. Marshaller partials, helper classes,
 ///    and extension classes are still generated as `public`. All 4 replacements below
 ///    are required. Workaround: post-process to replace `public` with `internal`.
