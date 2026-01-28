@@ -28,18 +28,14 @@
 //! - prosody-py: `src/client/mod.rs`
 //! - prosody-rb: `ext/prosody/src/client/mod.rs`
 
-use crate::error::{CSharpHandlerError, FFIErrorCode};
+use crate::callbacks::CSharpHandler;
+use crate::error::FFIErrorCode;
 use crate::runtime::GlobalTokio;
 use crate::types::{ConsumerState, FFIClientOptions};
 use crate::RUNTIME;
 use interoptopus::{ffi, ffi_service, ffi_type, AsyncRuntime};
-use prosody::consumer::event_context::EventContext;
-use prosody::consumer::message::ConsumerMessage;
-use prosody::consumer::middleware::FallibleHandler;
-use prosody::consumer::DemandType;
 use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::high_level::HighLevelClient;
-use prosody::timers::Trigger;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -83,52 +79,6 @@ pub struct ProsodyClientService {
     client: Arc<HighLevelClient<CSharpHandler>>,
     /// Handler registration state (for managing callback lifetime).
     handler: Mutex<Option<Arc<CSharpHandler>>>,
-}
-
-/// Placeholder handler type for C# callbacks.
-///
-/// This will be properly implemented when callback infrastructure is added.
-/// For now, it exists to satisfy the generic parameter of `HighLevelClient<T>`.
-// TODO: Add fields when implementing callbacks:
-// - handler_ptr: *mut c_void (GCHandle to managed handler object)
-// - on_message callback
-// - on_timer callback
-// - is_permanent callback
-#[derive(Clone)]
-pub struct CSharpHandler;
-
-impl FallibleHandler for CSharpHandler {
-    type Error = CSharpHandlerError;
-
-    async fn on_message<C>(
-        &self,
-        _context: C,
-        _message: ConsumerMessage,
-        _demand_type: DemandType,
-    ) -> Result<(), Self::Error>
-    where
-        C: EventContext,
-    {
-        // TODO: Invoke C# callback when callback infrastructure is implemented
-        Ok(())
-    }
-
-    async fn on_timer<C>(
-        &self,
-        _context: C,
-        _trigger: Trigger,
-        _demand_type: DemandType,
-    ) -> Result<(), Self::Error>
-    where
-        C: EventContext,
-    {
-        // TODO: Invoke C# callback when callback infrastructure is implemented
-        Ok(())
-    }
-
-    async fn shutdown(self) {
-        // TODO: Cleanup C# resources when callback infrastructure is implemented
-    }
 }
 
 #[ffi_service]
@@ -194,22 +144,9 @@ impl ProsodyClientService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use prosody::error::{ClassifyError, ErrorCategory};
 
     #[test]
-    fn csharp_handler_is_clone() {
-        fn assert_clone<T: Clone>() {}
-        assert_clone::<CSharpHandler>();
-    }
-
-    #[test]
-    fn csharp_handler_error_classifies_correctly() {
-        let transient = CSharpHandlerError::Transient {
-            message: "retry".to_owned(),
-        };
-        assert!(matches!(
-            transient.classify_error(),
-            ErrorCategory::Transient
-        ));
+    fn consumer_state_default_is_unconfigured() {
+        assert_eq!(ConsumerState::default(), ConsumerState::Unconfigured);
     }
 }

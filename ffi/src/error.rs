@@ -9,6 +9,7 @@
 //! - prosody-rb: `ext/prosody/src/handler/mod.rs` - `RubyHandlerError` enum
 //! - prosody-py: `src/handler.rs` - `PythonHandlerError` enum
 
+use std::ffi::NulError;
 use std::io::{Error as IoError, ErrorKind};
 
 use interoptopus::ffi_type;
@@ -133,29 +134,29 @@ impl From<&str> for FFIErrorCode {
 #[derive(Debug, Error)]
 pub enum CSharpHandlerError {
     /// A transient error occurred (should be retried).
-    #[error("transient error: {message}")]
-    Transient {
-        /// Error message from C#.
-        message: String,
-    },
+    #[error("C# handler returned transient error")]
+    Transient,
 
     /// A permanent error occurred (should not be retried).
-    #[error("permanent error: {message}")]
-    Permanent {
-        /// Error message from C#.
-        message: String,
-    },
+    #[error("C# handler returned permanent error")]
+    Permanent,
 
     /// The handler was cancelled (terminal, abort processing).
-    #[error("cancelled")]
+    #[error("C# handler was cancelled")]
     Cancelled,
+
+    /// Topic string contains a null byte.
+    #[error("topic contains null byte")]
+    TopicContainsNul(#[from] NulError),
 }
 
 impl ClassifyError for CSharpHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            CSharpHandlerError::Transient { .. } => ErrorCategory::Transient,
-            CSharpHandlerError::Permanent { .. } => ErrorCategory::Permanent,
+            CSharpHandlerError::Transient => ErrorCategory::Transient,
+            CSharpHandlerError::Permanent | CSharpHandlerError::TopicContainsNul(_) => {
+                ErrorCategory::Permanent
+            }
             CSharpHandlerError::Cancelled => ErrorCategory::Terminal,
         }
     }
@@ -164,6 +165,7 @@ impl ClassifyError for CSharpHandlerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
 
     #[test]
     fn error_code_ok_is_ok() {
@@ -196,17 +198,13 @@ mod tests {
 
     #[test]
     fn csharp_handler_error_transient_classifies_correctly() {
-        let error = CSharpHandlerError::Transient {
-            message: "retry me".to_owned(),
-        };
+        let error = CSharpHandlerError::Transient;
         assert!(matches!(error.classify_error(), ErrorCategory::Transient));
     }
 
     #[test]
     fn csharp_handler_error_permanent_classifies_correctly() {
-        let error = CSharpHandlerError::Permanent {
-            message: "don't retry".to_owned(),
-        };
+        let error = CSharpHandlerError::Permanent;
         assert!(matches!(error.classify_error(), ErrorCategory::Permanent));
     }
 
@@ -214,6 +212,19 @@ mod tests {
     fn csharp_handler_error_cancelled_classifies_correctly() {
         let error = CSharpHandlerError::Cancelled;
         assert!(matches!(error.classify_error(), ErrorCategory::Terminal));
+    }
+
+    #[test]
+    fn csharp_handler_error_topic_contains_nul_classifies_correctly() -> color_eyre::Result<()> {
+        use color_eyre::eyre::bail;
+
+        // CString::new returns Err when the string contains a null byte
+        let Err(nul_error) = CString::new("test\0topic") else {
+            bail!("Expected NulError for string containing null byte");
+        };
+        let error = CSharpHandlerError::TopicContainsNul(nul_error);
+        assert!(matches!(error.classify_error(), ErrorCategory::Permanent));
+        Ok(())
     }
 
     #[test]

@@ -2,8 +2,6 @@
 //!
 //! This module defines C-compatible structures for FFI operations:
 //! - [`FFIClientOptions`]: Configuration for creating a `ProsodyClient` (46 fields)
-//! - [`FFIMessage`]: Kafka message passed to C# handlers
-//! - [`FFITimer`]: Timer event passed to C# handlers
 //! - [`ConsumerState`]: Consumer lifecycle state enum
 //!
 //! # Reference
@@ -249,98 +247,6 @@ pub struct FFIClientOptions<'a> {
 
     /// Defer discard threshold. `None` = use env var.
     pub defer_discard_threshold: ffi::Option<i64>,
-}
-
-/// Kafka message passed to C# handlers.
-///
-/// Uses the "loan pattern" - all references are valid only during the callback.
-/// The C# wrapper layer must copy data it needs to retain.
-///
-/// # String Encoding
-///
-/// | Field | Type | Encoding | Notes |
-/// |-------|------|----------|-------|
-/// | `topic` | `CStrPointer` | ASCII | Kafka restricts to `[a-zA-Z0-9._-]` |
-/// | `key` | `FFISlice<u8>` | UTF-8 | Prosody requires valid UTF-8 |
-/// | `payload` | `FFISlice<u8>` | UTF-8 JSON | Parsed as JSON in C# wrapper |
-///
-/// # C# Mapping
-///
-/// The FFI struct is internal; C# users see:
-/// ```csharp
-/// public sealed class Message
-/// {
-///     public string Topic { get; }
-///     public int Partition { get; }
-///     public long Offset { get; }
-///     public DateTimeOffset Timestamp { get; }
-///     public string Key { get; }
-///     public JsonElement Payload { get; }
-/// }
-/// ```
-///
-/// # Reference
-///
-/// - Python: `../prosody-py/python/prosody/message.py`
-/// - JavaScript: `../prosody-js/bindings.d.ts:359-372`
-/// - Ruby: `../prosody-rb/lib/prosody/native_stubs.rb:83-114`
-#[ffi_type]
-pub struct FFIMessage<'a> {
-    /// Topic name (ASCII, null-terminated).
-    /// Kafka restricts topic names to `[a-zA-Z0-9._-]`.
-    pub topic: ffi::CStrPtr<'a>,
-
-    /// Partition number.
-    pub partition: i32,
-
-    /// Message offset within the partition.
-    pub offset: i64,
-
-    /// Timestamp (Unix milliseconds).
-    pub timestamp: i64,
-
-    /// Message key (UTF-8 bytes).
-    /// Prosody requires valid UTF-8 keys.
-    pub key: ffi::Slice<'a, u8>,
-
-    /// Payload bytes (UTF-8 JSON).
-    /// The C# wrapper parses this as JSON.
-    pub payload: ffi::Slice<'a, u8>,
-}
-
-/// Timer event passed to C# handlers.
-///
-/// Uses the "loan pattern" - all references are valid only during the callback.
-///
-/// # Important
-///
-/// Only `key` and `time` cross the FFI boundary. `timer_type` and `fired_time` are
-/// filtered on the Rust side BEFORE invoking callbacks, matching all sibling wrappers.
-///
-/// # C# Mapping
-///
-/// The FFI struct is internal; C# users see:
-/// ```csharp
-/// public sealed class Timer
-/// {
-///     public string Key { get; }
-///     public DateTimeOffset Time { get; }
-/// }
-/// ```
-///
-/// # Reference
-///
-/// - Python: `../prosody-py/python/prosody/timer.py`
-/// - JavaScript: `../prosody-js/bindings.d.ts:452-457`
-/// - Ruby: `../prosody-rb/lib/prosody/native_stubs.rb:116-135`
-#[ffi_type]
-pub struct FFITimer<'a> {
-    /// Timer key (UTF-8 bytes).
-    /// Matches the key used when scheduling the timer.
-    pub key: ffi::Slice<'a, u8>,
-
-    /// Scheduled fire time (Unix milliseconds).
-    pub time: i64,
 }
 
 #[cfg(test)]
