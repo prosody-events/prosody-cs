@@ -17,6 +17,7 @@ version = "0.1.0"
 crate-type = ["cdylib"]
 
 [dependencies]
+arc-swap.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true

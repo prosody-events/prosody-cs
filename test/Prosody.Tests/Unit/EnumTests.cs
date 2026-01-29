@@ -3,38 +3,41 @@ using Prosody.Native;
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for UniFFI-generated enum types.
+/// Tests for enum types.
 /// </summary>
 public sealed class EnumTests
 {
     [Fact]
-    public void ConsumerState_HasExpectedValues()
+    public void ClientMode_HasExpectedVariants()
     {
-        Assert.Equal(0, (int)ConsumerState.Unconfigured);
-        Assert.Equal(1, (int)ConsumerState.Configured);
-        Assert.Equal(2, (int)ConsumerState.Running);
+        var values = Enum.GetValues<ClientMode>();
+
+        Assert.Equal(3, values.Length);
+        Assert.Contains(ClientMode.Pipeline, values);
+        Assert.Contains(ClientMode.LowLatency, values);
+        Assert.Contains(ClientMode.BestEffort, values);
     }
 
     [Fact]
-    public void ConsumerState_HasThreeValues()
+    public void ConsumerState_HasExpectedVariants()
     {
         var values = Enum.GetValues<ConsumerState>();
+
         Assert.Equal(3, values.Length);
+        Assert.Contains(ConsumerState.Unconfigured, values);
+        Assert.Contains(ConsumerState.Configured, values);
+        Assert.Contains(ConsumerState.Running, values);
     }
 
     [Fact]
-    public void HandlerResultCode_HasExpectedValues()
-    {
-        Assert.Equal(0, (int)HandlerResultCode.Success);
-        Assert.Equal(1, (int)HandlerResultCode.TransientError);
-        Assert.Equal(2, (int)HandlerResultCode.PermanentError);
-        Assert.Equal(3, (int)HandlerResultCode.Cancelled);
-    }
-
-    [Fact]
-    public void HandlerResultCode_HasFourValues()
+    public void HandlerResultCode_HasExpectedVariants()
     {
         var values = Enum.GetValues<HandlerResultCode>();
+
         Assert.Equal(4, values.Length);
+        Assert.Contains(HandlerResultCode.Success, values);
+        Assert.Contains(HandlerResultCode.TransientError, values);
+        Assert.Contains(HandlerResultCode.PermanentError, values);
+        Assert.Contains(HandlerResultCode.Cancelled, values);
     }
 }

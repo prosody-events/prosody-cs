@@ -41,9 +41,10 @@ impl From<NulError> for ProsodyError {
 
 /// Error type for C# handler errors.
 ///
-/// This is used internally to represent errors from C# callback implementations.
+/// This is used internally to represent errors from C# callback
+/// implementations.
 #[derive(Debug, thiserror::Error)]
-pub enum CSharpHandlerError {
+pub enum CsHandlerError {
     /// Transient error - should retry.
     #[error("Transient error")]
     Transient,
@@ -57,7 +58,7 @@ pub enum CSharpHandlerError {
     Cancelled,
 }
 
-impl ClassifyError for CSharpHandlerError {
+impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
             Self::Transient => ErrorCategory::Transient,

@@ -1768,6 +1768,7 @@ dependencies = [
 name = "prosody-ffi"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "chrono",
  "color-eyre",

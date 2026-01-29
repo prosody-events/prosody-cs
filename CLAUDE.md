@@ -18,25 +18,15 @@ test/Prosody.Tests/            # C# tests
 
 ## Commands
 
+Use the Makefile for all common tasks:
+
 ```bash
-# Build cdylib (produces libprosody_ffi.dylib/.so/.dll)
-cargo build -p prosody-ffi --release
-
-# Generate C# bindings (use --config for namespace and access modifier)
-uniffi-bindgen-cs --library target/release/libprosody_ffi.dylib --config uniffi.toml -o src/Prosody/Generated
-
-# Run Rust tests
-cargo test -p prosody-ffi
-
-# Run lints
-cargo clippy --workspace
-cargo clippy --workspace --all-targets  # includes tests
-
-# Build C# project
-dotnet build
-
-# Run C# tests
-dotnet test
+make setup      # Install all dependencies (run once after cloning)
+make build      # Build FFI crate and generate C# bindings
+make test       # Run lints and tests
+make lint       # Run Rust clippy and C# build
+make format     # Format Rust code
+make clean      # Clean build artifacts
 ```
 
 ## Code Style
@@ -45,12 +35,7 @@ Rust 2024 Edition (1.85+), C# .NET 8.0/9.0/10.0: Follow standard conventions
 
 ## Lint Policy
 
-**ALL clippy warnings must be fixed.** Run both commands and ensure zero warnings:
-
-```bash
-cargo clippy --workspace
-cargo clippy --workspace --all-targets  # includes tests
-```
+**ALL clippy warnings must be fixed.** Run `make lint` and ensure zero warnings.
 
 ### Forbidden: `#[allow(...)]` attributes
 
@@ -80,4 +65,9 @@ These must still be addressed - either by:
 - Commit messages should describe what changed and why, not which planning artifact it came from
 
 <!-- MANUAL ADDITIONS START -->
+
+## GitHub CLI
+
+Always use `gh` for GitHub operations (issues, PRs, API queries) instead of web URLs.
+
 <!-- MANUAL ADDITIONS END -->

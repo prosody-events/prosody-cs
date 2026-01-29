@@ -17,7 +17,7 @@
 //!
 //! - [`error`]: Error types for FFI boundary crossing
 //! - [`events`]: Message and Timer event types passed to C# handlers
-//! - [`handler`]: `EventHandler` trait for C# to implement
+//! - [`handler`]: `NativeEventHandler` trait for FFI callback interface
 //! - [`client`]: `ProsodyClient` service implementation
 //! - [`types`]: Configuration types (`ClientOptions`)
 
@@ -25,6 +25,7 @@ use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
 pub mod client;
+pub mod config;
 pub mod error;
 pub mod events;
 pub mod handler;
@@ -33,8 +34,8 @@ pub mod types;
 // Re-export key types for the UDL interface
 pub use client::ProsodyClient;
 pub use error::ProsodyError;
-pub use events::{MessageEvent, TimerEvent};
-pub use handler::{EventHandler, HandlerResultCode};
+pub use events::{Context, Message, Timer};
+pub use handler::{HandlerResultCode, NativeEventHandler};
 pub use types::{ClientOptions, ConsumerState};
 
 /// Global Tokio runtime for all async operations.

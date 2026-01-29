@@ -1,39 +1,48 @@
 //! `ProsodyClient` - Main FFI service for the Prosody client.
 //!
 //! This module exposes the prosody `HighLevelClient` to C# via `UniFFI`.
-//! The client provides an object-oriented API that maps naturally to C# classes.
+//! The client provides an object-oriented API that maps naturally to C#
+//! classes.
 //!
 //! # Usage
 //!
 //! In C#, the generated class looks like:
 //! ```csharp
-//! using var client = new ProsodyClient(options);
+//! using var client = ProsodyClient.New(options);
 //! await client.SubscribeAsync(handler);
 //! await client.SendAsync(topic, key, payload);
 //! ```
 
-use crate::error::{CSharpHandlerError, ProsodyError};
-use crate::events::{MessageEvent, TimerEvent};
-use crate::handler::{EventHandler, HandlerResultCode};
-use crate::types::{ClientOptions, ConsumerState};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use arc_swap::ArcSwap;
+use serde_json::Value;
+
 use crate::RUNTIME;
+use crate::config::{
+    build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
+};
+use crate::error::{CsHandlerError, ProsodyError};
+use crate::events::{Context, Message, Timer};
+use crate::handler::{HandlerResultCode, NativeEventHandler};
+use crate::types::{ClientOptions, ConsumerState};
+use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
-use prosody::consumer::DemandType;
-use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::high_level::HighLevelClient;
+use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::timers::{TimerType, Trigger};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-/// Internal handler that bridges C# `EventHandler` to prosody's `FallibleHandler`.
-struct UniFFIHandler {
-    /// The C# event handler implementation.
-    handler: Arc<dyn EventHandler>,
+/// Internal handler that bridges C# `NativeEventHandler` to prosody's
+/// `FallibleHandler`.
+struct CsHandler {
+    /// The C# native event handler implementation.
+    handler: Arc<dyn NativeEventHandler>,
 }
 
-impl Clone for UniFFIHandler {
+impl Clone for CsHandler {
     fn clone(&self) -> Self {
         Self {
             handler: Arc::clone(&self.handler),
@@ -41,8 +50,8 @@ impl Clone for UniFFIHandler {
     }
 }
 
-impl FallibleHandler for UniFFIHandler {
-    type Error = CSharpHandlerError;
+impl FallibleHandler for CsHandler {
+    type Error = CsHandlerError;
 
     async fn on_message<C>(
         &self,
@@ -53,25 +62,27 @@ impl FallibleHandler for UniFFIHandler {
     where
         C: EventContext,
     {
-        // Box the context for the event
-        let boxed_context = context.boxed();
+        // Wrap the context and message for C#
+        let ctx = Arc::new(Context::new(context.boxed()));
+        let msg = Arc::new(Message::new(message));
 
-        // Create the event (C# will own it via Arc)
-        let event = Arc::new(MessageEvent::new(boxed_context, message));
+        // TODO: Extract OpenTelemetry carrier from prosody context
+        // For now, pass an empty carrier - C# can populate it if needed
+        let carrier: HashMap<String, String> = HashMap::new();
 
         // Call the C# handler - it returns a result code
         let result = self
             .handler
-            .on_message(event)
+            .on_message(ctx, msg, carrier)
             .await
-            .map_err(|_| CSharpHandlerError::Permanent)?;
+            .map_err(|_| CsHandlerError::Permanent)?;
 
         // Map result code to our error type
         match result {
             HandlerResultCode::Success => Ok(()),
-            HandlerResultCode::TransientError => Err(CSharpHandlerError::Transient),
-            HandlerResultCode::PermanentError => Err(CSharpHandlerError::Permanent),
-            HandlerResultCode::Cancelled => Err(CSharpHandlerError::Cancelled),
+            HandlerResultCode::TransientError => Err(CsHandlerError::Transient),
+            HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent),
+            HandlerResultCode::Cancelled => Err(CsHandlerError::Cancelled),
         }
     }
 
@@ -89,25 +100,27 @@ impl FallibleHandler for UniFFIHandler {
             return Ok(());
         }
 
-        // Box the context for the event
-        let boxed_context = context.boxed();
+        // Wrap the context and timer for C#
+        let ctx = Arc::new(Context::new(context.boxed()));
+        let tmr = Arc::new(Timer::new(trigger));
 
-        // Create the event (C# will own it via Arc)
-        let event = Arc::new(TimerEvent::new(boxed_context, trigger));
+        // TODO: Extract OpenTelemetry carrier from prosody context
+        // For now, pass an empty carrier - C# can populate it if needed
+        let carrier: HashMap<String, String> = HashMap::new();
 
         // Call the C# handler - it returns a result code
         let result = self
             .handler
-            .on_timer(event)
+            .on_timer(ctx, tmr, carrier)
             .await
-            .map_err(|_| CSharpHandlerError::Permanent)?;
+            .map_err(|_| CsHandlerError::Permanent)?;
 
         // Map result code to our error type
         match result {
             HandlerResultCode::Success => Ok(()),
-            HandlerResultCode::TransientError => Err(CSharpHandlerError::Transient),
-            HandlerResultCode::PermanentError => Err(CSharpHandlerError::Permanent),
-            HandlerResultCode::Cancelled => Err(CSharpHandlerError::Cancelled),
+            HandlerResultCode::TransientError => Err(CsHandlerError::Transient),
+            HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent),
+            HandlerResultCode::Cancelled => Err(CsHandlerError::Cancelled),
         }
     }
 
@@ -149,9 +162,9 @@ impl FallibleHandler for UniFFIHandler {
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// The wrapped high-level client.
-    client: Arc<HighLevelClient<UniFFIHandler>>,
+    client: HighLevelClient<CsHandler>,
     /// Handler registration state (for managing callback lifetime).
-    handler: Mutex<Option<Arc<dyn EventHandler>>>,
+    handler: ArcSwap<Option<Arc<dyn NativeEventHandler>>>,
 }
 
 /// `UniFFI` interface implementation for `ProsodyClient`.
@@ -165,17 +178,34 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns error if the client cannot connect to Kafka or options are invalid.
+    /// Returns error if the client cannot connect to Kafka or options are
+    /// invalid.
     #[uniffi::constructor]
     #[expect(
         clippy::needless_pass_by_value,
-        reason = "UniFFI Record types are passed by value from C#; ownership transfer is intentional"
+        reason = "UniFFI Record types are passed by value from C#; ownership transfer is \
+                  intentional"
     )]
     pub fn new(options: ClientOptions) -> Result<Self, ProsodyError> {
-        // TODO: Convert ClientOptions to prosody builder
-        // For now, return an error indicating not yet implemented
-        let _ = options; // Suppress unused warning until implemented
-        Err(ProsodyError::Internal)
+        // Build all configuration from ClientOptions
+        let mut producer_config = build_producer_config(&options);
+        let consumer_builders = build_consumer_builders(&options);
+        let cassandra_config = build_cassandra_config(&options);
+        let mode = get_mode(&options);
+
+        // Create the high-level client
+        let client = HighLevelClient::new(
+            mode,
+            &mut producer_config,
+            &consumer_builders,
+            &cassandra_config,
+        )
+        .map_err(|_| ProsodyError::Internal)?;
+
+        Ok(Self {
+            client,
+            handler: ArcSwap::new(Arc::new(None)),
+        })
     }
 
     /// Subscribe to topics with the given event handler.
@@ -189,14 +219,19 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns error if subscription fails.
-    pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), ProsodyError> {
-        // Store the handler reference
-        let mut guard = self.handler.lock().await;
-        *guard = Some(Arc::clone(&handler));
-        drop(guard);
+    pub async fn subscribe(
+        &self,
+        handler: Arc<dyn NativeEventHandler>,
+    ) -> Result<(), ProsodyError> {
+        // Store the handler reference to keep it alive
+        self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
-        // TODO: Actually subscribe with the client
-        // self.client.subscribe(UniFFIHandler { handler }).await;
+        // Create the internal handler and subscribe
+        let cs_handler = CsHandler { handler };
+        self.client
+            .subscribe(cs_handler)
+            .await
+            .map_err(|_| ProsodyError::Internal)?;
 
         Ok(())
     }
@@ -207,13 +242,14 @@ impl ProsodyClient {
     ///
     /// Returns error if unsubscription fails.
     pub async fn unsubscribe(&self) -> Result<(), ProsodyError> {
-        // Clear the handler reference
-        let mut guard = self.handler.lock().await;
-        *guard = None;
-        drop(guard);
+        // Unsubscribe from the client
+        self.client
+            .unsubscribe()
+            .await
+            .map_err(|_| ProsodyError::Internal)?;
 
-        // TODO: Actually unsubscribe
-        // self.client.unsubscribe().await;
+        // Clear the handler reference
+        self.handler.store(Arc::new(None));
 
         Ok(())
     }
@@ -229,19 +265,22 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns error if the message cannot be sent.
-    #[expect(
-        clippy::unused_async,
-        reason = "TODO stub - real implementation will use await for sending"
-    )]
     pub async fn send(
         &self,
         topic: String,
         key: String,
         payload: String,
     ) -> Result<(), ProsodyError> {
-        // TODO: Actually send the message
-        // self.client.send(&topic, &key, &payload).await;
-        let _ = (topic, key, payload);
+        // Parse the payload as JSON
+        let json_value: Value =
+            serde_json::from_str(&payload).map_err(|_| ProsodyError::InvalidArgument)?;
+
+        // Send the message
+        self.client
+            .send(topic.as_str().into(), &key, &json_value)
+            .await
+            .map_err(|_| ProsodyError::Internal)?;
+
         Ok(())
     }
 
@@ -266,14 +305,9 @@ impl ProsodyClient {
     pub fn is_stalled(&self) -> bool {
         RUNTIME.block_on(async { self.client.is_stalled().await })
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn consumer_state_default_is_unconfigured() {
-        assert_eq!(ConsumerState::default(), ConsumerState::Unconfigured);
+    /// Returns the source system identifier configured for this client.
+    pub fn source_system(&self) -> String {
+        self.client.source_system().to_owned()
     }
 }

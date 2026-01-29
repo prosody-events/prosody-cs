@@ -3,160 +3,157 @@ using Prosody.Native;
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for UniFFI-generated ClientOptions record.
+/// Tests for ClientOptions configuration record.
 /// </summary>
 public sealed class ClientOptionsTests
 {
-    private static ClientOptions CreateMinimalOptions(
-        string bootstrapServers = "localhost:9092",
-        string groupId = "test-group",
-        string subscribedTopics = "test-topic") =>
-        new(
-            bootstrapServers: bootstrapServers,
-            groupId: groupId,
-            subscribedTopics: subscribedTopics,
-            allowedEvents: null,
-            sourceSystem: null,
-            mock: null,
-            mode: null,
-            maxConcurrency: null,
-            maxUncommitted: null,
-            maxEnqueuedPerKey: null,
-            idempotenceCacheSize: null,
-            sendTimeoutMs: null,
-            stallThresholdMs: null,
-            shutdownTimeoutMs: null,
-            pollIntervalMs: null,
-            commitIntervalMs: null,
-            timeoutMs: null,
-            slabSizeMs: null,
-            retryBaseMs: null,
-            maxRetryDelayMs: null,
-            maxRetries: null,
-            failureTopic: null,
-            probePort: null,
-            cassandraNodes: null,
-            cassandraKeyspace: null,
-            cassandraDatacenter: null,
-            cassandraRack: null,
-            cassandraUser: null,
-            cassandraPassword: null,
-            cassandraRetentionSeconds: null,
-            schedulerFailureWeight: null,
-            schedulerMaxWaitMs: null,
-            schedulerWaitWeight: null,
-            schedulerCacheSize: null,
-            monopolizationEnabled: null,
-            monopolizationThreshold: null,
-            monopolizationWindowMs: null,
-            monopolizationCacheSize: null,
-            deferEnabled: null,
-            deferBaseMs: null,
-            deferMaxDelayMs: null,
-            deferFailureThreshold: null,
-            deferFailureWindowMs: null,
-            deferCacheSize: null,
-            deferSeekTimeoutMs: null,
-            deferDiscardThreshold: null
-        );
-
     [Fact]
-    public void ClientOptions_CanCreateWithRequiredFields()
+    public void DefaultConstructor_CreatesEmptyOptions()
     {
-        var options = CreateMinimalOptions();
+        var options = new ClientOptions();
 
-        Assert.Equal("localhost:9092", options.bootstrapServers);
-        Assert.Equal("test-group", options.groupId);
-        Assert.Equal("test-topic", options.subscribedTopics);
+        Assert.Null(options.BootstrapServers);
+        Assert.Null(options.GroupId);
+        Assert.Null(options.SubscribedTopics);
+        Assert.Null(options.Mode);
+        Assert.Null(options.StallThreshold);
     }
 
     [Fact]
-    public void ClientOptions_CanCreateWithMultipleTopics()
-    {
-        var options = CreateMinimalOptions(
-            bootstrapServers: "broker1:9092,broker2:9092",
-            subscribedTopics: "topic1,topic2,topic3"
-        );
-
-        Assert.Contains("topic1", options.subscribedTopics);
-        Assert.Contains("topic2", options.subscribedTopics);
-        Assert.Contains("topic3", options.subscribedTopics);
-    }
-
-    [Fact]
-    public void ClientOptions_CanSetOptionalFields()
+    public void CanSpecifyOnlyNeededFields()
     {
         var options = new ClientOptions(
-            bootstrapServers: "localhost:9092",
-            groupId: "test-group",
-            subscribedTopics: "test-topic",
-            allowedEvents: "order.,payment.",
-            sourceSystem: "my-service",
-            mock: true,
-            mode: 0, // Pipeline
-            maxConcurrency: 16,
-            maxUncommitted: 1000,
-            maxEnqueuedPerKey: 100,
-            idempotenceCacheSize: 10000,
-            sendTimeoutMs: 5000,
-            stallThresholdMs: 30000,
-            shutdownTimeoutMs: 10000,
-            pollIntervalMs: 100,
-            commitIntervalMs: 1000,
-            timeoutMs: 25000,
-            slabSizeMs: 60000,
-            retryBaseMs: 1000,
-            maxRetryDelayMs: 60000,
-            maxRetries: 5,
-            failureTopic: "dlq-topic",
-            probePort: 8080,
-            cassandraNodes: null,
-            cassandraKeyspace: null,
-            cassandraDatacenter: null,
-            cassandraRack: null,
-            cassandraUser: null,
-            cassandraPassword: null,
-            cassandraRetentionSeconds: null,
-            schedulerFailureWeight: null,
-            schedulerMaxWaitMs: null,
-            schedulerWaitWeight: null,
-            schedulerCacheSize: null,
-            monopolizationEnabled: null,
-            monopolizationThreshold: null,
-            monopolizationWindowMs: null,
-            monopolizationCacheSize: null,
-            deferEnabled: null,
-            deferBaseMs: null,
-            deferMaxDelayMs: null,
-            deferFailureThreshold: null,
-            deferFailureWindowMs: null,
-            deferCacheSize: null,
-            deferSeekTimeoutMs: null,
-            deferDiscardThreshold: null
+            BootstrapServers: ["localhost:9092"],
+            GroupId: "my-app",
+            SubscribedTopics: ["my-topic"]
         );
 
-        Assert.Equal("order.,payment.", options.allowedEvents);
-        Assert.Equal("my-service", options.sourceSystem);
-        Assert.True(options.mock);
-        Assert.Equal(0, options.mode);
-        Assert.Equal(16u, options.maxConcurrency);
+        Assert.Equal(["localhost:9092"], options.BootstrapServers!);
+        Assert.Equal("my-app", options.GroupId);
+        Assert.Equal(["my-topic"], options.SubscribedTopics!);
+        Assert.Null(options.Mode);
     }
 
     [Fact]
-    public void ClientOptions_RecordEquality_Works()
+    public void CanSpecifyMultipleBootstrapServers()
     {
-        var options1 = CreateMinimalOptions();
-        var options2 = CreateMinimalOptions();
+        var options = new ClientOptions(
+            BootstrapServers: ["broker1:9092", "broker2:9092", "broker3:9092"]
+        );
+
+        Assert.Equal(3, options.BootstrapServers!.Length);
+        Assert.Contains("broker1:9092", options.BootstrapServers!);
+        Assert.Contains("broker2:9092", options.BootstrapServers!);
+        Assert.Contains("broker3:9092", options.BootstrapServers!);
+    }
+
+    [Fact]
+    public void CanSpecifyMultipleTopics()
+    {
+        var options = new ClientOptions(SubscribedTopics: ["orders", "payments", "notifications"]);
+
+        Assert.Equal(3, options.SubscribedTopics?.Length);
+    }
+
+    [Fact]
+    public void DurationFields_AcceptTimeSpan()
+    {
+        var options = new ClientOptions(
+            StallThreshold: TimeSpan.FromMinutes(5),
+            ShutdownTimeout: TimeSpan.FromSeconds(30),
+            PollInterval: TimeSpan.FromMilliseconds(100),
+            CommitInterval: TimeSpan.FromSeconds(1)
+        );
+
+        Assert.Equal(TimeSpan.FromMinutes(5), options.StallThreshold);
+        Assert.Equal(TimeSpan.FromSeconds(30), options.ShutdownTimeout);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), options.PollInterval);
+        Assert.Equal(TimeSpan.FromSeconds(1), options.CommitInterval);
+    }
+
+    [Fact]
+    public void Mode_AcceptsEnumValue()
+    {
+        var pipelineOptions = new ClientOptions(Mode: ClientMode.Pipeline);
+        var lowLatencyOptions = new ClientOptions(Mode: ClientMode.LowLatency);
+        var bestEffortOptions = new ClientOptions(Mode: ClientMode.BestEffort);
+
+        Assert.Equal(ClientMode.Pipeline, pipelineOptions.Mode);
+        Assert.Equal(ClientMode.LowLatency, lowLatencyOptions.Mode);
+        Assert.Equal(ClientMode.BestEffort, bestEffortOptions.Mode);
+    }
+
+    [Fact]
+    public void ThresholdFields_AcceptDouble()
+    {
+        var options = new ClientOptions(
+            DeferFailureThreshold: 0.9,
+            MonopolizationThreshold: 0.75,
+            SchedulerFailureWeight: 0.3
+        );
+
+        Assert.Equal(0.9, options.DeferFailureThreshold);
+        Assert.Equal(0.75, options.MonopolizationThreshold);
+        Assert.Equal(0.3, options.SchedulerFailureWeight);
+    }
+
+    [Fact]
+    public void ProbePort_AcceptsUshort()
+    {
+        var enabledOptions = new ClientOptions(ProbePort: 8080);
+        var disabledOptions = new ClientOptions(ProbePort: 0);
+
+        Assert.Equal((ushort)8080, enabledOptions.ProbePort);
+        Assert.Equal((ushort)0, disabledOptions.ProbePort);
+    }
+
+    [Fact]
+    public void RecordEquality_WorksForScalarFields()
+    {
+        // Note: Records with array fields use reference equality for arrays,
+        // so we test equality with scalar fields only
+        var options1 = new ClientOptions(GroupId: "test", SourceSystem: "my-app");
+        var options2 = new ClientOptions(GroupId: "test", SourceSystem: "my-app");
 
         Assert.Equal(options1, options2);
     }
 
     [Fact]
-    public void ClientOptions_RecordInequality_WhenFieldsDiffer()
+    public void RecordInequality_WhenFieldsDiffer()
     {
-        var options1 = CreateMinimalOptions(groupId: "group-1");
-        var options2 = CreateMinimalOptions(groupId: "group-2");
+        var options1 = new ClientOptions(GroupId: "group-1");
+        var options2 = new ClientOptions(GroupId: "group-2");
 
         Assert.NotEqual(options1, options2);
+    }
+
+    [Fact]
+    public void LowLatencyMode_WithFailureTopic()
+    {
+        var options = new ClientOptions(
+            Mode: ClientMode.LowLatency,
+            FailureTopic: "dead-letters",
+            MaxRetries: 3
+        );
+
+        Assert.Equal(ClientMode.LowLatency, options.Mode);
+        Assert.Equal("dead-letters", options.FailureTopic);
+        Assert.Equal(3u, options.MaxRetries);
+    }
+
+    [Fact]
+    public void CassandraConfiguration()
+    {
+        var options = new ClientOptions(
+            CassandraNodes: ["cass1:9042", "cass2:9042"],
+            CassandraKeyspace: "prosody",
+            CassandraDatacenter: "dc1",
+            CassandraRetention: TimeSpan.FromDays(365)
+        );
+
+        Assert.Equal(2, options.CassandraNodes?.Length);
+        Assert.Equal("prosody", options.CassandraKeyspace);
+        Assert.Equal("dc1", options.CassandraDatacenter);
+        Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention);
     }
 }

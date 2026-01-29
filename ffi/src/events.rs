@@ -1,74 +1,190 @@
 //! Event types for async C# handler invocation.
 //!
-//! This module defines event types that wrap prosody's `ConsumerMessage` and `Trigger`.
-//! These are passed to C# handlers as owned objects (via Arc) that C# can hold
-//! and interact with asynchronously.
+//! This module defines types matching the sibling wrapper pattern (prosody-py,
+//! prosody-js, prosody-rb):
+//! - `Context`: Wraps `BoxEventContext` for scheduling and cancellation
+//! - `Message`: Wraps `ConsumerMessage` for Kafka message data
+//! - `Timer`: Wraps `Trigger` for timer data
 //!
 //! # Design
 //!
-//! `UniFFI` handles ownership transfer automatically via Arc:
-//! - Rust creates the event and wraps it in `Arc<T>`
-//! - C# receives an `IDisposable` object that holds an Arc reference
-//! - When C# disposes, the Arc reference count decrements
-//! - When all references are dropped, the event is cleaned up
+//! Following the Python high-level handler pattern:
+//! ```python
+//! async def on_message(self, context: Context, message: Message) -> None
+//! ```
 //!
-//! # Cancellation
-//!
-//! Each event has an `await_cancel()` async method that C# can await
-//! to be notified when Rust requests cancellation. This enables
-//! C# to create a `CancellationToken` that fires immediately.
+//! Each type is a `UniFFI` Object that wraps the underlying prosody type and
+//! exposes data via methods.
 
+use std::collections::HashMap;
+
+use futures::TryStreamExt;
+use prosody::consumer::Keyed;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::consumer::message::ConsumerMessage;
-use prosody::consumer::Keyed;
-use prosody::timers::Trigger;
+use prosody::timers::datetime::CompactDateTime;
+use prosody::timers::{TimerType, Trigger};
+
+use crate::error::ProsodyError;
 
 // ============================================================================
-// MessageEvent - Wraps ConsumerMessage
+// Context - Wraps BoxEventContext
 // ============================================================================
 
-/// Message event passed to C# handlers.
+/// Event context for scheduling timers and checking cancellation.
 ///
-/// Contains the Kafka message data and event context for cancellation.
-/// C# receives this via the `EventHandler.on_message()` callback.
-///
-/// # Ownership
-///
-/// `UniFFI` wraps this in an Arc automatically. C# receives an `IDisposable`
-/// object that properly releases the Arc when disposed.
+/// Wraps prosody's `BoxEventContext` and exposes scheduling/cancellation
+/// methods. This matches the Python `Context` class.
 #[derive(uniffi::Object)]
-pub struct MessageEvent {
-    /// The event context for cancellation checking.
-    context: BoxEventContext,
-    /// The wrapped consumer message from prosody.
-    message: ConsumerMessage,
-    /// Cached topic string (`ConsumerMessage::topic()` returns &str).
+pub struct Context {
+    inner: BoxEventContext,
+}
+
+#[expect(
+    clippy::multiple_inherent_impl,
+    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
+)]
+impl Context {
+    /// Creates a new `Context` wrapping a [`BoxEventContext`].
+    #[must_use]
+    pub fn new(inner: BoxEventContext) -> Self {
+        Self { inner }
+    }
+}
+
+#[uniffi::export]
+impl Context {
+    /// Returns true if cancellation has been requested.
+    #[must_use]
+    pub fn should_cancel(&self) -> bool {
+        self.inner.should_cancel()
+    }
+
+    /// Async method that completes when cancellation is requested.
+    pub async fn await_cancel(&self) {
+        self.inner.on_cancel().await;
+    }
+
+    /// Schedule a new timer at the given time for the current message key.
+    ///
+    /// # Arguments
+    ///
+    /// * `time_ms` - Unix timestamp in milliseconds
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
+    /// or `ProsodyError::Internal` if the scheduling fails.
+    pub async fn schedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
+        let epoch_secs =
+            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
+        let time = CompactDateTime::from(epoch_secs);
+        self.inner
+            .schedule(time, TimerType::Application)
+            .await
+            .map_err(|_| ProsodyError::Internal)
+    }
+
+    /// Unschedule all existing timers, then schedule exactly one new timer.
+    ///
+    /// # Arguments
+    ///
+    /// * `time_ms` - Unix timestamp in milliseconds
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
+    /// or `ProsodyError::Internal` if the scheduling fails.
+    pub async fn clear_and_schedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
+        let epoch_secs =
+            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
+        let time = CompactDateTime::from(epoch_secs);
+        self.inner
+            .clear_and_schedule(time, TimerType::Application)
+            .await
+            .map_err(|_| ProsodyError::Internal)
+    }
+
+    /// Unschedule a specific timer at the given time.
+    ///
+    /// # Arguments
+    ///
+    /// * `time_ms` - Unix timestamp in milliseconds
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
+    /// or `ProsodyError::Internal` if the operation fails.
+    pub async fn unschedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
+        let epoch_secs =
+            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
+        let time = CompactDateTime::from(epoch_secs);
+        self.inner
+            .unschedule(time, TimerType::Application)
+            .await
+            .map_err(|_| ProsodyError::Internal)
+    }
+
+    /// Unschedule all timers for the current key.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProsodyError::Internal` if the operation fails.
+    pub async fn clear_scheduled(&self) -> Result<(), ProsodyError> {
+        self.inner
+            .clear_scheduled(TimerType::Application)
+            .await
+            .map_err(|_| ProsodyError::Internal)
+    }
+
+    /// List all scheduled timer times for the current key.
+    ///
+    /// # Returns
+    ///
+    /// A list of Unix timestamps in milliseconds.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ProsodyError::Internal` if the operation fails.
+    pub async fn scheduled(&self) -> Result<Vec<i64>, ProsodyError> {
+        self.inner
+            .scheduled(TimerType::Application)
+            .map_ok(|time| i64::from(time.epoch_seconds()) * 1000)
+            .try_collect()
+            .await
+            .map_err(|_| ProsodyError::Internal)
+    }
+}
+
+// ============================================================================
+// Message - Wraps ConsumerMessage
+// ============================================================================
+
+/// Kafka message data.
+///
+/// Wraps prosody's `ConsumerMessage` and exposes message data via methods.
+/// This matches the Python `Message` dataclass.
+#[derive(uniffi::Object)]
+pub struct Message {
+    inner: ConsumerMessage,
     topic: String,
-    /// Cached key string.
     key: String,
-    /// Cached payload string (JSON).
     payload: String,
 }
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks: exported methods must be in #[uniffi::export] block, but associated functions without #[uniffi::constructor] are not supported there"
+    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
 )]
-impl MessageEvent {
-    /// Creates a new message event.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The event context for cancellation
-    /// * `message` - The consumer message from prosody
+impl Message {
+    /// Creates a new Message wrapping a [`ConsumerMessage`].
     #[must_use]
-    pub fn new(context: BoxEventContext, message: ConsumerMessage) -> Self {
-        let topic = message.topic().to_string();
-        let key = message.key().to_string();
-        let payload = message.payload().to_string();
+    pub fn new(inner: ConsumerMessage) -> Self {
+        let topic = inner.topic().to_string();
+        let key = inner.key().to_string();
+        let payload = inner.payload().to_string();
         Self {
-            context,
-            message,
+            inner,
             topic,
             key,
             payload,
@@ -76,157 +192,92 @@ impl MessageEvent {
     }
 }
 
-/// `UniFFI` interface implementation for `MessageEvent`.
 #[uniffi::export]
-impl MessageEvent {
+impl Message {
     /// Returns the topic name.
-    #[must_use] 
+    #[must_use]
     pub fn topic(&self) -> String {
         self.topic.clone()
     }
 
     /// Returns the partition number.
-    #[must_use] 
+    #[must_use]
     pub fn partition(&self) -> i32 {
-        self.message.partition()
+        self.inner.partition()
     }
 
     /// Returns the message offset.
-    #[must_use] 
+    #[must_use]
     pub fn offset(&self) -> i64 {
-        self.message.offset()
+        self.inner.offset()
     }
 
     /// Returns the message timestamp in milliseconds since epoch.
-    #[must_use] 
+    #[must_use]
     pub fn timestamp(&self) -> i64 {
-        self.message.timestamp().timestamp_millis()
+        self.inner.timestamp().timestamp_millis()
     }
 
-    /// Returns the message key as a UTF-8 string.
-    #[must_use] 
+    /// Returns the message key.
+    #[must_use]
     pub fn key(&self) -> String {
         self.key.clone()
     }
 
-    /// Returns the message payload as a UTF-8 string (JSON).
-    #[must_use] 
+    /// Returns the message payload (JSON string).
+    #[must_use]
     pub fn payload(&self) -> String {
         self.payload.clone()
-    }
-
-    /// Returns true if cancellation has been requested.
-    #[must_use] 
-    pub fn should_cancel(&self) -> bool {
-        self.context.should_cancel()
-    }
-
-    /// Async method that completes when cancellation is requested.
-    ///
-    /// C# awaits this to get notified of cancellation without polling.
-    /// `UniFFI` maps this to a C# `Task` that completes when cancelled.
-    ///
-    /// # Usage (C#)
-    ///
-    /// ```csharp
-    /// var cancelTask = Task.Run(async () => {
-    ///     await event.AwaitCancelAsync();
-    ///     cts.Cancel();  // Fire the CancellationToken
-    /// });
-    /// ```
-    pub async fn await_cancel(&self) {
-        self.context.on_cancel().await;
     }
 }
 
 // ============================================================================
-// TimerEvent - Wraps Trigger
+// Timer - Wraps Trigger
 // ============================================================================
 
-/// Timer event passed to C# handlers.
+/// Timer trigger data.
 ///
-/// Contains the timer trigger data and event context for cancellation.
-/// C# receives this via the `EventHandler.on_timer()` callback.
-///
-/// # Ownership
-///
-/// `UniFFI` wraps this in an Arc automatically. C# receives an `IDisposable`
-/// object that properly releases the Arc when disposed.
+/// Wraps prosody's `Trigger` and exposes timer data via methods.
+/// This matches the Python `Timer` dataclass.
 #[derive(uniffi::Object)]
-pub struct TimerEvent {
-    /// The event context for cancellation checking.
-    context: BoxEventContext,
-    /// The wrapped trigger from prosody.
+pub struct Timer {
     trigger: Trigger,
-    /// Cached key string.
     key: String,
 }
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks: exported methods must be in #[uniffi::export] block, but associated functions without #[uniffi::constructor] are not supported there"
+    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
 )]
-impl TimerEvent {
-    /// Creates a new timer event.
-    ///
-    /// # Arguments
-    ///
-    /// * `context` - The event context for cancellation
-    /// * `trigger` - The timer trigger from prosody
+impl Timer {
+    /// Creates a new Timer wrapping a Trigger.
     #[must_use]
-    pub fn new(context: BoxEventContext, trigger: Trigger) -> Self {
+    pub fn new(trigger: Trigger) -> Self {
         let key = trigger.key.to_string();
-        Self {
-            context,
-            trigger,
-            key,
-        }
+        Self { trigger, key }
     }
 }
 
-/// `UniFFI` interface implementation for `TimerEvent`.
 #[uniffi::export]
-impl TimerEvent {
-    /// Returns the timer key as a UTF-8 string.
-    #[must_use] 
+impl Timer {
+    /// Returns the timer key.
+    #[must_use]
     pub fn key(&self) -> String {
         self.key.clone()
     }
 
     /// Returns the timer fire time in milliseconds since epoch.
-    #[must_use] 
+    #[must_use]
     pub fn time(&self) -> i64 {
         i64::from(self.trigger.time.epoch_seconds()) * 1000
     }
-
-    /// Returns true if cancellation has been requested.
-    #[must_use] 
-    pub fn should_cancel(&self) -> bool {
-        self.context.should_cancel()
-    }
-
-    /// Async method that completes when cancellation is requested.
-    ///
-    /// C# awaits this to get notified of cancellation without polling.
-    /// `UniFFI` maps this to a C# `Task` that completes when cancelled.
-    pub async fn await_cancel(&self) {
-        self.context.on_cancel().await;
-    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ============================================================================
+// Carrier type alias
+// ============================================================================
 
-    #[test]
-    fn message_event_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<MessageEvent>();
-    }
-
-    #[test]
-    fn timer_event_is_send_sync() {
-        fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<TimerEvent>();
-    }
-}
+/// OpenTelemetry carrier for context propagation.
+///
+/// In C#, this becomes `IDictionary<string, string>`.
+pub type Carrier = HashMap<String, String>;

@@ -1,17 +1,17 @@
 using Prosody.Native;
-using ProsodyEventHandler = Prosody.Native.EventHandler;
+using Timer = Prosody.Native.Timer;
 
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for implementing the EventHandler interface.
+/// Tests for implementing the NativeEventHandler interface.
 /// </summary>
 public sealed class EventHandlerTests
 {
     /// <summary>
-    /// Test implementation of EventHandler that tracks calls.
+    /// Test implementation of NativeEventHandler that tracks calls.
     /// </summary>
-    private sealed class TestHandler : ProsodyEventHandler
+    private sealed class TestNativeHandler : NativeEventHandler
     {
         public int MessageCount { get; private set; }
         public int TimerCount { get; private set; }
@@ -19,13 +19,21 @@ public sealed class EventHandlerTests
         public HandlerResultCode MessageResult { get; set; } = HandlerResultCode.Success;
         public HandlerResultCode TimerResult { get; set; } = HandlerResultCode.Success;
 
-        public Task<HandlerResultCode> OnMessage(MessageEvent @event)
+        public Task<HandlerResultCode> OnMessage(
+            Context context,
+            Message message,
+            Dictionary<string, string> carrier
+        )
         {
             MessageCount++;
             return Task.FromResult(MessageResult);
         }
 
-        public Task<HandlerResultCode> OnTimer(TimerEvent @event)
+        public Task<HandlerResultCode> OnTimer(
+            Context context,
+            Timer timer,
+            Dictionary<string, string> carrier
+        )
         {
             TimerCount++;
             return Task.FromResult(TimerResult);
@@ -35,16 +43,16 @@ public sealed class EventHandlerTests
     }
 
     [Fact]
-    public void EventHandler_CanBeImplemented()
+    public void NativeEventHandler_CanBeImplemented()
     {
-        ProsodyEventHandler handler = new TestHandler();
+        NativeEventHandler handler = new TestNativeHandler();
         Assert.NotNull(handler);
     }
 
     [Fact]
-    public void EventHandler_OnShutdown_CanBeCalled()
+    public void NativeEventHandler_OnShutdown_CanBeCalled()
     {
-        var handler = new TestHandler();
+        var handler = new TestNativeHandler();
 
         handler.OnShutdown();
 
@@ -52,12 +60,12 @@ public sealed class EventHandlerTests
     }
 
     [Fact]
-    public void EventHandler_CanReturnDifferentResultCodes()
+    public void NativeEventHandler_CanReturnDifferentResultCodes()
     {
-        var handler = new TestHandler
+        var handler = new TestNativeHandler
         {
             MessageResult = HandlerResultCode.TransientError,
-            TimerResult = HandlerResultCode.PermanentError
+            TimerResult = HandlerResultCode.PermanentError,
         };
 
         Assert.Equal(HandlerResultCode.TransientError, handler.MessageResult);
@@ -67,17 +75,25 @@ public sealed class EventHandlerTests
     /// <summary>
     /// Test handler that uses async/await properly.
     /// </summary>
-    private sealed class AsyncHandler : ProsodyEventHandler
+    private sealed class AsyncNativeHandler : NativeEventHandler
     {
         public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
 
-        public async Task<HandlerResultCode> OnMessage(MessageEvent @event)
+        public async Task<HandlerResultCode> OnMessage(
+            Context context,
+            Message message,
+            Dictionary<string, string> carrier
+        )
         {
             await Task.Delay(Delay);
             return HandlerResultCode.Success;
         }
 
-        public async Task<HandlerResultCode> OnTimer(TimerEvent @event)
+        public async Task<HandlerResultCode> OnTimer(
+            Context context,
+            Timer timer,
+            Dictionary<string, string> carrier
+        )
         {
             await Task.Delay(Delay);
             return HandlerResultCode.Success;
@@ -87,59 +103,9 @@ public sealed class EventHandlerTests
     }
 
     [Fact]
-    public void EventHandler_AsyncImplementation_CanBeCreated()
+    public void NativeEventHandler_AsyncImplementation_CanBeCreated()
     {
-        ProsodyEventHandler handler = new AsyncHandler();
-        Assert.NotNull(handler);
-    }
-
-    /// <summary>
-    /// Test handler using cancellation token pattern.
-    /// Demonstrates how to convert AwaitCancel() to CancellationToken.
-    /// </summary>
-    private sealed class CancellationAwareHandler : ProsodyEventHandler
-    {
-        public async Task<HandlerResultCode> OnMessage(MessageEvent @event)
-        {
-            using var cts = new CancellationTokenSource();
-
-            // Start task that awaits Rust cancellation signal
-            var cancelTask = Task.Run(async () =>
-            {
-                await @event.AwaitCancel();
-                cts.Cancel();
-            });
-
-            try
-            {
-                // Simulate work with cancellation support
-                await Task.Delay(TimeSpan.FromSeconds(10), cts.Token);
-                return HandlerResultCode.Success;
-            }
-            catch (OperationCanceledException)
-            {
-                return HandlerResultCode.Cancelled;
-            }
-        }
-
-        public async Task<HandlerResultCode> OnTimer(TimerEvent @event)
-        {
-            if (@event.ShouldCancel())
-            {
-                return HandlerResultCode.Cancelled;
-            }
-
-            await Task.CompletedTask;
-            return HandlerResultCode.Success;
-        }
-
-        public void OnShutdown() { }
-    }
-
-    [Fact]
-    public void EventHandler_CancellationAwareImplementation_CanBeCreated()
-    {
-        ProsodyEventHandler handler = new CancellationAwareHandler();
+        NativeEventHandler handler = new AsyncNativeHandler();
         Assert.NotNull(handler);
     }
 }
