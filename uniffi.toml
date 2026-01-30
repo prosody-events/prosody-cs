@@ -1,3 +1,4 @@
 [bindings.csharp]
-access_modifier = "public"
+# Internal so users only see the public Prosody wrapper types.
+access_modifier = "internal"
 namespace = "Prosody.Native"

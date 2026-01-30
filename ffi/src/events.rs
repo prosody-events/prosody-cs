@@ -5,6 +5,7 @@
 //! - `Context`: Wraps `BoxEventContext` for scheduling and cancellation
 //! - `Message`: Wraps `ConsumerMessage` for Kafka message data
 //! - `Timer`: Wraps `Trigger` for timer data
+//! - `CancellationSignal`: Allows C# to signal cancellation to async operations
 //!
 //! # Design
 //!
@@ -17,6 +18,10 @@
 //! exposes data via methods.
 
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use tokio::sync::Notify;
 
 use futures::TryStreamExt;
 use prosody::consumer::Keyed;
@@ -61,7 +66,7 @@ impl Context {
     }
 
     /// Async method that completes when cancellation is requested.
-    pub async fn await_cancel(&self) {
+    pub async fn on_cancel(&self) {
         self.inner.on_cancel().await;
     }
 
@@ -69,18 +74,23 @@ impl Context {
     ///
     /// # Arguments
     ///
-    /// * `time_ms` - Unix timestamp in milliseconds
+    /// * `time` - The time to schedule the timer
+    /// * `carrier` - OpenTelemetry carrier for context propagation
     ///
     /// # Errors
     ///
     /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
     /// or `ProsodyError::Internal` if the scheduling fails.
-    pub async fn schedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
-        let epoch_secs =
-            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
-        let time = CompactDateTime::from(epoch_secs);
+    pub async fn schedule(
+        &self,
+        time: SystemTime,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), ProsodyError> {
+        let _ = carrier; // TODO: Use for tracing propagation
+        let compact_time = CompactDateTime::try_from(time)
+            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
         self.inner
-            .schedule(time, TimerType::Application)
+            .schedule(compact_time, TimerType::Application)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -89,18 +99,23 @@ impl Context {
     ///
     /// # Arguments
     ///
-    /// * `time_ms` - Unix timestamp in milliseconds
+    /// * `time` - The time to schedule the timer
+    /// * `carrier` - OpenTelemetry carrier for context propagation
     ///
     /// # Errors
     ///
     /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
     /// or `ProsodyError::Internal` if the scheduling fails.
-    pub async fn clear_and_schedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
-        let epoch_secs =
-            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
-        let time = CompactDateTime::from(epoch_secs);
+    pub async fn clear_and_schedule(
+        &self,
+        time: SystemTime,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), ProsodyError> {
+        let _ = carrier; // TODO: Use for tracing propagation
+        let compact_time = CompactDateTime::try_from(time)
+            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
         self.inner
-            .clear_and_schedule(time, TimerType::Application)
+            .clear_and_schedule(compact_time, TimerType::Application)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -109,28 +124,41 @@ impl Context {
     ///
     /// # Arguments
     ///
-    /// * `time_ms` - Unix timestamp in milliseconds
+    /// * `time` - The time of the timer to unschedule
+    /// * `carrier` - OpenTelemetry carrier for context propagation
     ///
     /// # Errors
     ///
     /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
     /// or `ProsodyError::Internal` if the operation fails.
-    pub async fn unschedule(&self, time_ms: i64) -> Result<(), ProsodyError> {
-        let epoch_secs =
-            u32::try_from(time_ms / 1000).map_err(|_| ProsodyError::InvalidArgument)?;
-        let time = CompactDateTime::from(epoch_secs);
+    pub async fn unschedule(
+        &self,
+        time: SystemTime,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), ProsodyError> {
+        let _ = carrier; // TODO: Use for tracing propagation
+        let compact_time = CompactDateTime::try_from(time)
+            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
         self.inner
-            .unschedule(time, TimerType::Application)
+            .unschedule(compact_time, TimerType::Application)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
 
     /// Unschedule all timers for the current key.
     ///
+    /// # Arguments
+    ///
+    /// * `carrier` - OpenTelemetry carrier for context propagation
+    ///
     /// # Errors
     ///
     /// Returns `ProsodyError::Internal` if the operation fails.
-    pub async fn clear_scheduled(&self) -> Result<(), ProsodyError> {
+    pub async fn clear_scheduled(
+        &self,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), ProsodyError> {
+        let _ = carrier; // TODO: Use for tracing propagation
         self.inner
             .clear_scheduled(TimerType::Application)
             .await
@@ -139,17 +167,25 @@ impl Context {
 
     /// List all scheduled timer times for the current key.
     ///
+    /// # Arguments
+    ///
+    /// * `carrier` - OpenTelemetry carrier for context propagation
+    ///
     /// # Returns
     ///
-    /// A list of Unix timestamps in milliseconds.
+    /// A list of scheduled times.
     ///
     /// # Errors
     ///
     /// Returns `ProsodyError::Internal` if the operation fails.
-    pub async fn scheduled(&self) -> Result<Vec<i64>, ProsodyError> {
+    pub async fn scheduled(
+        &self,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<SystemTime>, ProsodyError> {
+        let _ = carrier; // TODO: Use for tracing propagation
         self.inner
             .scheduled(TimerType::Application)
-            .map_ok(|time| i64::from(time.epoch_seconds()) * 1000)
+            .map_ok(Into::<SystemTime>::into)
             .try_collect()
             .await
             .map_err(|_| ProsodyError::Internal)
@@ -169,7 +205,7 @@ pub struct Message {
     inner: ConsumerMessage,
     topic: String,
     key: String,
-    payload: String,
+    payload: Vec<u8>,
 }
 
 #[expect(
@@ -178,17 +214,21 @@ pub struct Message {
 )]
 impl Message {
     /// Creates a new Message wrapping a [`ConsumerMessage`].
-    #[must_use]
-    pub fn new(inner: ConsumerMessage) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the payload cannot be serialized to JSON bytes.
+    pub fn new(inner: ConsumerMessage) -> Result<Self, simd_json::Error> {
         let topic = inner.topic().to_string();
         let key = inner.key().to_string();
-        let payload = inner.payload().to_string();
-        Self {
+        // Serialize JSON Value back to UTF-8 bytes using simd_json
+        let payload = simd_json::to_vec(inner.payload())?;
+        Ok(Self {
             inner,
             topic,
             key,
             payload,
-        }
+        })
     }
 }
 
@@ -212,10 +252,10 @@ impl Message {
         self.inner.offset()
     }
 
-    /// Returns the message timestamp in milliseconds since epoch.
+    /// Returns the message timestamp.
     #[must_use]
-    pub fn timestamp(&self) -> i64 {
-        self.inner.timestamp().timestamp_millis()
+    pub fn timestamp(&self) -> SystemTime {
+        (*self.inner.timestamp()).into()
     }
 
     /// Returns the message key.
@@ -224,9 +264,9 @@ impl Message {
         self.key.clone()
     }
 
-    /// Returns the message payload (JSON string).
+    /// Returns the message payload (UTF-8 JSON bytes).
     #[must_use]
-    pub fn payload(&self) -> String {
+    pub fn payload(&self) -> Vec<u8> {
         self.payload.clone()
     }
 }
@@ -266,10 +306,54 @@ impl Timer {
         self.key.clone()
     }
 
-    /// Returns the timer fire time in milliseconds since epoch.
+    /// Returns the timer fire time.
     #[must_use]
-    pub fn time(&self) -> i64 {
-        i64::from(self.trigger.time.epoch_seconds()) * 1000
+    pub fn time(&self) -> SystemTime {
+        self.trigger.time.into()
+    }
+}
+
+// ============================================================================
+// CancellationSignal - Allows C# to signal cancellation to async operations
+// ============================================================================
+
+/// A cancellation signal that can be created by C# and passed to Rust async operations.
+///
+/// C# creates this object, passes it to an async method, and can call `cancel()` to
+/// signal that the operation should be aborted. Rust code awaits `cancelled()` to
+/// detect when cancellation has been requested.
+#[derive(uniffi::Object)]
+pub struct CancellationSignal {
+    notify: Arc<Notify>,
+}
+
+impl Default for CancellationSignal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[uniffi::export]
+impl CancellationSignal {
+    /// Creates a new cancellation signal.
+    #[uniffi::constructor]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            notify: Arc::new(Notify::new()),
+        }
+    }
+
+    /// Signals cancellation. Any async operation waiting on this signal will be notified.
+    pub fn cancel(&self) {
+        self.notify.notify_waiters();
+    }
+
+    /// Waits until cancellation is signaled.
+    ///
+    /// This is used internally by Rust async operations to detect cancellation.
+    pub async fn cancelled(&self) {
+        self.notify.notified().await;
     }
 }
 

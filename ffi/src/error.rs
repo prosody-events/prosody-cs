@@ -8,13 +8,12 @@ use std::ffi::NulError;
 
 /// Error type for Prosody FFI operations.
 ///
-/// This enum maps to the `ProsodyError` error enum in the UDL file.
 /// `UniFFI` generates corresponding C# exception types.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum ProsodyError {
-    /// Invalid argument provided to FFI function.
-    #[error("Invalid argument")]
-    InvalidArgument,
+    /// Invalid argument provided (e.g., invalid timestamp).
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 
     /// Invalid context (e.g., using an already-completed event).
     #[error("Invalid context")]
@@ -29,13 +28,23 @@ pub enum ProsodyError {
     Cancelled,
 
     /// Topic name contains a null byte.
-    #[error("Topic contains null byte")]
-    TopicContainsNul,
+    #[error("Topic contains null byte: {0}")]
+    TopicContainsNul(String),
+
+    /// JSON serialization/deserialization error.
+    #[error("JSON error: {0}")]
+    Json(String),
 }
 
 impl From<NulError> for ProsodyError {
-    fn from(_: NulError) -> Self {
-        Self::TopicContainsNul
+    fn from(err: NulError) -> Self {
+        Self::TopicContainsNul(format!("{err:#}"))
+    }
+}
+
+impl From<simd_json::Error> for ProsodyError {
+    fn from(err: simd_json::Error) -> Self {
+        Self::Json(format!("{err:#}"))
     }
 }
 

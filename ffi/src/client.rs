@@ -1,31 +1,30 @@
-//! `ProsodyClient` - Main FFI service for the Prosody client.
+//! `ProsodyClient` - FFI service for the Prosody client.
 //!
 //! This module exposes the prosody `HighLevelClient` to C# via `UniFFI`.
 //! The client provides an object-oriented API that maps naturally to C#
 //! classes.
 //!
-//! # Usage
+//! # Architecture
 //!
-//! In C#, the generated class looks like:
-//! ```csharp
-//! using var client = ProsodyClient.New(options);
-//! await client.SubscribeAsync(handler);
-//! await client.SendAsync(topic, key, payload);
-//! ```
+//! This is the low-level FFI client. C# code wraps this in an idiomatic
+//! public `ProsodyClient` class that provides:
+//! - Typed JSON payloads (`Send<T>()`, `GetPayload<T>()`)
+//! - `CancellationToken` support on all async methods
+//! - Properties instead of methods for simple getters
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use serde_json::Value;
+use simd_json::serde::from_slice;
 
 use crate::RUNTIME;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
 use crate::error::{CsHandlerError, ProsodyError};
-use crate::events::{Context, Message, Timer};
-use crate::handler::{HandlerResultCode, NativeEventHandler};
+use crate::events::{CancellationSignal, Context, Message, Timer};
+use crate::handler::{EventHandler, HandlerResultCode};
 use crate::types::{ClientOptions, ConsumerState};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
@@ -35,11 +34,11 @@ use prosody::high_level::HighLevelClient;
 use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::timers::{TimerType, Trigger};
 
-/// Internal handler that bridges C# `NativeEventHandler` to prosody's
+/// Internal handler that bridges C# `EventHandler` to prosody's
 /// `FallibleHandler`.
 struct CsHandler {
     /// The C# native event handler implementation.
-    handler: Arc<dyn NativeEventHandler>,
+    handler: Arc<dyn EventHandler>,
 }
 
 impl Clone for CsHandler {
@@ -64,7 +63,7 @@ impl FallibleHandler for CsHandler {
     {
         // Wrap the context and message for C#
         let ctx = Arc::new(Context::new(context.boxed()));
-        let msg = Arc::new(Message::new(message));
+        let msg = Arc::new(Message::new(message).map_err(|_| CsHandlerError::Permanent)?);
 
         // TODO: Extract OpenTelemetry carrier from prosody context
         // For now, pass an empty carrier - C# can populate it if needed
@@ -124,18 +123,13 @@ impl FallibleHandler for CsHandler {
         }
     }
 
-    async fn shutdown(self) {
-        self.handler.on_shutdown();
-    }
+    async fn shutdown(self) {}
 }
 
-/// Main Prosody client service exposed to C#.
+/// Native Prosody client service exposed to C#.
 ///
-/// This service wraps the prosody `HighLevelClient` and provides:
-/// - Message sending to Kafka topics
-/// - Subscribing to topics with handlers
-/// - Consumer state management
-/// - Stall detection
+/// This is the low-level FFI client. C# wraps this in `Prosody.ProsodyClient`
+/// which provides typed JSON, `CancellationToken`, and idiomatic properties.
 ///
 /// # Lifecycle
 ///
@@ -164,7 +158,7 @@ pub struct ProsodyClient {
     /// The wrapped high-level client.
     client: HighLevelClient<CsHandler>,
     /// Handler registration state (for managing callback lifetime).
-    handler: ArcSwap<Option<Arc<dyn NativeEventHandler>>>,
+    handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
 }
 
 /// `UniFFI` interface implementation for `ProsodyClient`.
@@ -221,7 +215,7 @@ impl ProsodyClient {
     /// Returns error if subscription fails.
     pub async fn subscribe(
         &self,
-        handler: Arc<dyn NativeEventHandler>,
+        handler: Arc<dyn EventHandler>,
     ) -> Result<(), ProsodyError> {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
@@ -260,26 +254,49 @@ impl ProsodyClient {
     ///
     /// * `topic` - The topic to send to
     /// * `key` - The message key
-    /// * `payload` - The message payload (JSON string)
+    /// * `payload` - The message payload (UTF-8 JSON bytes)
+    /// * `carrier` - OpenTelemetry carrier for context propagation
+    /// * `cancel` - Optional cancellation signal to abort the operation
     ///
     /// # Errors
     ///
-    /// Returns error if the message cannot be sent.
+    /// Returns `Json` if the payload is not valid JSON.
+    /// Returns `Cancelled` if the operation was cancelled.
+    /// Returns `Internal` if the message cannot be sent.
     pub async fn send(
         &self,
         topic: String,
         key: String,
-        payload: String,
+        mut payload: Vec<u8>,
+        carrier: HashMap<String, String>,
+        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), ProsodyError> {
-        // Parse the payload as JSON
-        let json_value: Value =
-            serde_json::from_str(&payload).map_err(|_| ProsodyError::InvalidArgument)?;
+        let _ = carrier; // TODO: Use for tracing propagation
 
-        // Send the message
-        self.client
-            .send(topic.as_str().into(), &key, &json_value)
-            .await
-            .map_err(|_| ProsodyError::Internal)?;
+        // Parse the payload as JSON using simd_json's serde integration.
+        // This deserializes into serde_json::Value which prosody expects.
+        let json_value: serde_json::Value = from_slice(&mut payload)?;
+
+        // Send the message, with optional cancellation
+        let send_future = self
+            .client
+            .send(topic.as_str().into(), &key, &json_value);
+
+        match cancel {
+            Some(signal) => {
+                tokio::select! {
+                    result = send_future => {
+                        result.map_err(|_| ProsodyError::Internal)?;
+                    }
+                    () = signal.cancelled() => {
+                        return Err(ProsodyError::Cancelled);
+                    }
+                }
+            }
+            None => {
+                send_future.await.map_err(|_| ProsodyError::Internal)?;
+            }
+        }
 
         Ok(())
     }

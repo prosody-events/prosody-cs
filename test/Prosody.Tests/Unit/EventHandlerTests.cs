@@ -1,28 +1,24 @@
-using Prosody.Native;
-using Timer = Prosody.Native.Timer;
-
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for implementing the NativeEventHandler interface.
+/// Tests for implementing the IEventHandler interface.
 /// </summary>
 public sealed class EventHandlerTests
 {
     /// <summary>
-    /// Test implementation of NativeEventHandler that tracks calls.
+    /// Test implementation of IEventHandler that tracks calls.
     /// </summary>
-    private sealed class TestNativeHandler : NativeEventHandler
+    private sealed class TestEventHandler : IEventHandler
     {
         public int MessageCount { get; private set; }
         public int TimerCount { get; private set; }
-        public bool ShutdownCalled { get; private set; }
         public HandlerResultCode MessageResult { get; set; } = HandlerResultCode.Success;
         public HandlerResultCode TimerResult { get; set; } = HandlerResultCode.Success;
 
         public Task<HandlerResultCode> OnMessage(
             Context context,
             Message message,
-            Dictionary<string, string> carrier
+            CancellationToken cancellationToken
         )
         {
             MessageCount++;
@@ -32,37 +28,25 @@ public sealed class EventHandlerTests
         public Task<HandlerResultCode> OnTimer(
             Context context,
             Timer timer,
-            Dictionary<string, string> carrier
+            CancellationToken cancellationToken
         )
         {
             TimerCount++;
             return Task.FromResult(TimerResult);
         }
-
-        public void OnShutdown() => ShutdownCalled = true;
     }
 
     [Fact]
-    public void NativeEventHandler_CanBeImplemented()
+    public void IEventHandler_CanBeImplemented()
     {
-        NativeEventHandler handler = new TestNativeHandler();
+        IEventHandler handler = new TestEventHandler();
         Assert.NotNull(handler);
     }
 
     [Fact]
-    public void NativeEventHandler_OnShutdown_CanBeCalled()
+    public void IEventHandler_CanReturnDifferentResultCodes()
     {
-        var handler = new TestNativeHandler();
-
-        handler.OnShutdown();
-
-        Assert.True(handler.ShutdownCalled);
-    }
-
-    [Fact]
-    public void NativeEventHandler_CanReturnDifferentResultCodes()
-    {
-        var handler = new TestNativeHandler
+        var handler = new TestEventHandler
         {
             MessageResult = HandlerResultCode.TransientError,
             TimerResult = HandlerResultCode.PermanentError,
@@ -75,37 +59,44 @@ public sealed class EventHandlerTests
     /// <summary>
     /// Test handler that uses async/await properly.
     /// </summary>
-    private sealed class AsyncNativeHandler : NativeEventHandler
+    private sealed class AsyncEventHandler : IEventHandler
     {
         public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
 
         public async Task<HandlerResultCode> OnMessage(
             Context context,
             Message message,
-            Dictionary<string, string> carrier
+            CancellationToken cancellationToken
         )
         {
-            await Task.Delay(Delay);
+            await Task.Delay(Delay, cancellationToken);
             return HandlerResultCode.Success;
         }
 
         public async Task<HandlerResultCode> OnTimer(
             Context context,
             Timer timer,
-            Dictionary<string, string> carrier
+            CancellationToken cancellationToken
         )
         {
-            await Task.Delay(Delay);
+            await Task.Delay(Delay, cancellationToken);
             return HandlerResultCode.Success;
         }
-
-        public void OnShutdown() { }
     }
 
     [Fact]
-    public void NativeEventHandler_AsyncImplementation_CanBeCreated()
+    public void IEventHandler_AsyncImplementation_CanBeCreated()
     {
-        NativeEventHandler handler = new AsyncNativeHandler();
+        IEventHandler handler = new AsyncEventHandler();
         Assert.NotNull(handler);
+    }
+
+    [Fact]
+    public void HandlerResultCode_HasExpectedValues()
+    {
+        Assert.Equal(0, (int)HandlerResultCode.Success);
+        Assert.Equal(1, (int)HandlerResultCode.TransientError);
+        Assert.Equal(2, (int)HandlerResultCode.PermanentError);
+        Assert.Equal(3, (int)HandlerResultCode.Cancelled);
     }
 }

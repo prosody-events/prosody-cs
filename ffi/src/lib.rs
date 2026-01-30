@@ -17,7 +17,7 @@
 //!
 //! - [`error`]: Error types for FFI boundary crossing
 //! - [`events`]: Message and Timer event types passed to C# handlers
-//! - [`handler`]: `NativeEventHandler` trait for FFI callback interface
+//! - [`handler`]: `EventHandler` trait for FFI callback interface
 //! - [`client`]: `ProsodyClient` service implementation
 //! - [`types`]: Configuration types (`ClientOptions`)
 
@@ -34,9 +34,9 @@ pub mod types;
 // Re-export key types for the UDL interface
 pub use client::ProsodyClient;
 pub use error::ProsodyError;
-pub use events::{Context, Message, Timer};
-pub use handler::{HandlerResultCode, NativeEventHandler};
-pub use types::{ClientOptions, ConsumerState};
+pub use events::{CancellationSignal, Context, Message, Timer};
+pub use handler::{EventHandler, HandlerResultCode};
+pub use types::{ClientMode, ClientOptions, ConsumerState};
 
 /// Global Tokio runtime for all async operations.
 ///

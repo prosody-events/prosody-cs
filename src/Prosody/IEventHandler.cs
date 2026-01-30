@@ -1,6 +1,3 @@
-using Prosody.Native;
-using Timer = Prosody.Native.Timer;
-
 namespace Prosody;
 
 /// <summary>
@@ -25,7 +22,7 @@ public interface IEventHandler
     /// <returns>
     /// A <see cref="HandlerResultCode"/> indicating how Prosody should handle the message.
     /// </returns>
-    Task<HandlerResultCode> OnMessageAsync(
+    Task<HandlerResultCode> OnMessage(
         Context context,
         Message message,
         CancellationToken cancellationToken
@@ -35,7 +32,7 @@ public interface IEventHandler
     /// Called when a timer fires.
     /// </summary>
     /// <param name="context">Event context for scheduling timers and checking cancellation.</param>
-    /// <param name="timer">The timer trigger data (see <see cref="Prosody.Native.Timer"/>).</param>
+    /// <param name="timer">The timer trigger data.</param>
     /// <param name="cancellationToken">
     /// Token that is cancelled when Prosody requests the handler to stop processing.
     /// Handlers should monitor this token and return promptly when cancelled.
@@ -43,18 +40,10 @@ public interface IEventHandler
     /// <returns>
     /// A <see cref="HandlerResultCode"/> indicating how Prosody should handle the timer.
     /// </returns>
-    Task<HandlerResultCode> OnTimerAsync(
+    Task<HandlerResultCode> OnTimer(
         Context context,
         Timer timer,
         CancellationToken cancellationToken
     );
 
-    /// <summary>
-    /// Called when the consumer is shutting down.
-    /// </summary>
-    /// <remarks>
-    /// This method is called synchronously during shutdown. Perform any necessary
-    /// cleanup here, but avoid long-running operations.
-    /// </remarks>
-    void OnShutdown();
 }

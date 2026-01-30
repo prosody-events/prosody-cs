@@ -1,6 +1,6 @@
-//! Native event handler trait for FFI callback interface.
+//! Event handler trait for FFI callback interface.
 //!
-//! This module defines the `NativeEventHandler` trait that serves as the FFI
+//! This module defines the `EventHandler` trait that serves as the FFI
 //! boundary between Rust and C#. This is an internal implementation detail -
 //! C# users implement the higher-level `IEventHandler` interface which includes
 //! `CancellationToken` support.
@@ -28,14 +28,14 @@ pub enum HandlerResultCode {
     Cancelled,
 }
 
-/// Native event handler trait for FFI boundary.
+/// Event handler trait for FFI boundary.
 ///
 /// This trait is implemented by an internal C# wrapper class that bridges
 /// to the user-facing `IEventHandler` interface. Users never implement this
 /// trait directly.
 #[uniffi::export(with_foreign)]
 #[async_trait::async_trait]
-pub trait NativeEventHandler: Send + Sync {
+pub trait EventHandler: Send + Sync {
     /// Called when a Kafka message arrives.
     async fn on_message(
         &self,
@@ -51,7 +51,4 @@ pub trait NativeEventHandler: Send + Sync {
         timer: Arc<Timer>,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResultCode, ProsodyError>;
-
-    /// Called when the consumer is shutting down.
-    fn on_shutdown(&self);
 }
