@@ -78,10 +78,12 @@ build-ffi-release:
 bindgen: $(CDYLIB)
 	@mkdir -p src/Prosody/Generated
 	uniffi-bindgen-cs --library $(CDYLIB) --config uniffi.toml --out-dir src/Prosody/Generated
+	@mv src/Prosody/Generated/prosody_ffi.cs src/Prosody/Generated/ProsodyFfi.cs
 
 bindgen-release: $(CDYLIB_RELEASE)
 	@mkdir -p src/Prosody/Generated
 	uniffi-bindgen-cs --library $(CDYLIB_RELEASE) --config uniffi.toml --out-dir src/Prosody/Generated
+	@mv src/Prosody/Generated/prosody_ffi.cs src/Prosody/Generated/ProsodyFfi.cs
 
 # Build everything (FFI + bindings)
 build: build-ffi bindgen

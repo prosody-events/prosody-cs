@@ -25,7 +25,7 @@ release/
 *.prof*
 
 # Generated C# bindings (UniFFI output via uniffi-bindgen-cs)
-src/Prosody/Generated/prosody_ffi.cs
+src/Prosody/Generated/ProsodyFfi.cs
 
 # Environment and secrets
 .env*
