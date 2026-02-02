@@ -18,9 +18,10 @@ public sealed class ProsodyClient : IDisposable
     /// Creates a new ProsodyClient with the given options.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
-    /// <exception cref="ProsodyException">Thrown if the client cannot connect or options are invalid.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
     public ProsodyClient(ClientOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         _native = new Native.ProsodyClient(options.ToNative());
     }
 
@@ -32,23 +33,26 @@ public sealed class ProsodyClient : IDisposable
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
-    public ConsumerState ConsumerState => _native.ConsumerState() switch
+    public async Task<ConsumerState> ConsumerStateAsync()
     {
-        Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
-        Native.ConsumerState.Configured => ConsumerState.Configured,
-        Native.ConsumerState.Running => ConsumerState.Running,
-        _ => throw new InvalidOperationException("Unknown consumer state")
-    };
+        return await _native.ConsumerState() switch
+        {
+            Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
+            Native.ConsumerState.Configured => ConsumerState.Configured,
+            Native.ConsumerState.Running => ConsumerState.Running,
+            _ => throw new InvalidOperationException("Unknown consumer state"),
+        };
+    }
 
     /// <summary>
     /// Gets the number of partitions currently assigned to this consumer.
     /// </summary>
-    public uint AssignedPartitionCount => _native.AssignedPartitionCount();
+    public Task<uint> AssignedPartitionCountAsync() => _native.AssignedPartitionCount();
 
     /// <summary>
     /// Gets a value indicating whether the consumer is currently stalled.
     /// </summary>
-    public bool IsStalled => _native.IsStalled();
+    public Task<bool> IsStalledAsync() => _native.IsStalled();
 
     /// <summary>
     /// Sends a message to a topic.
@@ -58,11 +62,15 @@ public sealed class ProsodyClient : IDisposable
     /// <param name="key">The message key.</param>
     /// <param name="payload">The message payload (will be serialized to JSON).</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <exception cref="ProsodyException">Thrown if the send operation fails.</exception>
-    public Task Send<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
+    public Task SendAsync<T>(
+        string topic,
+        string key,
+        T payload,
+        CancellationToken cancellationToken = default
+    )
     {
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
-        return SendRaw(topic, key, jsonBytes, cancellationToken);
+        return SendRawAsync(topic, key, jsonBytes, cancellationToken);
     }
 
     /// <summary>
@@ -72,24 +80,27 @@ public sealed class ProsodyClient : IDisposable
     /// <param name="key">The message key.</param>
     /// <param name="jsonPayload">The message payload as UTF-8 JSON bytes.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <exception cref="ProsodyException">Thrown if the send operation fails.</exception>
-    public Task SendRaw(string topic, string key, byte[] jsonPayload, CancellationToken cancellationToken = default)
+    public async Task SendRawAsync(
+        string topic,
+        string key,
+        byte[] jsonPayload,
+        CancellationToken cancellationToken = default
+    )
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         var carrier = new Dictionary<string, string>();
         TracePropagation.Inject(carrier);
-        var signal = CancellationHelper.CreateSignal(cancellationToken);
+        using var signal = CancellationHelper.CreateSignal(cancellationToken);
 
-        return _native.Send(topic, key, jsonPayload, carrier, signal);
+        await _native.Send(topic, key, jsonPayload, carrier, signal).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Subscribes to receive messages using the provided event handler.
     /// </summary>
     /// <param name="handler">The event handler to process messages and timers.</param>
-    /// <exception cref="ProsodyException">Thrown if subscription fails.</exception>
-    public Task Subscribe(IEventHandler handler)
+    public Task SubscribeAsync(IProsodyHandler handler)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -100,8 +111,7 @@ public sealed class ProsodyClient : IDisposable
     /// <summary>
     /// Unsubscribes from receiving messages and shuts down the consumer.
     /// </summary>
-    /// <exception cref="ProsodyException">Thrown if unsubscribe fails.</exception>
-    public Task Unsubscribe()
+    public Task UnsubscribeAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return _native.Unsubscribe();

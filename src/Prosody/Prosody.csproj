@@ -51,29 +51,42 @@
   <ItemGroup>
     <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)" />
 
-    <!-- Native library paths: prosody-ffi directory (renamed from native/) -->
+    <!-- Native library paths - uses forward slashes for cross-platform compatibility -->
     <ProsodyNativeArtifact Include="@(ProsodyNativeArtifactTarget)">
-      <LibraryPath>..\..\prosody-ffi\artifacts\%(Identity)\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
-      <RustOutputDebugPath>..\..\prosody-ffi\target\%(RustTarget)\debug\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
-      <RustOutputReleasePath>..\..\prosody-ffi\target\%(RustTarget)\release\%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
+      <LibraryPath>../../prosody-ffi/artifacts/%(Identity)/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
+      <RustOutputDebugPath>../../prosody-ffi/target/%(RustTarget)/debug/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
+      <RustOutputReleasePath>../../prosody-ffi/target/%(RustTarget)/release/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
 
-      <Link>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</Link>
-      <PackagePath>runtimes\%(ProsodyNativeArtifact.Rid)\native\%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</PackagePath>
+      <Link>runtimes/%(ProsodyNativeArtifact.Rid)/native/%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</Link>
+      <PackagePath>runtimes/%(ProsodyNativeArtifact.Rid)/native/%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</PackagePath>
       <Pack>%(Pack)</Pack>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </ProsodyNativeArtifact>
-
-    <!-- During development, reference native libraries from Rust output -->
-    <Content Include="@(ProsodyNativeArtifact->'%(RustOutputDebugPath)'-&gt;Exists())" Condition="'$(Configuration)' == 'Debug'" />
-    <Content Include="@(ProsodyNativeArtifact->'%(RustOutputReleasePath)'-&gt;Exists())" Condition="'$(Configuration)' == 'Release'" />
   </ItemGroup>
+
+  <!-- Include native libraries from Rust output during build -->
+  <Target Name="IncludeNativeLibraries" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+      <Content Include="%(ProsodyNativeArtifact.RustOutputDebugPath)"
+               Condition="Exists('%(ProsodyNativeArtifact.RustOutputDebugPath)')"
+               Link="%(ProsodyNativeArtifact.Link)"
+               CopyToOutputDirectory="Always" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(Configuration)' == 'Release'">
+      <Content Include="%(ProsodyNativeArtifact.RustOutputReleasePath)"
+               Condition="Exists('%(ProsodyNativeArtifact.RustOutputReleasePath)')"
+               Link="%(ProsodyNativeArtifact.Link)"
+               CopyToOutputDirectory="Always" />
+    </ItemGroup>
+  </Target>
 
   <!-- When packaging, use artifacts directory -->
   <Target Name="ProsodyBeforePack" BeforeTargets="DispatchToInnerBuilds" Condition="'$(ContinuePackingAfterGeneratingNuspec)' != ''">
     <ItemGroup>
-      <Content Include="@(ProsodyNativeArtifact->'%(LibraryPath)'-&gt;Exists())" />
-      <Content Remove="@(ProsodyNativeArtifact->'%(RustOutputDebugPath)'-&gt;Exists())" />
-      <Content Remove="@(ProsodyNativeArtifact->'%(RustOutputReleasePath)'-&gt;Exists())" />
+      <Content Include="%(ProsodyNativeArtifact.LibraryPath)"
+               Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')"
+               Link="%(ProsodyNativeArtifact.Link)"
+               CopyToOutputDirectory="Always" />
     </ItemGroup>
   </Target>
 

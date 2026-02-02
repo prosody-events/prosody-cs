@@ -70,4 +70,14 @@ These must still be addressed - either by:
 
 Always use `gh` for GitHub operations (issues, PRs, API queries) instead of web URLs.
 
+## Testing Policy
+
+**ALL tests must be written in C#**, not Rust. The Rust FFI crate (`ffi/`) should contain zero tests. All unit tests, integration tests, and end-to-end tests belong in `test/Prosody.Tests/`.
+
+- Unit tests: `test/Prosody.Tests/Unit/`
+- Integration tests: `test/Prosody.Tests/Integration/`
+- Test helpers: `test/Prosody.Tests/TestHelpers/`
+
+Run tests with `make test` or `dotnet test`.
+
 <!-- MANUAL ADDITIONS END -->

@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Prosody;
 
 /// <summary>
@@ -7,6 +9,8 @@ namespace Prosody;
 /// Wraps the native context and exposes scheduling and cancellation methods.
 /// All times are in UTC.
 /// </remarks>
+[SuppressMessage("Naming", "CA1724:Type names should not match namespaces",
+    Justification = "Context is a clear, simple name; conflict with OpenTelemetry.Context is unlikely to cause confusion")]
 public sealed class Context
 {
     private readonly Native.Context _native;
@@ -24,13 +28,13 @@ public sealed class Context
     /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
-    public Task OnCancel() => _native.OnCancel();
+    public Task OnCancelAsync() => _native.OnCancel();
 
     /// <summary>
     /// Schedule a new timer at the given time for the current message key.
     /// </summary>
     /// <param name="time">The time to schedule the timer (UTC).</param>
-    public Task Schedule(DateTimeOffset time)
+    public Task ScheduleAsync(DateTimeOffset time)
     {
         var carrier = CreateCarrier();
         return _native.Schedule(time.UtcDateTime, carrier);
@@ -40,7 +44,7 @@ public sealed class Context
     /// Unschedule all existing timers, then schedule exactly one new timer.
     /// </summary>
     /// <param name="time">The time to schedule the timer (UTC).</param>
-    public Task ClearAndSchedule(DateTimeOffset time)
+    public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
         var carrier = CreateCarrier();
         return _native.ClearAndSchedule(time.UtcDateTime, carrier);
@@ -50,7 +54,7 @@ public sealed class Context
     /// Unschedule a specific timer at the given time.
     /// </summary>
     /// <param name="time">The time of the timer to unschedule (UTC).</param>
-    public Task Unschedule(DateTimeOffset time)
+    public Task UnscheduleAsync(DateTimeOffset time)
     {
         var carrier = CreateCarrier();
         return _native.Unschedule(time.UtcDateTime, carrier);
@@ -59,7 +63,7 @@ public sealed class Context
     /// <summary>
     /// Unschedule all timers for the current key.
     /// </summary>
-    public Task ClearScheduled()
+    public Task ClearScheduledAsync()
     {
         var carrier = CreateCarrier();
         return _native.ClearScheduled(carrier);
@@ -69,7 +73,7 @@ public sealed class Context
     /// List all scheduled timer times for the current key.
     /// </summary>
     /// <returns>An array of scheduled times (UTC).</returns>
-    public async Task<DateTimeOffset[]> Scheduled()
+    public async Task<DateTimeOffset[]> ScheduledAsync()
     {
         var carrier = CreateCarrier();
         var times = await _native.Scheduled(carrier).ConfigureAwait(false);

@@ -9,7 +9,7 @@ namespace Prosody.Tests.TestHelpers;
 ///
 /// Constitution Principle IV: Never use sleep in tests. Use channel-based waiting with timeout.
 /// </remarks>
-public sealed class EventNotifier
+internal sealed class EventNotifier
 {
     private readonly TaskCompletionSource _tcs = new(
         TaskCreationOptions.RunContinuationsAsynchronously

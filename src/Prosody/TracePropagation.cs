@@ -20,7 +20,8 @@ internal static class TracePropagation
         Propagator.Inject(
             new PropagationContext(Activity.Current?.Context ?? default, Baggage.Current),
             carrier,
-            static (c, k, v) => c[k] = v);
+            static (c, k, v) => c[k] = v
+        );
     }
 
     /// <summary>
@@ -29,8 +30,11 @@ internal static class TracePropagation
     /// </summary>
     public static Activity? Extract(Dictionary<string, string> carrier)
     {
-        var context = Propagator.Extract(default, carrier, static (c, k) =>
-            c.TryGetValue(k, out var v) ? [v] : []);
+        var context = Propagator.Extract(
+            default,
+            carrier,
+            static (c, k) => c.TryGetValue(k, out var v) ? [v] : []
+        );
 
         Baggage.Current = context.Baggage;
 

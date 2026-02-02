@@ -7,7 +7,7 @@ namespace Prosody.Tests.TestHelpers;
 /// <remarks>
 /// Reference: prosody-rb uses SecureRandom.hex(4), prosody-py uses uuid.uuid4().hex
 /// </remarks>
-public static class TopicGenerator
+internal static class TopicGenerator
 {
     /// <summary>
     /// Generates a unique topic name for a test.

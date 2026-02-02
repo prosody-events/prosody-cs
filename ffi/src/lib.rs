@@ -15,15 +15,14 @@
 //!
 //! ## Module Organization
 //!
+//! - [`admin`]: Admin client for topic management
 //! - [`error`]: Error types for FFI boundary crossing
 //! - [`events`]: Message and Timer event types passed to C# handlers
 //! - [`handler`]: `EventHandler` trait for FFI callback interface
 //! - [`client`]: `ProsodyClient` service implementation
 //! - [`types`]: Configuration types (`ClientOptions`)
 
-use std::sync::LazyLock;
-use tokio::runtime::Runtime;
-
+pub mod admin;
 pub mod client;
 pub mod config;
 pub mod error;
@@ -32,23 +31,12 @@ pub mod handler;
 pub mod types;
 
 // Re-export key types for the UDL interface
+pub use admin::AdminClient;
 pub use client::ProsodyClient;
 pub use error::ProsodyError;
 pub use events::{CancellationSignal, Context, Message, Timer};
 pub use handler::{EventHandler, HandlerResultCode};
 pub use types::{ClientMode, ClientOptions, ConsumerState};
-
-/// Global Tokio runtime for all async operations.
-///
-/// This runtime powers all async operations in the extension, including
-/// message processing, scheduling, and communication with C#.
-/// Lazily initialized on first use - critical for fork safety.
-#[expect(
-    clippy::expect_used,
-    reason = "Runtime initialization failure is unrecoverable - library cannot function without it"
-)]
-pub static RUNTIME: LazyLock<Runtime> =
-    LazyLock::new(|| Runtime::new().expect("Failed to create Tokio runtime"));
 
 // Setup UniFFI scaffolding using proc-macro approach (no UDL file)
 uniffi::setup_scaffolding!();

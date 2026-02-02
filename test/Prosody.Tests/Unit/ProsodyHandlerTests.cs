@@ -1,21 +1,21 @@
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for implementing the IEventHandler interface.
+/// Tests for implementing the IProsodyHandler interface.
 /// </summary>
-public sealed class EventHandlerTests
+public sealed class ProsodyHandlerTests
 {
     /// <summary>
-    /// Test implementation of IEventHandler that tracks calls.
+    /// Test implementation of IProsodyHandler that tracks calls.
     /// </summary>
-    private sealed class TestEventHandler : IEventHandler
+    private sealed class TestEventHandler : IProsodyHandler
     {
         public int MessageCount { get; private set; }
         public int TimerCount { get; private set; }
         public HandlerResultCode MessageResult { get; set; } = HandlerResultCode.Success;
         public HandlerResultCode TimerResult { get; set; } = HandlerResultCode.Success;
 
-        public Task<HandlerResultCode> OnMessage(
+        public Task<HandlerResultCode> OnMessageAsync(
             Context context,
             Message message,
             CancellationToken cancellationToken
@@ -25,7 +25,7 @@ public sealed class EventHandlerTests
             return Task.FromResult(MessageResult);
         }
 
-        public Task<HandlerResultCode> OnTimer(
+        public Task<HandlerResultCode> OnTimerAsync(
             Context context,
             Timer timer,
             CancellationToken cancellationToken
@@ -37,14 +37,14 @@ public sealed class EventHandlerTests
     }
 
     [Fact]
-    public void IEventHandler_CanBeImplemented()
+    public void CanImplementIProsodyHandler()
     {
-        IEventHandler handler = new TestEventHandler();
+        IProsodyHandler handler = new TestEventHandler();
         Assert.NotNull(handler);
     }
 
     [Fact]
-    public void IEventHandler_CanReturnDifferentResultCodes()
+    public void CanReturnDifferentResultCodes()
     {
         var handler = new TestEventHandler
         {
@@ -59,11 +59,11 @@ public sealed class EventHandlerTests
     /// <summary>
     /// Test handler that uses async/await properly.
     /// </summary>
-    private sealed class AsyncEventHandler : IEventHandler
+    private sealed class AsyncEventHandler : IProsodyHandler
     {
         public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
 
-        public async Task<HandlerResultCode> OnMessage(
+        public async Task<HandlerResultCode> OnMessageAsync(
             Context context,
             Message message,
             CancellationToken cancellationToken
@@ -73,7 +73,7 @@ public sealed class EventHandlerTests
             return HandlerResultCode.Success;
         }
 
-        public async Task<HandlerResultCode> OnTimer(
+        public async Task<HandlerResultCode> OnTimerAsync(
             Context context,
             Timer timer,
             CancellationToken cancellationToken
@@ -85,14 +85,14 @@ public sealed class EventHandlerTests
     }
 
     [Fact]
-    public void IEventHandler_AsyncImplementation_CanBeCreated()
+    public void CanCreateAsyncImplementation()
     {
-        IEventHandler handler = new AsyncEventHandler();
+        IProsodyHandler handler = new AsyncEventHandler();
         Assert.NotNull(handler);
     }
 
     [Fact]
-    public void HandlerResultCode_HasExpectedValues()
+    public void HandlerResultCodeHasExpectedValues()
     {
         Assert.Equal(0, (int)HandlerResultCode.Success);
         Assert.Equal(1, (int)HandlerResultCode.TransientError);

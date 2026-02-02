@@ -23,5 +23,5 @@ public enum HandlerResultCode
     /// <summary>
     /// Handler was cancelled (e.g., during shutdown or rebalance).
     /// </summary>
-    Cancelled
+    Cancelled,
 }

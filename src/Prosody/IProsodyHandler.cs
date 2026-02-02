@@ -8,7 +8,7 @@ namespace Prosody;
 /// receive a <see cref="CancellationToken"/> that is triggered when Prosody
 /// requests cancellation (e.g., during shutdown or rebalance).
 /// </remarks>
-public interface IEventHandler
+public interface IProsodyHandler
 {
     /// <summary>
     /// Called when a Kafka message arrives.
@@ -22,7 +22,7 @@ public interface IEventHandler
     /// <returns>
     /// A <see cref="HandlerResultCode"/> indicating how Prosody should handle the message.
     /// </returns>
-    Task<HandlerResultCode> OnMessage(
+    Task<HandlerResultCode> OnMessageAsync(
         Context context,
         Message message,
         CancellationToken cancellationToken
@@ -40,10 +40,9 @@ public interface IEventHandler
     /// <returns>
     /// A <see cref="HandlerResultCode"/> indicating how Prosody should handle the timer.
     /// </returns>
-    Task<HandlerResultCode> OnTimer(
+    Task<HandlerResultCode> OnTimerAsync(
         Context context,
         Timer timer,
         CancellationToken cancellationToken
     );
-
 }

@@ -25,7 +25,7 @@ public enum ClientMode
     /// Log failures and move on. No retries.
     /// Use for development or when message loss is acceptable.
     /// </summary>
-    BestEffort
+    BestEffort,
 }
 
 /// <summary>
@@ -49,7 +49,7 @@ public enum ConsumerState
     /// <summary>
     /// Consumer is actively processing messages.
     /// </summary>
-    Running
+    Running,
 }
 
 /// <summary>
@@ -86,7 +86,7 @@ public record ClientOptions
     /// Falls back to <c>PROSODY_BOOTSTRAP_SERVERS</c> environment variable.
     /// </summary>
     /// <example><c>["localhost:9092"]</c> or <c>["broker1:9092", "broker2:9092"]</c></example>
-    public string[]? BootstrapServers { get; init; }
+    public IReadOnlyList<string>? BootstrapServers { get; init; }
 
     /// <summary>
     /// Consumer group ID. Should be set to your application name.
@@ -99,7 +99,7 @@ public record ClientOptions
     /// Falls back to <c>PROSODY_SUBSCRIBED_TOPICS</c> environment variable.
     /// </summary>
     /// <example><c>["my-topic"]</c> or <c>["topic1", "topic2"]</c></example>
-    public string[]? SubscribedTopics { get; init; }
+    public IReadOnlyList<string>? SubscribedTopics { get; init; }
 
     /// <summary>
     /// Client operating mode. Default: <see cref="ClientMode.Pipeline"/>.
@@ -110,7 +110,7 @@ public record ClientOptions
     /// Allowed event type prefixes. <c>null</c> = all events allowed.
     /// </summary>
     /// <example><c>["user.", "account."]</c> to only process events starting with those prefixes.</example>
-    public string[]? AllowedEvents { get; init; }
+    public IReadOnlyList<string>? AllowedEvents { get; init; }
 
     /// <summary>
     /// Source system identifier for outgoing messages.
@@ -357,7 +357,7 @@ public record ClientOptions
     /// Cassandra contact nodes.
     /// </summary>
     /// <example><c>["localhost:9042"]</c> or <c>["cass1:9042", "cass2:9042"]</c></example>
-    public string[]? CassandraNodes { get; init; }
+    public IReadOnlyList<string>? CassandraNodes { get; init; }
 
     /// <summary>
     /// Cassandra keyspace name.
@@ -394,59 +394,60 @@ public record ClientOptions
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
-    internal Native.ClientOptions ToNative() => new(
-        BootstrapServers: BootstrapServers,
-        GroupId: GroupId,
-        SubscribedTopics: SubscribedTopics,
-        Mode: Mode switch
-        {
-            ClientMode.Pipeline => Native.ClientMode.Pipeline,
-            ClientMode.LowLatency => Native.ClientMode.LowLatency,
-            ClientMode.BestEffort => Native.ClientMode.BestEffort,
-            null => null,
-            _ => throw new ArgumentOutOfRangeException(nameof(Mode))
-        },
-        AllowedEvents: AllowedEvents,
-        SourceSystem: SourceSystem,
-        Mock: Mock,
-        MaxConcurrency: MaxConcurrency,
-        MaxUncommitted: MaxUncommitted,
-        MaxEnqueuedPerKey: MaxEnqueuedPerKey,
-        IdempotenceCacheSize: IdempotenceCacheSize,
-        Timeout: Timeout,
-        StallThreshold: StallThreshold,
-        ShutdownTimeout: ShutdownTimeout,
-        PollInterval: PollInterval,
-        CommitInterval: CommitInterval,
-        ProbePort: ProbePort,
-        SlabSize: SlabSize,
-        SendTimeout: SendTimeout,
-        MaxRetries: MaxRetries,
-        RetryBase: RetryBase,
-        MaxRetryDelay: MaxRetryDelay,
-        FailureTopic: FailureTopic,
-        DeferEnabled: DeferEnabled,
-        DeferBase: DeferBase,
-        DeferMaxDelay: DeferMaxDelay,
-        DeferFailureThreshold: DeferFailureThreshold,
-        DeferFailureWindow: DeferFailureWindow,
-        DeferCacheSize: DeferCacheSize,
-        DeferSeekTimeout: DeferSeekTimeout,
-        DeferDiscardThreshold: DeferDiscardThreshold,
-        MonopolizationEnabled: MonopolizationEnabled,
-        MonopolizationThreshold: MonopolizationThreshold,
-        MonopolizationWindow: MonopolizationWindow,
-        MonopolizationCacheSize: MonopolizationCacheSize,
-        SchedulerFailureWeight: SchedulerFailureWeight,
-        SchedulerMaxWait: SchedulerMaxWait,
-        SchedulerWaitWeight: SchedulerWaitWeight,
-        SchedulerCacheSize: SchedulerCacheSize,
-        CassandraNodes: CassandraNodes,
-        CassandraKeyspace: CassandraKeyspace,
-        CassandraDatacenter: CassandraDatacenter,
-        CassandraRack: CassandraRack,
-        CassandraUser: CassandraUser,
-        CassandraPassword: CassandraPassword,
-        CassandraRetention: CassandraRetention
-    );
+    internal Native.ClientOptions ToNative() =>
+        new(
+            BootstrapServers: BootstrapServers?.ToArray(),
+            GroupId: GroupId,
+            SubscribedTopics: SubscribedTopics?.ToArray(),
+            Mode: Mode switch
+            {
+                ClientMode.Pipeline => Native.ClientMode.Pipeline,
+                ClientMode.LowLatency => Native.ClientMode.LowLatency,
+                ClientMode.BestEffort => Native.ClientMode.BestEffort,
+                null => null,
+                _ => throw new ArgumentOutOfRangeException(nameof(Mode)),
+            },
+            AllowedEvents: AllowedEvents?.ToArray(),
+            SourceSystem: SourceSystem,
+            Mock: Mock,
+            MaxConcurrency: MaxConcurrency,
+            MaxUncommitted: MaxUncommitted,
+            MaxEnqueuedPerKey: MaxEnqueuedPerKey,
+            IdempotenceCacheSize: IdempotenceCacheSize,
+            Timeout: Timeout,
+            StallThreshold: StallThreshold,
+            ShutdownTimeout: ShutdownTimeout,
+            PollInterval: PollInterval,
+            CommitInterval: CommitInterval,
+            ProbePort: ProbePort,
+            SlabSize: SlabSize,
+            SendTimeout: SendTimeout,
+            MaxRetries: MaxRetries,
+            RetryBase: RetryBase,
+            MaxRetryDelay: MaxRetryDelay,
+            FailureTopic: FailureTopic,
+            DeferEnabled: DeferEnabled,
+            DeferBase: DeferBase,
+            DeferMaxDelay: DeferMaxDelay,
+            DeferFailureThreshold: DeferFailureThreshold,
+            DeferFailureWindow: DeferFailureWindow,
+            DeferCacheSize: DeferCacheSize,
+            DeferSeekTimeout: DeferSeekTimeout,
+            DeferDiscardThreshold: DeferDiscardThreshold,
+            MonopolizationEnabled: MonopolizationEnabled,
+            MonopolizationThreshold: MonopolizationThreshold,
+            MonopolizationWindow: MonopolizationWindow,
+            MonopolizationCacheSize: MonopolizationCacheSize,
+            SchedulerFailureWeight: SchedulerFailureWeight,
+            SchedulerMaxWait: SchedulerMaxWait,
+            SchedulerWaitWeight: SchedulerWaitWeight,
+            SchedulerCacheSize: SchedulerCacheSize,
+            CassandraNodes: CassandraNodes?.ToArray(),
+            CassandraKeyspace: CassandraKeyspace,
+            CassandraDatacenter: CassandraDatacenter,
+            CassandraRack: CassandraRack,
+            CassandraUser: CassandraUser,
+            CassandraPassword: CassandraPassword,
+            CassandraRetention: CassandraRetention
+        );
 }

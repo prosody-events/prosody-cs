@@ -18,7 +18,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use simd_json::serde::from_slice;
 
-use crate::RUNTIME;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
@@ -162,7 +161,7 @@ pub struct ProsodyClient {
 }
 
 /// `UniFFI` interface implementation for `ProsodyClient`.
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl ProsodyClient {
     /// Creates a new `ProsodyClient` with the given options.
     ///
@@ -213,10 +212,7 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns error if subscription fails.
-    pub async fn subscribe(
-        &self,
-        handler: Arc<dyn EventHandler>,
-    ) -> Result<(), ProsodyError> {
+    pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), ProsodyError> {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
@@ -278,9 +274,7 @@ impl ProsodyClient {
         let json_value: serde_json::Value = from_slice(&mut payload)?;
 
         // Send the message, with optional cancellation
-        let send_future = self
-            .client
-            .send(topic.as_str().into(), &key, &json_value);
+        let send_future = self.client.send(topic.as_str().into(), &key, &json_value);
 
         match cancel {
             Some(signal) => {
@@ -302,25 +296,23 @@ impl ProsodyClient {
     }
 
     /// Returns the current consumer state.
-    pub fn consumer_state(&self) -> ConsumerState {
-        RUNTIME.block_on(async {
-            let state_view = self.client.consumer_state().await;
-            match &*state_view {
-                ProsodyConsumerState::Unconfigured => ConsumerState::Unconfigured,
-                ProsodyConsumerState::Configured(_) => ConsumerState::Configured,
-                ProsodyConsumerState::Running { .. } => ConsumerState::Running,
-            }
-        })
+    pub async fn consumer_state(&self) -> ConsumerState {
+        let state_view = self.client.consumer_state().await;
+        match &*state_view {
+            ProsodyConsumerState::Unconfigured => ConsumerState::Unconfigured,
+            ProsodyConsumerState::Configured(_) => ConsumerState::Configured,
+            ProsodyConsumerState::Running { .. } => ConsumerState::Running,
+        }
     }
 
     /// Returns the number of partitions currently assigned to this consumer.
-    pub fn assigned_partition_count(&self) -> u32 {
-        RUNTIME.block_on(async { self.client.assigned_partition_count().await })
+    pub async fn assigned_partition_count(&self) -> u32 {
+        self.client.assigned_partition_count().await
     }
 
     /// Returns `true` if the consumer is currently stalled.
-    pub fn is_stalled(&self) -> bool {
-        RUNTIME.block_on(async { self.client.is_stalled().await })
+    pub async fn is_stalled(&self) -> bool {
+        self.client.is_stalled().await
     }
 
     /// Returns the source system identifier configured for this client.

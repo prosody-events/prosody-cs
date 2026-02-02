@@ -8,7 +8,7 @@ namespace Prosody.Tests.Unit;
 public sealed class EnumTests
 {
     [Fact]
-    public void ClientMode_HasExpectedVariants()
+    public void ClientModeHasExpectedVariants()
     {
         var values = Enum.GetValues<ClientMode>();
 
@@ -19,7 +19,7 @@ public sealed class EnumTests
     }
 
     [Fact]
-    public void ConsumerState_HasExpectedVariants()
+    public void ConsumerStateHasExpectedVariants()
     {
         var values = Enum.GetValues<ConsumerState>();
 
@@ -30,7 +30,7 @@ public sealed class EnumTests
     }
 
     [Fact]
-    public void HandlerResultCode_HasExpectedVariants()
+    public void HandlerResultCodeHasExpectedVariants()
     {
         var values = Enum.GetValues<HandlerResultCode>();
 

@@ -57,7 +57,7 @@ impl Context {
     }
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl Context {
     /// Returns true if cancellation has been requested.
     #[must_use]
@@ -317,11 +317,12 @@ impl Timer {
 // CancellationSignal - Allows C# to signal cancellation to async operations
 // ============================================================================
 
-/// A cancellation signal that can be created by C# and passed to Rust async operations.
+/// A cancellation signal that can be created by C# and passed to Rust async
+/// operations.
 ///
-/// C# creates this object, passes it to an async method, and can call `cancel()` to
-/// signal that the operation should be aborted. Rust code awaits `cancelled()` to
-/// detect when cancellation has been requested.
+/// C# creates this object, passes it to an async method, and can call
+/// `cancel()` to signal that the operation should be aborted. Rust code awaits
+/// `cancelled()` to detect when cancellation has been requested.
 #[derive(uniffi::Object)]
 pub struct CancellationSignal {
     notify: Arc<Notify>,
@@ -333,7 +334,7 @@ impl Default for CancellationSignal {
     }
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl CancellationSignal {
     /// Creates a new cancellation signal.
     #[uniffi::constructor]
@@ -344,7 +345,8 @@ impl CancellationSignal {
         }
     }
 
-    /// Signals cancellation. Any async operation waiting on this signal will be notified.
+    /// Signals cancellation. Any async operation waiting on this signal will be
+    /// notified.
     pub fn cancel(&self) {
         self.notify.notify_waiters();
     }

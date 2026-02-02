@@ -6,7 +6,7 @@ namespace Prosody.Tests.Unit;
 public sealed class ClientOptionsTests
 {
     [Fact]
-    public void DefaultConstructor_CreatesEmptyOptions()
+    public void DefaultConstructorCreatesEmptyOptions()
     {
         var options = new ClientOptions();
 
@@ -24,7 +24,7 @@ public sealed class ClientOptionsTests
         {
             BootstrapServers = ["localhost:9092"],
             GroupId = "my-app",
-            SubscribedTopics = ["my-topic"]
+            SubscribedTopics = ["my-topic"],
         };
 
         Assert.Equal(["localhost:9092"], options.BootstrapServers!);
@@ -38,10 +38,10 @@ public sealed class ClientOptionsTests
     {
         var options = new ClientOptions
         {
-            BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"]
+            BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"],
         };
 
-        Assert.Equal(3, options.BootstrapServers!.Length);
+        Assert.Equal(3, options.BootstrapServers!.Count);
         Assert.Contains("broker1:9092", options.BootstrapServers!);
         Assert.Contains("broker2:9092", options.BootstrapServers!);
         Assert.Contains("broker3:9092", options.BootstrapServers!);
@@ -50,20 +50,23 @@ public sealed class ClientOptionsTests
     [Fact]
     public void CanSpecifyMultipleTopics()
     {
-        var options = new ClientOptions { SubscribedTopics = ["orders", "payments", "notifications"] };
+        var options = new ClientOptions
+        {
+            SubscribedTopics = ["orders", "payments", "notifications"],
+        };
 
-        Assert.Equal(3, options.SubscribedTopics?.Length);
+        Assert.Equal(3, options.SubscribedTopics?.Count);
     }
 
     [Fact]
-    public void DurationFields_AcceptTimeSpan()
+    public void DurationFieldsAcceptTimeSpan()
     {
         var options = new ClientOptions
         {
             StallThreshold = TimeSpan.FromMinutes(5),
             ShutdownTimeout = TimeSpan.FromSeconds(30),
             PollInterval = TimeSpan.FromMilliseconds(100),
-            CommitInterval = TimeSpan.FromSeconds(1)
+            CommitInterval = TimeSpan.FromSeconds(1),
         };
 
         Assert.Equal(TimeSpan.FromMinutes(5), options.StallThreshold);
@@ -73,7 +76,7 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void Mode_AcceptsEnumValue()
+    public void ModeAcceptsEnumValue()
     {
         var pipelineOptions = new ClientOptions { Mode = ClientMode.Pipeline };
         var lowLatencyOptions = new ClientOptions { Mode = ClientMode.LowLatency };
@@ -85,13 +88,13 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void ThresholdFields_AcceptDouble()
+    public void ThresholdFieldsAcceptDouble()
     {
         var options = new ClientOptions
         {
             DeferFailureThreshold = 0.9,
             MonopolizationThreshold = 0.75,
-            SchedulerFailureWeight = 0.3
+            SchedulerFailureWeight = 0.3,
         };
 
         Assert.Equal(0.9, options.DeferFailureThreshold);
@@ -100,7 +103,7 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void ProbePort_AcceptsUshort()
+    public void ProbePortAcceptsUshort()
     {
         var enabledOptions = new ClientOptions { ProbePort = 8080 };
         var disabledOptions = new ClientOptions { ProbePort = 0 };
@@ -110,7 +113,7 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void RecordEquality_WorksForScalarFields()
+    public void RecordEqualityWorksForScalarFields()
     {
         // Note: Records with array fields use reference equality for arrays,
         // so we test equality with scalar fields only
@@ -121,7 +124,7 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void RecordInequality_WhenFieldsDiffer()
+    public void RecordInequalityWhenFieldsDiffer()
     {
         var options1 = new ClientOptions { GroupId = "group-1" };
         var options2 = new ClientOptions { GroupId = "group-2" };
@@ -130,13 +133,13 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void LowLatencyMode_WithFailureTopic()
+    public void LowLatencyModeWithFailureTopic()
     {
         var options = new ClientOptions
         {
             Mode = ClientMode.LowLatency,
             FailureTopic = "dead-letters",
-            MaxRetries = 3
+            MaxRetries = 3,
         };
 
         Assert.Equal(ClientMode.LowLatency, options.Mode);
@@ -152,23 +155,19 @@ public sealed class ClientOptionsTests
             CassandraNodes = ["cass1:9042", "cass2:9042"],
             CassandraKeyspace = "prosody",
             CassandraDatacenter = "dc1",
-            CassandraRetention = TimeSpan.FromDays(365)
+            CassandraRetention = TimeSpan.FromDays(365),
         };
 
-        Assert.Equal(2, options.CassandraNodes?.Length);
+        Assert.Equal(2, options.CassandraNodes?.Count);
         Assert.Equal("prosody", options.CassandraKeyspace);
         Assert.Equal("dc1", options.CassandraDatacenter);
         Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention);
     }
 
     [Fact]
-    public void WithExpression_CreatesModifiedCopy()
+    public void WithExpressionCreatesModifiedCopy()
     {
-        var original = new ClientOptions
-        {
-            GroupId = "original",
-            Mode = ClientMode.Pipeline
-        };
+        var original = new ClientOptions { GroupId = "original", Mode = ClientMode.Pipeline };
 
         var modified = original with { Mode = ClientMode.LowLatency, FailureTopic = "dlq" };
 
@@ -182,14 +181,14 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void ToNative_ConvertsAllFields()
+    public void ToNativeConvertsAllFields()
     {
         var options = new ClientOptions
         {
             BootstrapServers = ["localhost:9092"],
             GroupId = "test-app",
             Mode = ClientMode.LowLatency,
-            StallThreshold = TimeSpan.FromMinutes(5)
+            StallThreshold = TimeSpan.FromMinutes(5),
         };
 
         var native = options.ToNative();
@@ -201,7 +200,7 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void ToNative_PreservesNullValues()
+    public void ToNativePreservesNullValues()
     {
         var options = new ClientOptions { GroupId = "only-this" };
 

@@ -4,7 +4,7 @@ using NativeResultCode = Prosody.Native.HandlerResultCode;
 namespace Prosody;
 
 /// <summary>
-/// Bridges the user-facing <see cref="IEventHandler"/> interface
+/// Bridges the user-facing <see cref="IProsodyHandler"/> interface
 /// to the UniFFI-generated <see cref="NativeHandler"/> interface.
 /// </summary>
 /// <remarks>
@@ -17,13 +17,13 @@ namespace Prosody;
 /// </remarks>
 internal sealed class EventHandlerBridge : NativeHandler
 {
-    private readonly IEventHandler _userHandler;
+    private readonly IProsodyHandler _userHandler;
 
     /// <summary>
     /// Creates a new wrapper around the user's event handler.
     /// </summary>
     /// <param name="userHandler">The user's event handler implementation.</param>
-    public EventHandlerBridge(IEventHandler userHandler)
+    public EventHandlerBridge(IProsodyHandler userHandler)
     {
         _userHandler = userHandler ?? throw new ArgumentNullException(nameof(userHandler));
     }
@@ -36,12 +36,15 @@ internal sealed class EventHandlerBridge : NativeHandler
     )
     {
         using var activity = TracePropagation.Extract(carrier);
+        using var cts = new CancellationTokenSource();
 
-        var cts = new CancellationTokenSource();
-
-        _ = context.OnCancel().ContinueWith(
-            _ => cts.Cancel(),
-            TaskContinuationOptions.ExecuteSynchronously);
+        _ = context
+            .OnCancel()
+            .ContinueWith(
+                _ => cts.Cancel(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
 
         var wrappedContext = new Context(context);
         var wrappedMessage = new Message(message);
@@ -49,7 +52,7 @@ internal sealed class EventHandlerBridge : NativeHandler
         try
         {
             var result = await _userHandler
-                .OnMessage(wrappedContext, wrappedMessage, cts.Token)
+                .OnMessageAsync(wrappedContext, wrappedMessage, cts.Token)
                 .ConfigureAwait(false);
             return ToNativeResultCode(result);
         }
@@ -67,12 +70,15 @@ internal sealed class EventHandlerBridge : NativeHandler
     )
     {
         using var activity = TracePropagation.Extract(carrier);
+        using var cts = new CancellationTokenSource();
 
-        var cts = new CancellationTokenSource();
-
-        _ = context.OnCancel().ContinueWith(
-            _ => cts.Cancel(),
-            TaskContinuationOptions.ExecuteSynchronously);
+        _ = context
+            .OnCancel()
+            .ContinueWith(
+                _ => cts.Cancel(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
 
         var wrappedContext = new Context(context);
         var wrappedTimer = new Timer(timer);
@@ -80,7 +86,7 @@ internal sealed class EventHandlerBridge : NativeHandler
         try
         {
             var result = await _userHandler
-                .OnTimer(wrappedContext, wrappedTimer, cts.Token)
+                .OnTimerAsync(wrappedContext, wrappedTimer, cts.Token)
                 .ConfigureAwait(false);
             return ToNativeResultCode(result);
         }
@@ -98,7 +104,11 @@ internal sealed class EventHandlerBridge : NativeHandler
             HandlerResultCode.TransientError => NativeResultCode.TransientError,
             HandlerResultCode.PermanentError => NativeResultCode.PermanentError,
             HandlerResultCode.Cancelled => NativeResultCode.Cancelled,
-            _ => throw new ArgumentOutOfRangeException(nameof(result), result, "Unknown result code")
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(result),
+                result,
+                "Unknown result code"
+            ),
         };
     }
 }
