@@ -23,11 +23,7 @@ public sealed class ProsodyHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
         {
             TimerCount++;
             return Task.CompletedTask;
@@ -180,11 +176,7 @@ public sealed class ProsodyHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -195,7 +187,9 @@ public sealed class ProsodyHandlerTests
     {
         var handler = new AttributeHandler();
         var method = handler.GetType().GetMethod(nameof(IProsodyHandler.OnMessageAsync));
-        var attr = method?.GetCustomAttributes(typeof(PermanentErrorAttribute), true).FirstOrDefault();
+        var attr = method
+            ?.GetCustomAttributes(typeof(PermanentErrorAttribute), true)
+            .FirstOrDefault();
 
         Assert.NotNull(attr);
         Assert.IsType<PermanentErrorAttribute>(attr);
@@ -211,8 +205,12 @@ public sealed class ProsodyHandlerTests
     private sealed class OrderValidationException : Exception, IPermanentError
     {
         public OrderValidationException() { }
-        public OrderValidationException(string message) : base(message) { }
-        public OrderValidationException(string message, Exception innerException) : base(message, innerException) { }
+
+        public OrderValidationException(string message)
+            : base(message) { }
+
+        public OrderValidationException(string message, Exception innerException)
+            : base(message, innerException) { }
     }
 
     [Fact]
@@ -239,11 +237,7 @@ public sealed class ProsodyHandlerTests
             throw new OrderValidationException("Order is invalid");
         }
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

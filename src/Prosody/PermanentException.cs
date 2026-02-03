@@ -42,9 +42,7 @@ public class PermanentException : Exception, IPermanentError
     /// <summary>
     /// Initializes a new instance of the <see cref="PermanentException"/> class.
     /// </summary>
-    public PermanentException()
-    {
-    }
+    public PermanentException() { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PermanentException"/> class
@@ -52,9 +50,7 @@ public class PermanentException : Exception, IPermanentError
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     public PermanentException(string message)
-        : base(message)
-    {
-    }
+        : base(message) { }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PermanentException"/> class
@@ -67,7 +63,5 @@ public class PermanentException : Exception, IPermanentError
     /// reference if no inner exception is specified.
     /// </param>
     public PermanentException(string message, Exception innerException)
-        : base(message, innerException)
-    {
-    }
+        : base(message, innerException) { }
 }

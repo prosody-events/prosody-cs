@@ -75,11 +75,7 @@ public interface IProsodyHandler
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
     /// </remarks>
-    Task OnMessageAsync(
-        Context context,
-        Message message,
-        CancellationToken cancellationToken
-    );
+    Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken);
 
     /// <summary>
     /// Called when a timer fires.
@@ -110,9 +106,5 @@ public interface IProsodyHandler
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
     /// </remarks>
-    Task OnTimerAsync(
-        Context context,
-        Timer timer,
-        CancellationToken cancellationToken
-    );
+    Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken);
 }

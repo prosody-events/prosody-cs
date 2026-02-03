@@ -10,8 +10,11 @@ namespace Prosody.Tests.TestHelpers;
 /// creating multiple AdminClient instances. The AdminClient is expensive to create
 /// and can be safely shared across tests.
 /// </remarks>
-[SuppressMessage("Design", "CA1515:Consider making public types internal",
-    Justification = "xUnit requires collection fixtures to be public")]
+[SuppressMessage(
+    "Design",
+    "CA1515:Consider making public types internal",
+    Justification = "xUnit requires collection fixtures to be public"
+)]
 public sealed class IntegrationTestFixture : IAsyncLifetime
 {
     /// <summary>
@@ -66,10 +69,16 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 /// All integration test classes should use this collection to share the fixture.
 /// </remarks>
 [CollectionDefinition(Name)]
-[SuppressMessage("Design", "CA1515:Consider making public types internal",
-    Justification = "xUnit requires collection definitions to be public")]
-[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "Collection suffix is required by xUnit convention")]
+[SuppressMessage(
+    "Design",
+    "CA1515:Consider making public types internal",
+    Justification = "xUnit requires collection definitions to be public"
+)]
+[SuppressMessage(
+    "Naming",
+    "CA1711:Identifiers should not have incorrect suffix",
+    Justification = "Collection suffix is required by xUnit convention"
+)]
 public sealed class IntegrationTestCollection : ICollectionFixture<IntegrationTestFixture>
 {
     public const string Name = "Integration";

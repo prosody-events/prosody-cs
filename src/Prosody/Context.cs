@@ -9,8 +9,11 @@ namespace Prosody;
 /// Wraps the native context and exposes scheduling and cancellation methods.
 /// All times are in UTC.
 /// </remarks>
-[SuppressMessage("Naming", "CA1724:Type names should not match namespaces",
-    Justification = "Context is a clear, simple name; conflict with OpenTelemetry.Context is unlikely to cause confusion")]
+[SuppressMessage(
+    "Naming",
+    "CA1724:Type names should not match namespaces",
+    Justification = "Context is a clear, simple name; conflict with OpenTelemetry.Context is unlikely to cause confusion"
+)]
 public sealed class Context
 {
     private readonly Native.Context _native;

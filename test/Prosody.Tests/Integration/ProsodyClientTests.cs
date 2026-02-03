@@ -12,7 +12,9 @@ namespace Prosody.Tests.Integration;
 /// Tests mirror the integration tests from prosody-js, prosody-py, and prosody-rb.
 /// </remarks>
 [Collection(IntegrationTestCollection.Name)]
-public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncLifetime, IAsyncDisposable
+public sealed class ProsodyClientTests(IntegrationTestFixture fixture)
+    : IAsyncLifetime,
+        IAsyncDisposable
 {
     private readonly TracerProvider _tracerProvider = Sdk.CreateTracerProviderBuilder()
         .AddSource("prosody-cs-test")
@@ -306,15 +308,13 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
         var messageCount = 0;
         var errorEvent = new EventNotifier();
 
-        var handler = new AttributeBasedHandler(
-            onMessage: () =>
-            {
-                messageCount++;
-                errorEvent.Signal();
-                // FormatException is declared permanent via attribute
-                throw new FormatException("Bad format");
-            }
-        );
+        var handler = new AttributeBasedHandler(onMessage: () =>
+        {
+            messageCount++;
+            errorEvent.Signal();
+            // FormatException is declared permanent via attribute
+            throw new FormatException("Bad format");
+        });
 
         await _client.SubscribeAsync(handler);
         await _client.SendAsync(
@@ -656,18 +656,12 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             CancellationToken cancellationToken
         )
         {
-            return _onMessage?.Invoke(context, message, cancellationToken)
-                ?? Task.CompletedTask;
+            return _onMessage?.Invoke(context, message, cancellationToken) ?? Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
         {
-            return _onTimer?.Invoke(context, timer, cancellationToken)
-                ?? Task.CompletedTask;
+            return _onTimer?.Invoke(context, timer, cancellationToken) ?? Task.CompletedTask;
         }
     }
 
@@ -694,11 +688,7 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

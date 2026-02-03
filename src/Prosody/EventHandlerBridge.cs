@@ -38,8 +38,14 @@ internal sealed class EventHandlerBridge : NativeHandler
 
         // Read attributes once at construction time
         var handlerType = userHandler.GetType();
-        _onMessageAttribute = GetPermanentErrorAttribute(handlerType, nameof(IProsodyHandler.OnMessageAsync));
-        _onTimerAttribute = GetPermanentErrorAttribute(handlerType, nameof(IProsodyHandler.OnTimerAsync));
+        _onMessageAttribute = GetPermanentErrorAttribute(
+            handlerType,
+            nameof(IProsodyHandler.OnMessageAsync)
+        );
+        _onTimerAttribute = GetPermanentErrorAttribute(
+            handlerType,
+            nameof(IProsodyHandler.OnTimerAsync)
+        );
     }
 
     /// <inheritdoc/>
@@ -58,7 +64,8 @@ internal sealed class EventHandlerBridge : NativeHandler
                 _ => cts.Cancel(),
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+                TaskScheduler.Default
+            );
 
         var wrappedContext = new Context(context);
         var wrappedMessage = new Message(message);
@@ -102,7 +109,8 @@ internal sealed class EventHandlerBridge : NativeHandler
                 _ => cts.Cancel(),
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+                TaskScheduler.Default
+            );
 
         var wrappedContext = new Context(context);
         var wrappedTimer = new Timer(timer);
@@ -162,12 +170,13 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// <param name="handlerType">The handler implementation type.</param>
     /// <param name="methodName">The method name to inspect.</param>
     /// <returns>The attribute if found; otherwise, <c>null</c>.</returns>
-    private static PermanentErrorAttribute? GetPermanentErrorAttribute(Type handlerType, string methodName)
+    private static PermanentErrorAttribute? GetPermanentErrorAttribute(
+        Type handlerType,
+        string methodName
+    )
     {
         // Look for the method on the concrete type first, then interface
-        var method = handlerType.GetMethod(
-            methodName,
-            BindingFlags.Public | BindingFlags.Instance);
+        var method = handlerType.GetMethod(methodName, BindingFlags.Public | BindingFlags.Instance);
 
         return method?.GetCustomAttribute<PermanentErrorAttribute>();
     }

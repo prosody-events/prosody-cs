@@ -72,7 +72,8 @@ public sealed class PermanentErrorAttribute : Attribute
             {
                 throw new ArgumentException(
                     $"Type '{type.FullName}' does not derive from System.Exception.",
-                    nameof(exceptionTypes));
+                    nameof(exceptionTypes)
+                );
             }
         }
 
