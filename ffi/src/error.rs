@@ -70,9 +70,8 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Transient => ErrorCategory::Transient,
-            // Cancellation is not retryable
-            Self::Permanent | Self::Cancelled => ErrorCategory::Permanent,
+            Self::Transient | Self::Cancelled => ErrorCategory::Transient,
+            Self::Permanent => ErrorCategory::Permanent,
         }
     }
 }

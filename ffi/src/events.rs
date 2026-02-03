@@ -132,7 +132,8 @@ impl Context {
         let compact_time = CompactDateTime::try_from(time)
             .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
 
-        // Create span with extracted context as parent (matches C# ClearAndScheduleAsync)
+        // Create span with extracted context as parent (matches C#
+        // ClearAndScheduleAsync)
         let span = info_span!("ClearAndSchedule", time = %compact_time);
         if let Err(err) = span.set_parent(context) {
             debug!("failed to set parent span: {err:#}");

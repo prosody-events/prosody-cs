@@ -18,8 +18,8 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use simd_json::serde::from_slice;
-use tracing::{Instrument, debug, info_span};
 use tracing::field::Empty;
+use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::config::{
@@ -77,10 +77,7 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and message for C#
-        let ctx = Arc::new(Context::new(
-            context.boxed(),
-            Arc::clone(&self.propagator),
-        ));
+        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
         let msg = Arc::new(Message::new(message).map_err(|_| CsHandlerError::Permanent)?);
 
         // Call the C# handler - it returns a result code
@@ -123,10 +120,7 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and timer for C#
-        let ctx = Arc::new(Context::new(
-            context.boxed(),
-            Arc::clone(&self.propagator),
-        ));
+        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
         let tmr = Arc::new(Timer::new(trigger));
 
         // Call the C# handler - it returns a result code
@@ -297,7 +291,8 @@ impl ProsodyClient {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.client.propagator().extract(&carrier);
 
-        // Create span with extracted context as parent (matches C# SendAsync/SendRawAsync)
+        // Create span with extracted context as parent (matches C#
+        // SendAsync/SendRawAsync)
         let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
         if let Err(err) = span.set_parent(context) {
             debug!("failed to set parent span: {err:#}");
