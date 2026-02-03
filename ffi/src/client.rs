@@ -28,9 +28,9 @@ use crate::config::{
 };
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
+use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::message::Message;
 use crate::timer::Timer;
-use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::types::{ClientOptions, ConsumerState};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;

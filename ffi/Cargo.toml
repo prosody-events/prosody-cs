@@ -29,7 +29,10 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
-uniffi = {workspace = true, features = ["tokio"]}
+uniffi = { workspace = true, features = ["tokio"] }
+
+#[cfg(not(target_env = "msvc"))]
+tikv-jemallocator.workspace = true
 
 [dev-dependencies]
 color-eyre.workspace = true
