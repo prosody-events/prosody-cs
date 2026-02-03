@@ -116,7 +116,7 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -143,7 +143,7 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -206,9 +206,8 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 {
                     wasAborted = true;
                     processingAborted.Signal();
+                    throw; // Re-throw to signal cancellation
                 }
-
-                return HandlerResultCode.Cancelled;
             }
         );
 
@@ -244,10 +243,11 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 messageCount++;
                 if (messageCount == 1)
                 {
-                    return Task.FromResult(HandlerResultCode.TransientError);
+                    // Throw any exception - treated as transient by default
+                    throw new InvalidOperationException("Transient failure");
                 }
                 retryEvent.Signal();
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -277,7 +277,8 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             {
                 messageCount++;
                 errorEvent.Signal();
-                return Task.FromResult(HandlerResultCode.PermanentError);
+                // Throw PermanentException - will not be retried
+                throw new PermanentException("Permanent failure");
             }
         );
 
@@ -286,6 +287,40 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
             _topic,
             "test-key",
             new TestPayload { Content = "Trigger permanent error" }
+        );
+
+        using var cts = new CancellationTokenSource(IntegrationTestFixture.DefaultTimeout);
+        await errorEvent.WaitAsync(cts.Token);
+
+        // Wait a bit to ensure no retries happen
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        Assert.Equal(1, messageCount);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task HandlesPermanentErrorsViaAttribute()
+    {
+        using var span = _tracer.StartActiveSpan("test.permanent_error_attribute");
+
+        var messageCount = 0;
+        var errorEvent = new EventNotifier();
+
+        var handler = new AttributeBasedHandler(
+            onMessage: () =>
+            {
+                messageCount++;
+                errorEvent.Signal();
+                // FormatException is declared permanent via attribute
+                throw new FormatException("Bad format");
+            }
+        );
+
+        await _client.SubscribeAsync(handler);
+        await _client.SendAsync(
+            _topic,
+            "test-key",
+            new TestPayload { Content = "Trigger permanent error via attribute" }
         );
 
         using var cts = new CancellationTokenSource(IntegrationTestFixture.DefaultTimeout);
@@ -312,12 +347,11 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 scheduledTime = DateTimeOffset.UtcNow.AddSeconds(2);
                 await ctx.ScheduleAsync(scheduledTime);
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             },
             onTimer: (_, timer, _) =>
             {
                 timerFired.Send((timer, DateTimeOffset.UtcNow));
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -360,13 +394,12 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 await ctx.ClearAndScheduleAsync(secondScheduledTime);
 
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             },
             onTimer: (_, timer, _) =>
             {
                 Interlocked.Increment(ref timerCount);
                 timerFired.Send(timer);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -409,13 +442,12 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 await ctx.UnscheduleAsync(firstTime);
 
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             },
             onTimer: (_, timer, _) =>
             {
                 Interlocked.Increment(ref timerCount);
                 timerFired.Send(timer);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -454,12 +486,11 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
                 await ctx.ClearScheduledAsync();
 
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             },
             onTimer: (_, _, _) =>
             {
                 Interlocked.Increment(ref timerCount);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -501,7 +532,6 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
 
                 retrievedTimes = await ctx.ScheduledAsync();
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             }
         );
 
@@ -550,13 +580,12 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
 
                 retrievedTimes = await ctx.ScheduledAsync();
                 messageReceived.Signal();
-                return HandlerResultCode.Success;
             },
             onTimer: (_, timer, _) =>
             {
                 Interlocked.Increment(ref timerCount);
                 timerFired.Send(timer);
-                return Task.FromResult(HandlerResultCode.Success);
+                return Task.CompletedTask;
             }
         );
 
@@ -605,45 +634,73 @@ public sealed class ProsodyClientTests(IntegrationTestFixture fixture) : IAsyncL
     }
 
     /// <summary>
-    /// Configurable test event handler.
+    /// Configurable test event handler using the new exception-based pattern.
     /// </summary>
     private sealed class TestEventHandler : IProsodyHandler
     {
-        private readonly Func<
-            Context,
-            Message,
-            CancellationToken,
-            Task<HandlerResultCode>
-        >? _onMessage;
-        private readonly Func<Context, Timer, CancellationToken, Task<HandlerResultCode>>? _onTimer;
+        private readonly Func<Context, Message, CancellationToken, Task>? _onMessage;
+        private readonly Func<Context, Timer, CancellationToken, Task>? _onTimer;
 
         public TestEventHandler(
-            Func<Context, Message, CancellationToken, Task<HandlerResultCode>>? onMessage = null,
-            Func<Context, Timer, CancellationToken, Task<HandlerResultCode>>? onTimer = null
+            Func<Context, Message, CancellationToken, Task>? onMessage = null,
+            Func<Context, Timer, CancellationToken, Task>? onTimer = null
         )
         {
             _onMessage = onMessage;
             _onTimer = onTimer;
         }
 
-        public Task<HandlerResultCode> OnMessageAsync(
+        public Task OnMessageAsync(
             Context context,
             Message message,
             CancellationToken cancellationToken
         )
         {
             return _onMessage?.Invoke(context, message, cancellationToken)
-                ?? Task.FromResult(HandlerResultCode.Success);
+                ?? Task.CompletedTask;
         }
 
-        public Task<HandlerResultCode> OnTimerAsync(
+        public Task OnTimerAsync(
             Context context,
             Timer timer,
             CancellationToken cancellationToken
         )
         {
             return _onTimer?.Invoke(context, timer, cancellationToken)
-                ?? Task.FromResult(HandlerResultCode.Success);
+                ?? Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Handler that uses PermanentErrorAttribute to declare FormatException as permanent.
+    /// </summary>
+    private sealed class AttributeBasedHandler : IProsodyHandler
+    {
+        private readonly Action _onMessage;
+
+        public AttributeBasedHandler(Action onMessage)
+        {
+            _onMessage = onMessage;
+        }
+
+        [PermanentError(typeof(FormatException))]
+        public Task OnMessageAsync(
+            Context context,
+            Message message,
+            CancellationToken cancellationToken
+        )
+        {
+            _onMessage();
+            return Task.CompletedTask;
+        }
+
+        public Task OnTimerAsync(
+            Context context,
+            Timer timer,
+            CancellationToken cancellationToken
+        )
+        {
+            return Task.CompletedTask;
         }
     }
 }
