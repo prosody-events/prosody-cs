@@ -33,7 +33,7 @@ use prosody::consumer::message::ConsumerMessage;
 use prosody::timers::datetime::CompactDateTime;
 use prosody::timers::{TimerType, Trigger};
 
-use crate::error::ProsodyError;
+use crate::error::FfiError;
 
 // ============================================================================
 // Context - Wraps BoxEventContext
@@ -84,18 +84,18 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
-    /// or `ProsodyError::Internal` if the scheduling fails.
+    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
+    /// or `FfiError::Internal` if the scheduling fails.
     pub async fn schedule(
         &self,
         time: SystemTime,
         carrier: HashMap<String, String>,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
         let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
 
         // Create span with extracted context as parent (matches C# ScheduleAsync)
         let span = info_span!("Schedule", time = %compact_time);
@@ -107,7 +107,7 @@ impl Context {
             .schedule(compact_time, TimerType::Application)
             .instrument(span)
             .await
-            .map_err(|_| ProsodyError::Internal)
+            .map_err(|_| FfiError::Internal)
     }
 
     /// Unschedule all existing timers, then schedule exactly one new timer.
@@ -119,18 +119,18 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
-    /// or `ProsodyError::Internal` if the scheduling fails.
+    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
+    /// or `FfiError::Internal` if the scheduling fails.
     pub async fn clear_and_schedule(
         &self,
         time: SystemTime,
         carrier: HashMap<String, String>,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
         let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
 
         // Create span with extracted context as parent (matches C#
         // ClearAndScheduleAsync)
@@ -143,7 +143,7 @@ impl Context {
             .clear_and_schedule(compact_time, TimerType::Application)
             .instrument(span)
             .await
-            .map_err(|_| ProsodyError::Internal)
+            .map_err(|_| FfiError::Internal)
     }
 
     /// Unschedule a specific timer at the given time.
@@ -155,18 +155,18 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// Returns `ProsodyError::InvalidArgument` if the timestamp is invalid,
-    /// or `ProsodyError::Internal` if the operation fails.
+    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
+    /// or `FfiError::Internal` if the operation fails.
     pub async fn unschedule(
         &self,
         time: SystemTime,
         carrier: HashMap<String, String>,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
         let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
 
         // Create span with extracted context as parent (matches C# UnscheduleAsync)
         let span = info_span!("Unschedule", time = %compact_time);
@@ -178,7 +178,7 @@ impl Context {
             .unschedule(compact_time, TimerType::Application)
             .instrument(span)
             .await
-            .map_err(|_| ProsodyError::Internal)
+            .map_err(|_| FfiError::Internal)
     }
 
     /// Unschedule all timers for the current key.
@@ -189,11 +189,11 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// Returns `ProsodyError::Internal` if the operation fails.
+    /// Returns `FfiError::Internal` if the operation fails.
     pub async fn clear_scheduled(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
@@ -207,7 +207,7 @@ impl Context {
             .clear_scheduled(TimerType::Application)
             .instrument(span)
             .await
-            .map_err(|_| ProsodyError::Internal)
+            .map_err(|_| FfiError::Internal)
     }
 
     /// List all scheduled timer times for the current key.
@@ -222,11 +222,11 @@ impl Context {
     ///
     /// # Errors
     ///
-    /// Returns `ProsodyError::Internal` if the operation fails.
+    /// Returns `FfiError::Internal` if the operation fails.
     pub async fn scheduled(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<Vec<SystemTime>, ProsodyError> {
+    ) -> Result<Vec<SystemTime>, FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
@@ -242,7 +242,7 @@ impl Context {
             .try_collect()
             .instrument(span)
             .await
-            .map_err(|_| ProsodyError::Internal)
+            .map_err(|_| FfiError::Internal)
     }
 }
 

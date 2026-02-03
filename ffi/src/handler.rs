@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::error::ProsodyError;
+use crate::error::FfiError;
 use crate::events::{Context, Message, Timer};
 
 /// Result code returned by event handlers.
@@ -55,7 +55,7 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
-    ) -> Result<HandlerResult, ProsodyError>;
+    ) -> Result<HandlerResult, FfiError>;
 
     /// Called when a timer fires.
     async fn on_timer(
@@ -63,5 +63,5 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         timer: Arc<Timer>,
         carrier: HashMap<String, String>,
-    ) -> Result<HandlerResult, ProsodyError>;
+    ) -> Result<HandlerResult, FfiError>;
 }

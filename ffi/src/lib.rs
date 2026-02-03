@@ -33,7 +33,7 @@ pub mod types;
 // Re-export key types for the UDL interface
 pub use admin::AdminClient;
 pub use client::ProsodyClient;
-pub use error::ProsodyError;
+pub use error::FfiError;
 pub use events::{CancellationSignal, Context, Message, Timer};
 pub use handler::{EventHandler, HandlerResultCode};
 pub use types::{ClientMode, ClientOptions, ConsumerState};

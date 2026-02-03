@@ -25,7 +25,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
-use crate::error::{CsHandlerError, ProsodyError};
+use crate::error::{CsHandlerError, FfiError};
 use crate::events::{CancellationSignal, Context, Message, Timer};
 use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::types::{ClientOptions, ConsumerState};
@@ -200,7 +200,7 @@ impl ProsodyClient {
         reason = "UniFFI Record types are passed by value from C#; ownership transfer is \
                   intentional"
     )]
-    pub fn new(options: ClientOptions) -> Result<Self, ProsodyError> {
+    pub fn new(options: ClientOptions) -> Result<Self, FfiError> {
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
         let consumer_builders = build_consumer_builders(&options);
@@ -214,7 +214,7 @@ impl ProsodyClient {
             &consumer_builders,
             &cassandra_config,
         )
-        .map_err(|_| ProsodyError::Internal)?;
+        .map_err(|_| FfiError::Internal)?;
 
         Ok(Self {
             client,
@@ -233,7 +233,7 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns error if subscription fails.
-    pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), ProsodyError> {
+    pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), FfiError> {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
@@ -245,7 +245,7 @@ impl ProsodyClient {
         self.client
             .subscribe(cs_handler)
             .await
-            .map_err(|_| ProsodyError::Internal)?;
+            .map_err(|_| FfiError::Internal)?;
 
         Ok(())
     }
@@ -255,12 +255,12 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns error if unsubscription fails.
-    pub async fn unsubscribe(&self) -> Result<(), ProsodyError> {
+    pub async fn unsubscribe(&self) -> Result<(), FfiError> {
         // Unsubscribe from the client
         self.client
             .unsubscribe()
             .await
-            .map_err(|_| ProsodyError::Internal)?;
+            .map_err(|_| FfiError::Internal)?;
 
         // Clear the handler reference
         self.handler.store(Arc::new(None));
@@ -290,7 +290,7 @@ impl ProsodyClient {
         mut payload: Vec<u8>,
         carrier: HashMap<String, String>,
         cancel: Option<Arc<CancellationSignal>>,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.client.propagator().extract(&carrier);
 
@@ -315,15 +315,15 @@ impl ProsodyClient {
             tokio::select! {
                 result = send_future => {
                     span.record("aborted", false);
-                    result.map_err(|_| ProsodyError::Internal)?;
+                    result.map_err(|_| FfiError::Internal)?;
                 }
                 () = signal.cancelled() => {
                     span.record("aborted", true);
-                    return Err(ProsodyError::Cancelled);
+                    return Err(FfiError::Cancelled);
                 }
             }
         } else {
-            send_future.await.map_err(|_| ProsodyError::Internal)?;
+            send_future.await.map_err(|_| FfiError::Internal)?;
             span.record("aborted", false);
         }
 

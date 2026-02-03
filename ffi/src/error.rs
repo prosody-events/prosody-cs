@@ -6,11 +6,11 @@
 use prosody::error::{ClassifyError, ErrorCategory};
 use std::ffi::NulError;
 
-/// Error type for Prosody FFI operations.
+/// Error type for FFI boundary operations.
 ///
 /// `UniFFI` generates corresponding C# exception types.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
-pub enum ProsodyError {
+pub enum FfiError {
     /// Invalid argument provided (e.g., invalid timestamp).
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
@@ -36,13 +36,13 @@ pub enum ProsodyError {
     Json(String),
 }
 
-impl From<NulError> for ProsodyError {
+impl From<NulError> for FfiError {
     fn from(err: NulError) -> Self {
         Self::TopicContainsNul(format!("{err:#}"))
     }
 }
 
-impl From<simd_json::Error> for ProsodyError {
+impl From<simd_json::Error> for FfiError {
     fn from(err: simd_json::Error) -> Self {
         Self::Json(format!("{err:#}"))
     }
@@ -65,7 +65,7 @@ pub enum CsHandlerError {
 
     /// FFI infrastructure error - should retry.
     #[error(transparent)]
-    Ffi(#[from] ProsodyError),
+    Ffi(#[from] FfiError),
 
     /// JSON serialization error - should retry.
     #[error(transparent)]
@@ -82,7 +82,7 @@ impl ClassifyError for CsHandlerError {
 }
 
 // Required for UniFFI foreign trait error handling
-impl From<uniffi::UnexpectedUniFFICallbackError> for ProsodyError {
+impl From<uniffi::UnexpectedUniFFICallbackError> for FfiError {
     fn from(_: uniffi::UnexpectedUniFFICallbackError) -> Self {
         Self::Internal
     }

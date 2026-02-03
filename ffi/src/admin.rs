@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::ProsodyError;
+use crate::error::FfiError;
 use prosody::admin::{AdminConfiguration, ProsodyAdminClient, TopicConfiguration};
 use tokio::spawn;
 
@@ -27,14 +27,14 @@ impl AdminClient {
     ///
     /// # Errors
     ///
-    /// Returns a `ProsodyError` if the client cannot be created.
+    /// Returns a `FfiError` if the client cannot be created.
     #[uniffi::constructor]
-    pub fn new(bootstrap_servers: Vec<String>) -> Result<Self, ProsodyError> {
+    pub fn new(bootstrap_servers: Vec<String>) -> Result<Self, FfiError> {
         let config = AdminConfiguration::new(bootstrap_servers)
-            .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?;
+            .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
 
         let client = ProsodyAdminClient::new(&config)
-            .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?;
+            .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
 
         Ok(Self {
             client: Arc::new(client),
@@ -51,13 +51,13 @@ impl AdminClient {
     ///
     /// # Errors
     ///
-    /// Returns a `ProsodyError` if topic creation fails.
+    /// Returns a `FfiError` if topic creation fails.
     pub async fn create_topic(
         &self,
         name: String,
         partition_count: u16,
         replication_factor: u16,
-    ) -> Result<(), ProsodyError> {
+    ) -> Result<(), FfiError> {
         let client = self.client.clone();
 
         spawn(async move {
@@ -66,17 +66,17 @@ impl AdminClient {
                 .partition_count(partition_count)
                 .replication_factor(replication_factor)
                 .build()
-                .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?;
+                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
 
             client
                 .create_topic(&config)
                 .await
-                .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?;
+                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
 
-            Ok::<(), ProsodyError>(())
+            Ok::<(), FfiError>(())
         })
         .await
-        .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?
+        .map_err(|e| FfiError::InvalidArgument(e.to_string()))?
     }
 
     /// Deletes a Kafka topic.
@@ -87,19 +87,19 @@ impl AdminClient {
     ///
     /// # Errors
     ///
-    /// Returns a `ProsodyError` if topic deletion fails.
-    pub async fn delete_topic(&self, name: String) -> Result<(), ProsodyError> {
+    /// Returns a `FfiError` if topic deletion fails.
+    pub async fn delete_topic(&self, name: String) -> Result<(), FfiError> {
         let client = self.client.clone();
 
         spawn(async move {
             client
                 .delete_topic(&name)
                 .await
-                .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?;
+                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
 
-            Ok::<(), ProsodyError>(())
+            Ok::<(), FfiError>(())
         })
         .await
-        .map_err(|e| ProsodyError::InvalidArgument(e.to_string()))?
+        .map_err(|e| FfiError::InvalidArgument(e.to_string()))?
     }
 }
