@@ -1,8 +1,6 @@
 //! Cancellation signaling for async operations.
 
-use std::sync::Arc;
-
-use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 
 /// A cancellation signal that can be created by C# and passed to Rust async
 /// operations.
@@ -12,7 +10,7 @@ use tokio::sync::Notify;
 /// `cancelled()` to detect when cancellation has been requested.
 #[derive(uniffi::Object)]
 pub struct CancellationSignal {
-    notify: Arc<Notify>,
+    token: CancellationToken,
 }
 
 impl Default for CancellationSignal {
@@ -28,20 +26,20 @@ impl CancellationSignal {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            notify: Arc::new(Notify::new()),
+            token: CancellationToken::new(),
         }
     }
 
     /// Signals cancellation. Any async operation waiting on this signal will be
     /// notified.
     pub fn cancel(&self) {
-        self.notify.notify_waiters();
+        self.token.cancel();
     }
 
     /// Waits until cancellation is signaled.
     ///
     /// This is used internally by Rust async operations to detect cancellation.
     pub async fn cancelled(&self) {
-        self.notify.notified().await;
+        self.token.cancelled().await;
     }
 }
