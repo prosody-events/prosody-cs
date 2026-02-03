@@ -1774,6 +1774,7 @@ dependencies = [
  "color-eyre",
  "futures",
  "opentelemetry",
+ "parking_lot",
  "prosody",
  "serde_json",
  "simd-json",
@@ -1783,6 +1784,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-opentelemetry",
+ "tracing-subscriber",
  "uniffi",
 ]
 

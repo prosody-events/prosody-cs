@@ -22,6 +22,7 @@
 //! - [`context`]: Event context for scheduling and cancellation
 //! - [`error`]: Error types for FFI boundary crossing
 //! - [`handler`]: `EventHandler` trait for FFI callback interface
+//! - [`logging`]: Logging bridge to C# `ILoggerFactory`
 //! - [`message`]: Kafka message wrapper
 //! - [`timer`]: Timer trigger wrapper
 //! - [`types`]: Configuration types (`ClientOptions`)
@@ -35,6 +36,7 @@ pub mod config;
 pub mod context;
 pub mod error;
 pub mod handler;
+pub mod logging;
 pub mod message;
 pub mod timer;
 pub mod types;

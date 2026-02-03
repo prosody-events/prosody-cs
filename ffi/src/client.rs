@@ -28,6 +28,7 @@ use crate::config::{
 };
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
+use crate::logging::ensure_tracing_initialized;
 use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::message::Message;
 use crate::timer::Timer;
@@ -204,6 +205,9 @@ impl ProsodyClient {
                   intentional"
     )]
     pub fn new(options: ClientOptions) -> Result<Self, FfiError> {
+        // Ensure tracing is initialized (idempotent)
+        ensure_tracing_initialized();
+
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
         let consumer_builders = build_consumer_builders(&options);
