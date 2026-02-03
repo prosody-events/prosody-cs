@@ -12,10 +12,12 @@ public sealed class EnumTests
     {
         var values = Enum.GetValues<ClientMode>();
 
-        Assert.Equal(3, values.Length);
-        Assert.Contains(ClientMode.Pipeline, values);
-        Assert.Contains(ClientMode.LowLatency, values);
-        Assert.Contains(ClientMode.BestEffort, values);
+        Assert.Multiple(
+            () => Assert.Equal(3, values.Length),
+            () => Assert.Contains(ClientMode.Pipeline, values),
+            () => Assert.Contains(ClientMode.LowLatency, values),
+            () => Assert.Contains(ClientMode.BestEffort, values)
+        );
     }
 
     [Fact]
@@ -23,10 +25,12 @@ public sealed class EnumTests
     {
         var values = Enum.GetValues<ConsumerState>();
 
-        Assert.Equal(3, values.Length);
-        Assert.Contains(ConsumerState.Unconfigured, values);
-        Assert.Contains(ConsumerState.Configured, values);
-        Assert.Contains(ConsumerState.Running, values);
+        Assert.Multiple(
+            () => Assert.Equal(3, values.Length),
+            () => Assert.Contains(ConsumerState.Unconfigured, values),
+            () => Assert.Contains(ConsumerState.Configured, values),
+            () => Assert.Contains(ConsumerState.Running, values)
+        );
     }
 
     [Fact]
@@ -34,9 +38,11 @@ public sealed class EnumTests
     {
         var values = Enum.GetValues<HandlerResultCode>();
 
-        Assert.Equal(3, values.Length);
-        Assert.Contains(HandlerResultCode.Success, values);
-        Assert.Contains(HandlerResultCode.TransientError, values);
-        Assert.Contains(HandlerResultCode.PermanentError, values);
+        Assert.Multiple(
+            () => Assert.Equal(3, values.Length),
+            () => Assert.Contains(HandlerResultCode.Success, values),
+            () => Assert.Contains(HandlerResultCode.TransientError, values),
+            () => Assert.Contains(HandlerResultCode.PermanentError, values)
+        );
     }
 }

@@ -1,8 +1,9 @@
 //! Logging module for Prosody-CS.
 //!
 //! This module provides functionality to bridge Rust's tracing system to C#'s
-//! `ILoggerFactory` via a `UniFFI` callback interface. The logging configuration
-//! is global - once configured, all Prosody clients use the same logger.
+//! `ILoggerFactory` via a `UniFFI` callback interface. The logging
+//! configuration is global - once configured, all Prosody clients use the same
+//! logger.
 //!
 //! ## Log Event Flow
 //!
@@ -31,13 +32,14 @@
 
 use arc_swap::ArcSwap;
 use prosody::tracing::initialize_tracing;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 use std::sync::{Arc, LazyLock, Once};
 use tracing::field::{Field, Visit};
-use tracing::{Event, Level, Metadata, Subscriber};
-use tracing_subscriber::layer::Context;
+use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
 
 /// Log level for messages from Rust to C#.
 ///
@@ -82,6 +84,24 @@ impl From<LogLevel> for Level {
     }
 }
 
+/// Structured fields from a tracing event, organized by type.
+///
+/// Fields are separated by their native types to preserve type information
+/// across the FFI boundary, enabling proper structured logging in C#.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct LogFields {
+    /// String fields (includes debug-formatted values)
+    pub strings: HashMap<String, String>,
+    /// Signed integer fields (i64 / C# long)
+    pub i64s: HashMap<String, i64>,
+    /// Unsigned integer fields (u64 / C# ulong)
+    pub u64s: HashMap<String, u64>,
+    /// Floating point fields (f64 / C# double)
+    pub f64s: HashMap<String, f64>,
+    /// Boolean fields
+    pub bools: HashMap<String, bool>,
+}
+
 /// A no-op log sink that discards all messages.
 struct NullLogSink;
 
@@ -97,12 +117,14 @@ impl LogSink for NullLogSink {
         _message: String,
         _file: Option<String>,
         _line: Option<u32>,
+        _fields: LogFields,
     ) {
     }
 }
 
-/// Global log sink instance. Defaults to a no-op sink that discards all messages.
-/// Uses `Arc<Arc<dyn LogSink>>` to work around arc-swap's `Sized` requirement.
+/// Global log sink instance. Defaults to a no-op sink that discards all
+/// messages. Uses `Arc<Arc<dyn LogSink>>` to work around arc-swap's `Sized`
+/// requirement.
 static LOG_SINK: LazyLock<ArcSwap<Arc<dyn LogSink>>> =
     LazyLock::new(|| ArcSwap::from_pointee(Arc::new(NullLogSink) as Arc<dyn LogSink>));
 
@@ -131,6 +153,8 @@ pub trait LogSink: Send + Sync {
     /// * `message` - The formatted log message
     /// * `file` - Source file path (if available)
     /// * `line` - Source line number (if available)
+    /// * `fields` - Additional structured fields from the tracing event,
+    ///   organized by type
     fn log(
         &self,
         level: LogLevel,
@@ -138,14 +162,15 @@ pub trait LogSink: Send + Sync {
         message: String,
         file: Option<String>,
         line: Option<u32>,
+        fields: LogFields,
     );
 }
 
 /// Initialize the tracing system.
 ///
-/// This function sets up the Rust tracing infrastructure with the `LogSinkLayer`.
-/// It should be called once at application startup, typically by the C# wrapper
-/// before any logging configuration.
+/// This function sets up the Rust tracing infrastructure with the
+/// `LogSinkLayer`. It should be called once at application startup, typically
+/// by the C# wrapper before any logging configuration.
 ///
 /// This function is idempotent - subsequent calls after the first are no-ops.
 #[allow(clippy::print_stderr, reason = "tracing is not initialized yet")]
@@ -160,7 +185,8 @@ pub(crate) fn ensure_tracing_initialized() {
 /// Configure the global log sink.
 ///
 /// Call this once at application startup before creating any `ProsodyClient`
-/// instances. The log sink receives all tracing events from the Prosody library.
+/// instances. The log sink receives all tracing events from the Prosody
+/// library.
 ///
 /// This function is thread-safe and can be called multiple times. Each call
 /// replaces the previous log sink configuration.
@@ -209,55 +235,86 @@ impl<S: Subscriber> Layer<S> for LogSinkLayer {
         }
 
         // Extract the message and fields from the event
-        let mut visitor = MessageVisitor::new(metadata);
+        let mut visitor = MessageVisitor::new();
         event.record(&mut visitor);
 
-        let message = visitor.message.unwrap_or_default();
         let target = metadata.target().to_owned();
         let file = metadata.file().map(ToOwned::to_owned);
         let line = metadata.line();
 
         // Forward to the C# log sink
-        sink.log(level, target, message, file, line);
+        sink.log(level, target, visitor.message, file, line, visitor.fields);
     }
 }
 
-/// A visitor that extracts the message from a tracing event.
+/// A visitor that extracts the message and all structured fields from a tracing
+/// event.
 struct MessageVisitor {
-    message: Option<String>,
+    message: String,
+    fields: LogFields,
 }
 
 impl MessageVisitor {
-    /// Create a new visitor for the given event metadata.
-    fn new(_metadata: &'static Metadata<'static>) -> Self {
-        Self { message: None }
+    fn new() -> Self {
+        Self {
+            message: String::new(),
+            fields: LogFields::default(),
+        }
     }
 }
 
 impl Visit for MessageVisitor {
-    fn record_f64(&mut self, _field: &Field, _value: f64) {}
+    fn record_f64(&mut self, field: &Field, value: f64) {
+        self.fields.f64s.insert(field.name().to_owned(), value);
+    }
 
-    fn record_i64(&mut self, _field: &Field, _value: i64) {}
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.fields.i64s.insert(field.name().to_owned(), value);
+    }
 
-    fn record_u64(&mut self, _field: &Field, _value: u64) {}
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.fields.u64s.insert(field.name().to_owned(), value);
+    }
 
-    fn record_i128(&mut self, _field: &Field, _value: i128) {}
+    fn record_i128(&mut self, field: &Field, value: i128) {
+        self.fields
+            .strings
+            .insert(field.name().to_owned(), value.to_string());
+    }
 
-    fn record_u128(&mut self, _field: &Field, _value: u128) {}
+    fn record_u128(&mut self, field: &Field, value: u128) {
+        self.fields
+            .strings
+            .insert(field.name().to_owned(), value.to_string());
+    }
 
-    fn record_bool(&mut self, _field: &Field, _value: bool) {}
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.fields.bools.insert(field.name().to_owned(), value);
+    }
 
     fn record_str(&mut self, field: &Field, value: &str) {
         if field.name() == "message" {
-            self.message = Some(value.to_owned());
+            value.clone_into(&mut self.message);
+        } else {
+            self.fields
+                .strings
+                .insert(field.name().to_owned(), value.to_owned());
         }
     }
 
-    fn record_error(&mut self, _field: &Field, _value: &(dyn Error + 'static)) {}
+    fn record_error(&mut self, field: &Field, value: &(dyn Error + 'static)) {
+        self.fields
+            .strings
+            .insert(field.name().to_owned(), value.to_string());
+    }
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         if field.name() == "message" {
-            self.message = Some(format!("{value:?}"));
+            self.message = format!("{value:?}");
+        } else {
+            self.fields
+                .strings
+                .insert(field.name().to_owned(), format!("{value:?}"));
         }
     }
 }

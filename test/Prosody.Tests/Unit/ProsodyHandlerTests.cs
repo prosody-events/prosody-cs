@@ -93,8 +93,10 @@ public sealed class ProsodyHandlerTests
         var inner = new InvalidOperationException("inner");
         var ex = new PermanentException("outer", inner);
 
-        Assert.Equal("outer", ex.Message);
-        Assert.Same(inner, ex.InnerException);
+        Assert.Multiple(
+            () => Assert.Equal("outer", ex.Message),
+            () => Assert.Same(inner, ex.InnerException)
+        );
     }
 
     #endregion
@@ -106,8 +108,10 @@ public sealed class ProsodyHandlerTests
     {
         var attr = new PermanentErrorAttribute(typeof(InvalidOperationException));
 
-        Assert.True(attr.IsMatch(new InvalidOperationException()));
-        Assert.False(attr.IsMatch(new ArgumentException()));
+        Assert.Multiple(
+            () => Assert.True(attr.IsMatch(new InvalidOperationException())),
+            () => Assert.False(attr.IsMatch(new ArgumentException()))
+        );
     }
 
     [Fact]
@@ -116,10 +120,12 @@ public sealed class ProsodyHandlerTests
         // ArgumentNullException derives from ArgumentException
         var attr = new PermanentErrorAttribute(typeof(ArgumentException));
 
-        Assert.True(attr.IsMatch(new ArgumentException()));
-        Assert.True(attr.IsMatch(new ArgumentNullException()));
-        Assert.True(attr.IsMatch(new ArgumentOutOfRangeException()));
-        Assert.False(attr.IsMatch(new InvalidOperationException()));
+        Assert.Multiple(
+            () => Assert.True(attr.IsMatch(new ArgumentException())),
+            () => Assert.True(attr.IsMatch(new ArgumentNullException())),
+            () => Assert.True(attr.IsMatch(new ArgumentOutOfRangeException())),
+            () => Assert.False(attr.IsMatch(new InvalidOperationException()))
+        );
     }
 
     [Fact]
@@ -130,10 +136,12 @@ public sealed class ProsodyHandlerTests
             typeof(InvalidOperationException)
         );
 
-        Assert.True(attr.IsMatch(new ArgumentException()));
-        Assert.True(attr.IsMatch(new InvalidOperationException()));
-        Assert.True(attr.IsMatch(new ArgumentNullException())); // Subtype
-        Assert.False(attr.IsMatch(new NotSupportedException()));
+        Assert.Multiple(
+            () => Assert.True(attr.IsMatch(new ArgumentException())),
+            () => Assert.True(attr.IsMatch(new InvalidOperationException())),
+            () => Assert.True(attr.IsMatch(new ArgumentNullException())), // Subtype
+            () => Assert.False(attr.IsMatch(new NotSupportedException()))
+        );
     }
 
     [Fact]
@@ -141,8 +149,10 @@ public sealed class ProsodyHandlerTests
     {
         var attr = new PermanentErrorAttribute();
 
-        Assert.False(attr.IsMatch(new InvalidOperationException()));
-        Assert.False(attr.IsMatch(new ArgumentException()));
+        Assert.Multiple(
+            () => Assert.False(attr.IsMatch(new InvalidOperationException())),
+            () => Assert.False(attr.IsMatch(new ArgumentException()))
+        );
     }
 
     [Fact]
@@ -218,9 +228,11 @@ public sealed class ProsodyHandlerTests
     {
         var ex = new OrderValidationException("Invalid order");
 
-        Assert.IsAssignableFrom<IPermanentError>(ex);
-        Assert.IsAssignableFrom<Exception>(ex);
-        Assert.Equal("Invalid order", ex.Message);
+        Assert.Multiple(
+            () => Assert.IsAssignableFrom<IPermanentError>(ex),
+            () => Assert.IsAssignableFrom<Exception>(ex),
+            () => Assert.Equal("Invalid order", ex.Message)
+        );
     }
 
     /// <summary>

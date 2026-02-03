@@ -4,6 +4,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Prosody.Tests.Unit;
 
+/// <summary>
+/// Tests for logging integration. These tests must run sequentially
+/// because they contend over a shared global log writer.
+/// </summary>
+[Collection("Sequential")]
 public sealed class LoggingTests : IDisposable
 {
     public LoggingTests()
@@ -119,21 +124,52 @@ public sealed class LoggingTests : IDisposable
         AssertContainsDisablingConsumerLog(logger);
     }
 
+    [Fact]
+    public void LoggingCapturesStructuredFields()
+    {
+        // Arrange
+        var logger = new TestLogger();
+        using var factory = new TestLoggerFactory(logger);
+        ProsodyLogging.Configure(factory);
+
+        // Act
+        CreateProducerOnlyClient();
+
+        // Assert - verify structured fields are captured
+        var entry = logger.LogEntries.First(e =>
+            e.Message.Contains("disabling consumer", StringComparison.Ordinal)
+        );
+
+        Assert.NotNull(entry.Fields);
+        Assert.True(entry.Fields.ContainsKey("Target"), "Should have Target field");
+        Assert.True(entry.Fields.ContainsKey("Message"), "Should have Message field");
+
+        // Print all fields for visibility
+        foreach (var (key, value) in entry.Fields)
+        {
+            Console.WriteLine($"  {key}: {value} ({value?.GetType().Name ?? "null"})");
+        }
+    }
+
     /// <summary>
     /// Creates a producer-only client (no consumer config).
     /// This triggers an info log: "disabling consumer (safe to ignore if you're only producing)"
     /// </summary>
     private static void CreateProducerOnlyClient()
     {
-        using var client = new ProsodyClient(new ClientOptions
-        {
-            Mock = true,
-            SourceSystem = "test",
-            BootstrapServers = ["localhost:9092"]
-        });
+        using var client = new ProsodyClient(
+            new ClientOptions
+            {
+                Mock = true,
+                SourceSystem = "test",
+                BootstrapServers = ["localhost:9092"],
+            }
+        );
     }
 
-    private static (ServiceProvider Provider, TestLoggerFactory Factory) BuildServiceProvider(TestLogger logger)
+    private static (ServiceProvider Provider, TestLoggerFactory Factory) BuildServiceProvider(
+        TestLogger logger
+    )
     {
         var services = new ServiceCollection();
         var factory = new TestLoggerFactory(logger);
@@ -144,23 +180,28 @@ public sealed class LoggingTests : IDisposable
 
     private static IHostedService GetLoggingHostedService(ServiceProvider provider)
     {
-        return provider.GetServices<IHostedService>()
+        return provider
+            .GetServices<IHostedService>()
             .First(s => s.GetType().Name == "ProsodyLoggingHostedService");
     }
 
     private static void AssertContainsDisablingConsumerLog(TestLogger logger)
     {
         Assert.NotEmpty(logger.LogEntries);
-        Assert.Contains(logger.LogEntries, e =>
-            e.Level == LogLevel.Information &&
-            e.Message.Contains("disabling consumer", StringComparison.Ordinal));
+        Assert.Contains(
+            logger.LogEntries,
+            e =>
+                e.Level == LogLevel.Information
+                && e.Message.Contains("disabling consumer", StringComparison.Ordinal)
+        );
     }
 
     private sealed class TestLogger : ILogger
     {
         public List<LogEntry> LogEntries { get; } = [];
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
 
         public bool IsEnabled(LogLevel logLevel) => true;
 
@@ -169,12 +210,25 @@ public sealed class LoggingTests : IDisposable
             EventId eventId,
             TState state,
             Exception? exception,
-            Func<TState, Exception?, string> formatter)
+            Func<TState, Exception?, string> formatter
+        )
         {
-            LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+            // Capture structured fields if state is enumerable
+            Dictionary<string, object?>? fields = null;
+            if (state is IEnumerable<KeyValuePair<string, object?>> kvps)
+            {
+                fields = kvps.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            }
+
+            LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), exception, fields));
         }
 
-        public sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
+        public sealed record LogEntry(
+            LogLevel Level,
+            string Message,
+            Exception? Exception,
+            Dictionary<string, object?>? Fields
+        );
     }
 
     private sealed class TestLoggerFactory(TestLogger logger) : ILoggerFactory

@@ -10,11 +10,13 @@ public sealed class ClientOptionsTests
     {
         var options = new ClientOptions();
 
-        Assert.Null(options.BootstrapServers);
-        Assert.Null(options.GroupId);
-        Assert.Null(options.SubscribedTopics);
-        Assert.Null(options.Mode);
-        Assert.Null(options.StallThreshold);
+        Assert.Multiple(
+            () => Assert.Null(options.BootstrapServers),
+            () => Assert.Null(options.GroupId),
+            () => Assert.Null(options.SubscribedTopics),
+            () => Assert.Null(options.Mode),
+            () => Assert.Null(options.StallThreshold)
+        );
     }
 
     [Fact]
@@ -27,10 +29,12 @@ public sealed class ClientOptionsTests
             SubscribedTopics = ["my-topic"],
         };
 
-        Assert.Equal(["localhost:9092"], options.BootstrapServers!);
-        Assert.Equal("my-app", options.GroupId);
-        Assert.Equal(["my-topic"], options.SubscribedTopics!);
-        Assert.Null(options.Mode);
+        Assert.Multiple(
+            () => Assert.Equal(["localhost:9092"], options.BootstrapServers!),
+            () => Assert.Equal("my-app", options.GroupId),
+            () => Assert.Equal(["my-topic"], options.SubscribedTopics!),
+            () => Assert.Null(options.Mode)
+        );
     }
 
     [Fact]
@@ -41,10 +45,12 @@ public sealed class ClientOptionsTests
             BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"],
         };
 
-        Assert.Equal(3, options.BootstrapServers!.Count);
-        Assert.Contains("broker1:9092", options.BootstrapServers!);
-        Assert.Contains("broker2:9092", options.BootstrapServers!);
-        Assert.Contains("broker3:9092", options.BootstrapServers!);
+        Assert.Multiple(
+            () => Assert.Equal(3, options.BootstrapServers!.Count),
+            () => Assert.Contains("broker1:9092", options.BootstrapServers!),
+            () => Assert.Contains("broker2:9092", options.BootstrapServers!),
+            () => Assert.Contains("broker3:9092", options.BootstrapServers!)
+        );
     }
 
     [Fact]
@@ -69,10 +75,12 @@ public sealed class ClientOptionsTests
             CommitInterval = TimeSpan.FromSeconds(1),
         };
 
-        Assert.Equal(TimeSpan.FromMinutes(5), options.StallThreshold);
-        Assert.Equal(TimeSpan.FromSeconds(30), options.ShutdownTimeout);
-        Assert.Equal(TimeSpan.FromMilliseconds(100), options.PollInterval);
-        Assert.Equal(TimeSpan.FromSeconds(1), options.CommitInterval);
+        Assert.Multiple(
+            () => Assert.Equal(TimeSpan.FromMinutes(5), options.StallThreshold),
+            () => Assert.Equal(TimeSpan.FromSeconds(30), options.ShutdownTimeout),
+            () => Assert.Equal(TimeSpan.FromMilliseconds(100), options.PollInterval),
+            () => Assert.Equal(TimeSpan.FromSeconds(1), options.CommitInterval)
+        );
     }
 
     [Fact]
@@ -82,9 +90,11 @@ public sealed class ClientOptionsTests
         var lowLatencyOptions = new ClientOptions { Mode = ClientMode.LowLatency };
         var bestEffortOptions = new ClientOptions { Mode = ClientMode.BestEffort };
 
-        Assert.Equal(ClientMode.Pipeline, pipelineOptions.Mode);
-        Assert.Equal(ClientMode.LowLatency, lowLatencyOptions.Mode);
-        Assert.Equal(ClientMode.BestEffort, bestEffortOptions.Mode);
+        Assert.Multiple(
+            () => Assert.Equal(ClientMode.Pipeline, pipelineOptions.Mode),
+            () => Assert.Equal(ClientMode.LowLatency, lowLatencyOptions.Mode),
+            () => Assert.Equal(ClientMode.BestEffort, bestEffortOptions.Mode)
+        );
     }
 
     [Fact]
@@ -97,9 +107,11 @@ public sealed class ClientOptionsTests
             SchedulerFailureWeight = 0.3,
         };
 
-        Assert.Equal(0.9, options.DeferFailureThreshold);
-        Assert.Equal(0.75, options.MonopolizationThreshold);
-        Assert.Equal(0.3, options.SchedulerFailureWeight);
+        Assert.Multiple(
+            () => Assert.Equal(0.9, options.DeferFailureThreshold),
+            () => Assert.Equal(0.75, options.MonopolizationThreshold),
+            () => Assert.Equal(0.3, options.SchedulerFailureWeight)
+        );
     }
 
     [Fact]
@@ -108,8 +120,10 @@ public sealed class ClientOptionsTests
         var enabledOptions = new ClientOptions { ProbePort = 8080 };
         var disabledOptions = new ClientOptions { ProbePort = 0 };
 
-        Assert.Equal((ushort)8080, enabledOptions.ProbePort);
-        Assert.Equal((ushort)0, disabledOptions.ProbePort);
+        Assert.Multiple(
+            () => Assert.Equal((ushort)8080, enabledOptions.ProbePort),
+            () => Assert.Equal((ushort)0, disabledOptions.ProbePort)
+        );
     }
 
     [Fact]
@@ -142,9 +156,11 @@ public sealed class ClientOptionsTests
             MaxRetries = 3,
         };
 
-        Assert.Equal(ClientMode.LowLatency, options.Mode);
-        Assert.Equal("dead-letters", options.FailureTopic);
-        Assert.Equal(3u, options.MaxRetries);
+        Assert.Multiple(
+            () => Assert.Equal(ClientMode.LowLatency, options.Mode),
+            () => Assert.Equal("dead-letters", options.FailureTopic),
+            () => Assert.Equal(3u, options.MaxRetries)
+        );
     }
 
     [Fact]
@@ -158,10 +174,12 @@ public sealed class ClientOptionsTests
             CassandraRetention = TimeSpan.FromDays(365),
         };
 
-        Assert.Equal(2, options.CassandraNodes?.Count);
-        Assert.Equal("prosody", options.CassandraKeyspace);
-        Assert.Equal("dc1", options.CassandraDatacenter);
-        Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention);
+        Assert.Multiple(
+            () => Assert.Equal(2, options.CassandraNodes?.Count),
+            () => Assert.Equal("prosody", options.CassandraKeyspace),
+            () => Assert.Equal("dc1", options.CassandraDatacenter),
+            () => Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention)
+        );
     }
 
     [Fact]
@@ -171,13 +189,16 @@ public sealed class ClientOptionsTests
 
         var modified = original with { Mode = ClientMode.LowLatency, FailureTopic = "dlq" };
 
-        Assert.Equal("original", original.GroupId);
-        Assert.Equal(ClientMode.Pipeline, original.Mode);
-        Assert.Null(original.FailureTopic);
-
-        Assert.Equal("original", modified.GroupId);
-        Assert.Equal(ClientMode.LowLatency, modified.Mode);
-        Assert.Equal("dlq", modified.FailureTopic);
+        Assert.Multiple(
+            // Original unchanged
+            () => Assert.Equal("original", original.GroupId),
+            () => Assert.Equal(ClientMode.Pipeline, original.Mode),
+            () => Assert.Null(original.FailureTopic),
+            // Modified has new values
+            () => Assert.Equal("original", modified.GroupId),
+            () => Assert.Equal(ClientMode.LowLatency, modified.Mode),
+            () => Assert.Equal("dlq", modified.FailureTopic)
+        );
     }
 
     [Fact]
@@ -193,10 +214,12 @@ public sealed class ClientOptionsTests
 
         var native = options.ToNative();
 
-        Assert.Equal(["localhost:9092"], native.BootstrapServers!);
-        Assert.Equal("test-app", native.GroupId);
-        Assert.Equal(Native.ClientMode.LowLatency, native.Mode);
-        Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold);
+        Assert.Multiple(
+            () => Assert.Equal(["localhost:9092"], native.BootstrapServers!),
+            () => Assert.Equal("test-app", native.GroupId),
+            () => Assert.Equal(Native.ClientMode.LowLatency, native.Mode),
+            () => Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold)
+        );
     }
 
     [Fact]
@@ -206,9 +229,11 @@ public sealed class ClientOptionsTests
 
         var native = options.ToNative();
 
-        Assert.Null(native.BootstrapServers);
-        Assert.Equal("only-this", native.GroupId);
-        Assert.Null(native.Mode);
-        Assert.Null(native.StallThreshold);
+        Assert.Multiple(
+            () => Assert.Null(native.BootstrapServers),
+            () => Assert.Equal("only-this", native.GroupId),
+            () => Assert.Null(native.Mode),
+            () => Assert.Null(native.StallThreshold)
+        );
     }
 }

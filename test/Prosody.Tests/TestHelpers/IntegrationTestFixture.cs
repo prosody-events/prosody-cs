@@ -48,38 +48,28 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public AdminClient Admin { get; private set; } = null!;
 
     /// <inheritdoc/>
-    public Task InitializeAsync()
+    public ValueTask InitializeAsync()
     {
         Admin = new AdminClient(BootstrapServers);
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>
-    public Task DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Admin.Dispose();
-        return Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }
 
 /// <summary>
-/// Collection definition for integration tests.
+/// Collection for tests that must run sequentially (no parallelization).
+/// Used for tests that contend over shared global state like logging.
 /// </summary>
-/// <remarks>
-/// All integration test classes should use this collection to share the fixture.
-/// </remarks>
-[CollectionDefinition(Name)]
+[CollectionDefinition("Sequential", DisableParallelization = true)]
 [SuppressMessage(
     "Design",
     "CA1515:Consider making public types internal",
     Justification = "xUnit requires collection definitions to be public"
 )]
-[SuppressMessage(
-    "Naming",
-    "CA1711:Identifiers should not have incorrect suffix",
-    Justification = "Collection suffix is required by xUnit convention"
-)]
-public sealed class IntegrationTestCollection : ICollectionFixture<IntegrationTestFixture>
-{
-    public const string Name = "Integration";
-}
+public sealed class SequentialTestGroup;

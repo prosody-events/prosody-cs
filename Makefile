@@ -240,9 +240,10 @@ copy-native-to-test-output:
 	done
 
 # Run all tests
+# xUnit v3 test projects are executables - run directly for proper output
 test: build
 	@echo "Running tests..."
-	dotnet test --no-build
+	dotnet run --project test/Prosody.Tests --no-build
 
 # ==============================================================================
 # Clean

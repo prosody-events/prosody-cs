@@ -28,8 +28,8 @@ use crate::config::{
 };
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
-use crate::logging::ensure_tracing_initialized;
 use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
+use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
 use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState};
