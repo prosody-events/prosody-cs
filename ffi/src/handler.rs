@@ -8,8 +8,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::context::Context;
 use crate::error::FfiError;
-use crate::events::{Context, Message, Timer};
+use crate::message::Message;
+use crate::timer::Timer;
 
 /// Result code returned by event handlers.
 ///

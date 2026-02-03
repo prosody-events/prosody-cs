@@ -22,11 +22,14 @@ use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+use crate::cancellation::CancellationSignal;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
+use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
-use crate::events::{CancellationSignal, Context, Message, Timer};
+use crate::message::Message;
+use crate::timer::Timer;
 use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::types::{ClientOptions, ConsumerState};
 use prosody::consumer::DemandType;
