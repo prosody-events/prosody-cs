@@ -26,6 +26,8 @@
 //! - [`timer`]: Timer trigger wrapper
 //! - [`types`]: Configuration types (`ClientOptions`)
 
+use std::collections::HashMap;
+
 pub mod admin;
 pub mod cancellation;
 pub mod client;
@@ -37,6 +39,11 @@ pub mod message;
 pub mod timer;
 pub mod types;
 
+/// OpenTelemetry carrier for context propagation.
+///
+/// In C#, this becomes `IDictionary<string, string>`.
+pub type Carrier = HashMap<String, String>;
+
 // Re-export key types for the UDL interface
 pub use admin::AdminClient;
 pub use cancellation::CancellationSignal;
@@ -45,7 +52,7 @@ pub use context::Context;
 pub use error::FfiError;
 pub use handler::{EventHandler, HandlerResultCode};
 pub use message::Message;
-pub use timer::{Carrier, Timer};
+pub use timer::Timer;
 pub use types::{ClientMode, ClientOptions, ConsumerState};
 
 // Setup UniFFI scaffolding using proc-macro approach (no UDL file)

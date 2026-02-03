@@ -19,7 +19,7 @@ pub struct Message {
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
+    reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Message {
     /// Creates a new Message wrapping a [`ConsumerMessage`].

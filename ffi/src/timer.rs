@@ -1,6 +1,5 @@
 //! Timer trigger wrapper for C# handler invocation.
 
-use std::collections::HashMap;
 use std::time::SystemTime;
 
 use prosody::timers::Trigger;
@@ -17,7 +16,7 @@ pub struct Timer {
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
+    reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Timer {
     /// Creates a new Timer wrapping a Trigger.
@@ -42,8 +41,3 @@ impl Timer {
         self.trigger.time.into()
     }
 }
-
-/// OpenTelemetry carrier for context propagation.
-///
-/// In C#, this becomes `IDictionary<string, string>`.
-pub type Carrier = HashMap<String, String>;

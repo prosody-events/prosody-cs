@@ -28,7 +28,7 @@ pub struct Context {
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks for exported vs non-exported methods"
+    reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
     /// Creates a new `Context` wrapping a [`BoxEventContext`].
