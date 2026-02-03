@@ -30,11 +30,8 @@ impl AdminClient {
     /// Returns a `FfiError` if the client cannot be created.
     #[uniffi::constructor]
     pub fn new(bootstrap_servers: Vec<String>) -> Result<Self, FfiError> {
-        let config = AdminConfiguration::new(bootstrap_servers)
-            .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
-
-        let client = ProsodyAdminClient::new(&config)
-            .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
+        let config = AdminConfiguration::new(bootstrap_servers)?;
+        let client = ProsodyAdminClient::new(&config)?;
 
         Ok(Self {
             client: Arc::new(client),
@@ -65,18 +62,13 @@ impl AdminClient {
                 .name(name)
                 .partition_count(partition_count)
                 .replication_factor(replication_factor)
-                .build()
-                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
+                .build()?;
 
-            client
-                .create_topic(&config)
-                .await
-                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
+            client.create_topic(&config).await?;
 
             Ok::<(), FfiError>(())
         })
-        .await
-        .map_err(|e| FfiError::InvalidArgument(e.to_string()))?
+        .await?
     }
 
     /// Deletes a Kafka topic.
@@ -92,14 +84,10 @@ impl AdminClient {
         let client = self.client.clone();
 
         spawn(async move {
-            client
-                .delete_topic(&name)
-                .await
-                .map_err(|e| FfiError::InvalidArgument(e.to_string()))?;
+            client.delete_topic(&name).await?;
 
             Ok::<(), FfiError>(())
         })
-        .await
-        .map_err(|e| FfiError::InvalidArgument(e.to_string()))?
+        .await?
     }
 }

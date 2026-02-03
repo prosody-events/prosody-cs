@@ -213,8 +213,7 @@ impl ProsodyClient {
             &mut producer_config,
             &consumer_builders,
             &cassandra_config,
-        )
-        .map_err(|_| FfiError::Internal)?;
+        )?;
 
         Ok(Self {
             client,
@@ -242,10 +241,7 @@ impl ProsodyClient {
             handler,
             propagator: Arc::new(new_propagator()),
         };
-        self.client
-            .subscribe(cs_handler)
-            .await
-            .map_err(|_| FfiError::Internal)?;
+        self.client.subscribe(cs_handler).await?;
 
         Ok(())
     }
@@ -257,10 +253,7 @@ impl ProsodyClient {
     /// Returns error if unsubscription fails.
     pub async fn unsubscribe(&self) -> Result<(), FfiError> {
         // Unsubscribe from the client
-        self.client
-            .unsubscribe()
-            .await
-            .map_err(|_| FfiError::Internal)?;
+        self.client.unsubscribe().await?;
 
         // Clear the handler reference
         self.handler.store(Arc::new(None));
@@ -315,7 +308,7 @@ impl ProsodyClient {
             tokio::select! {
                 result = send_future => {
                     span.record("aborted", false);
-                    result.map_err(|_| FfiError::Internal)?;
+                    result?;
                 }
                 () = signal.cancelled() => {
                     span.record("aborted", true);
@@ -323,7 +316,7 @@ impl ProsodyClient {
                 }
             }
         } else {
-            send_future.await.map_err(|_| FfiError::Internal)?;
+            send_future.await?;
             span.record("aborted", false);
         }
 

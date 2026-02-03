@@ -94,8 +94,7 @@ impl Context {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
-        let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
+        let compact_time = CompactDateTime::try_from(time)?;
 
         // Create span with extracted context as parent (matches C# ScheduleAsync)
         let span = info_span!("Schedule", time = %compact_time);
@@ -106,8 +105,9 @@ impl Context {
         self.inner
             .schedule(compact_time, TimerType::Application)
             .instrument(span)
-            .await
-            .map_err(|_| FfiError::Internal)
+            .await?;
+
+        Ok(())
     }
 
     /// Unschedule all existing timers, then schedule exactly one new timer.
@@ -129,8 +129,7 @@ impl Context {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
-        let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
+        let compact_time = CompactDateTime::try_from(time)?;
 
         // Create span with extracted context as parent (matches C#
         // ClearAndScheduleAsync)
@@ -142,8 +141,9 @@ impl Context {
         self.inner
             .clear_and_schedule(compact_time, TimerType::Application)
             .instrument(span)
-            .await
-            .map_err(|_| FfiError::Internal)
+            .await?;
+
+        Ok(())
     }
 
     /// Unschedule a specific timer at the given time.
@@ -165,8 +165,7 @@ impl Context {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
-        let compact_time = CompactDateTime::try_from(time)
-            .map_err(|e| FfiError::InvalidArgument(format!("{e:#}")))?;
+        let compact_time = CompactDateTime::try_from(time)?;
 
         // Create span with extracted context as parent (matches C# UnscheduleAsync)
         let span = info_span!("Unschedule", time = %compact_time);
@@ -177,8 +176,9 @@ impl Context {
         self.inner
             .unschedule(compact_time, TimerType::Application)
             .instrument(span)
-            .await
-            .map_err(|_| FfiError::Internal)
+            .await?;
+
+        Ok(())
     }
 
     /// Unschedule all timers for the current key.
@@ -190,10 +190,7 @@ impl Context {
     /// # Errors
     ///
     /// Returns `FfiError::Internal` if the operation fails.
-    pub async fn clear_scheduled(
-        &self,
-        carrier: HashMap<String, String>,
-    ) -> Result<(), FfiError> {
+    pub async fn clear_scheduled(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
 
@@ -206,8 +203,9 @@ impl Context {
         self.inner
             .clear_scheduled(TimerType::Application)
             .instrument(span)
-            .await
-            .map_err(|_| FfiError::Internal)
+            .await?;
+
+        Ok(())
     }
 
     /// List all scheduled timer times for the current key.
@@ -236,13 +234,13 @@ impl Context {
             debug!("failed to set parent span: {err:#}");
         }
 
-        self.inner
+        Ok(self
+            .inner
             .scheduled(TimerType::Application)
             .map_ok(Into::<SystemTime>::into)
             .try_collect()
             .instrument(span)
-            .await
-            .map_err(|_| FfiError::Internal)
+            .await?)
     }
 }
 
