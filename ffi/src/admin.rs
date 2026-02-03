@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use crate::error::FfiError;
 use prosody::admin::{AdminConfiguration, ProsodyAdminClient, TopicConfiguration};
-use tokio::spawn;
 
 /// A client for performing administrative operations on Kafka topics.
 ///
@@ -55,20 +54,15 @@ impl AdminClient {
         partition_count: u16,
         replication_factor: u16,
     ) -> Result<(), FfiError> {
-        let client = self.client.clone();
+        let config = TopicConfiguration::builder()
+            .name(name)
+            .partition_count(partition_count)
+            .replication_factor(replication_factor)
+            .build()?;
 
-        spawn(async move {
-            let config = TopicConfiguration::builder()
-                .name(name)
-                .partition_count(partition_count)
-                .replication_factor(replication_factor)
-                .build()?;
+        self.client.create_topic(&config).await?;
 
-            client.create_topic(&config).await?;
-
-            Ok::<(), FfiError>(())
-        })
-        .await?
+        Ok(())
     }
 
     /// Deletes a Kafka topic.
@@ -81,13 +75,8 @@ impl AdminClient {
     ///
     /// Returns a `FfiError` if topic deletion fails.
     pub async fn delete_topic(&self, name: String) -> Result<(), FfiError> {
-        let client = self.client.clone();
+        self.client.delete_topic(&name).await?;
 
-        spawn(async move {
-            client.delete_topic(&name).await?;
-
-            Ok::<(), FfiError>(())
-        })
-        .await?
+        Ok(())
     }
 }
