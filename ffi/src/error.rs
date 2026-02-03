@@ -51,27 +51,32 @@ impl From<simd_json::Error> for ProsodyError {
 /// Error type for C# handler errors.
 ///
 /// This is used internally to represent errors from C# callback
-/// implementations.
+/// implementations. Error messages from C# exceptions are preserved
+/// for logging and diagnostics.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
     /// Transient error - should retry.
-    #[error("Transient error")]
-    Transient,
+    #[error("transient error: {0}")]
+    Transient(String),
 
     /// Permanent error - should not retry.
-    #[error("Permanent error")]
-    Permanent,
+    #[error("permanent error: {0}")]
+    Permanent(String),
 
-    /// Handler was cancelled.
-    #[error("Handler cancelled")]
-    Cancelled,
+    /// FFI infrastructure error - should retry.
+    #[error(transparent)]
+    Ffi(#[from] ProsodyError),
+
+    /// JSON serialization error - should retry.
+    #[error(transparent)]
+    Json(#[from] simd_json::Error),
 }
 
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Transient | Self::Cancelled => ErrorCategory::Transient,
-            Self::Permanent => ErrorCategory::Permanent,
+            Self::Transient(_) | Self::Ffi(_) | Self::Json(_) => ErrorCategory::Transient,
+            Self::Permanent(_) => ErrorCategory::Permanent,
         }
     }
 }

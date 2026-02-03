@@ -27,7 +27,7 @@ use crate::config::{
 };
 use crate::error::{CsHandlerError, ProsodyError};
 use crate::events::{CancellationSignal, Context, Message, Timer};
-use crate::handler::{EventHandler, HandlerResultCode};
+use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::types::{ClientOptions, ConsumerState};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
@@ -37,6 +37,19 @@ use prosody::high_level::HighLevelClient;
 use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
+
+/// Maps a `HandlerResult` from C# to a `Result` for prosody.
+///
+/// Extracts the error message from the result to preserve it in the error type.
+fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
+    let error_msg = result.error_message.unwrap_or_default();
+
+    match result.code {
+        HandlerResultCode::Success => Ok(()),
+        HandlerResultCode::TransientError => Err(CsHandlerError::Transient(error_msg)),
+        HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent(error_msg)),
+    }
+}
 
 /// Internal handler that bridges C# `EventHandler` to prosody's
 /// `FallibleHandler`.
@@ -78,23 +91,18 @@ impl FallibleHandler for CsHandler {
 
         // Wrap the context and message for C#
         let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let msg = Arc::new(Message::new(message).map_err(|_| CsHandlerError::Permanent)?);
+        let msg = Arc::new(Message::new(message)?);
 
-        // Call the C# handler - it returns a result code
+        // Call the C# handler - it returns a result with code and optional error
+        // message
         let result = self
             .handler
             .on_message(ctx, msg, carrier)
             .instrument(span)
-            .await
-            .map_err(|_| CsHandlerError::Permanent)?;
+            .await?;
 
-        // Map result code to our error type
-        match result {
-            HandlerResultCode::Success => Ok(()),
-            HandlerResultCode::TransientError => Err(CsHandlerError::Transient),
-            HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent),
-            HandlerResultCode::Cancelled => Err(CsHandlerError::Cancelled),
-        }
+        // Map result to our error type, preserving error messages
+        map_handler_result(result)
     }
 
     async fn on_timer<C>(
@@ -123,21 +131,16 @@ impl FallibleHandler for CsHandler {
         let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
         let tmr = Arc::new(Timer::new(trigger));
 
-        // Call the C# handler - it returns a result code
+        // Call the C# handler - it returns a result with code and optional error
+        // message
         let result = self
             .handler
             .on_timer(ctx, tmr, carrier)
             .instrument(span)
-            .await
-            .map_err(|_| CsHandlerError::Permanent)?;
+            .await?;
 
-        // Map result code to our error type
-        match result {
-            HandlerResultCode::Success => Ok(()),
-            HandlerResultCode::TransientError => Err(CsHandlerError::Transient),
-            HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent),
-            HandlerResultCode::Cancelled => Err(CsHandlerError::Cancelled),
-        }
+        // Map result to our error type, preserving error messages
+        map_handler_result(result)
     }
 
     async fn shutdown(self) {}

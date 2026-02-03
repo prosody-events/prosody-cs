@@ -34,10 +34,9 @@ public sealed class EnumTests
     {
         var values = Enum.GetValues<HandlerResultCode>();
 
-        Assert.Equal(4, values.Length);
+        Assert.Equal(3, values.Length);
         Assert.Contains(HandlerResultCode.Success, values);
         Assert.Contains(HandlerResultCode.TransientError, values);
         Assert.Contains(HandlerResultCode.PermanentError, values);
-        Assert.Contains(HandlerResultCode.Cancelled, values);
     }
 }

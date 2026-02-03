@@ -1,5 +1,6 @@
 using System.Reflection;
 using NativeHandler = Prosody.Native.EventHandler;
+using NativeResult = Prosody.Native.HandlerResult;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody;
@@ -49,7 +50,7 @@ internal sealed class EventHandlerBridge : NativeHandler
     }
 
     /// <inheritdoc/>
-    public async Task<NativeResultCode> OnMessage(
+    public async Task<NativeResult> OnMessage(
         Native.Context context,
         Native.Message message,
         Dictionary<string, string> carrier
@@ -75,26 +76,22 @@ internal sealed class EventHandlerBridge : NativeHandler
             await _userHandler
                 .OnMessageAsync(wrappedContext, wrappedMessage, cts.Token)
                 .ConfigureAwait(false);
-            return NativeResultCode.Success;
-        }
-        catch (OperationCanceledException) when (context.ShouldCancel())
-        {
-            return NativeResultCode.Cancelled;
+            return new NativeResult(NativeResultCode.Success, null);
         }
         catch (Exception ex) when (IsPermanentError(ex, _onMessageAttribute))
         {
-            return NativeResultCode.PermanentError;
+            return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
-        catch
+        catch (Exception ex)
         {
-            return NativeResultCode.TransientError;
+            return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
     }
 
     /// <inheritdoc/>
-    public async Task<NativeResultCode> OnTimer(
+    public async Task<NativeResult> OnTimer(
         Native.Context context,
         Native.Timer timer,
         Dictionary<string, string> carrier
@@ -120,20 +117,16 @@ internal sealed class EventHandlerBridge : NativeHandler
             await _userHandler
                 .OnTimerAsync(wrappedContext, wrappedTimer, cts.Token)
                 .ConfigureAwait(false);
-            return NativeResultCode.Success;
-        }
-        catch (OperationCanceledException) when (context.ShouldCancel())
-        {
-            return NativeResultCode.Cancelled;
+            return new NativeResult(NativeResultCode.Success, null);
         }
         catch (Exception ex) when (IsPermanentError(ex, _onTimerAttribute))
         {
-            return NativeResultCode.PermanentError;
+            return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
-        catch
+        catch (Exception ex)
         {
-            return NativeResultCode.TransientError;
+            return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
     }

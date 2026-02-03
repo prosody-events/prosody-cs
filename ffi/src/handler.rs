@@ -13,7 +13,7 @@ use crate::events::{Context, Message, Timer};
 
 /// Result code returned by event handlers.
 ///
-/// This enum allows handlers to signal success, errors, or cancellation
+/// This enum allows handlers to signal success or error type
 /// back to Prosody for proper error classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
 pub enum HandlerResultCode {
@@ -24,8 +24,21 @@ pub enum HandlerResultCode {
     TransientError,
     /// Permanent error - should not retry (send to DLQ).
     PermanentError,
-    /// Handler was cancelled.
-    Cancelled,
+}
+
+/// Result returned by event handlers.
+///
+/// Contains both the result code and an optional error message for
+/// error cases. The error message is passed back to Rust for logging
+/// and diagnostics.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct HandlerResult {
+    /// The result code indicating success or type of error.
+    pub code: HandlerResultCode,
+    /// Optional error message for error cases.
+    /// Contains the exception message when `code` is `TransientError` or
+    /// `PermanentError`.
+    pub error_message: Option<String>,
 }
 
 /// Event handler trait for FFI boundary.
@@ -42,7 +55,7 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
-    ) -> Result<HandlerResultCode, ProsodyError>;
+    ) -> Result<HandlerResult, ProsodyError>;
 
     /// Called when a timer fires.
     async fn on_timer(
@@ -50,5 +63,5 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         timer: Arc<Timer>,
         carrier: HashMap<String, String>,
-    ) -> Result<HandlerResultCode, ProsodyError>;
+    ) -> Result<HandlerResult, ProsodyError>;
 }
