@@ -21,9 +21,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use tokio::sync::Notify;
-
 use futures::TryStreamExt;
+use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
+use tokio::sync::Notify;
+use tracing::{Instrument, debug, info_span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+
 use prosody::consumer::Keyed;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::consumer::message::ConsumerMessage;
@@ -43,6 +46,8 @@ use crate::error::ProsodyError;
 #[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext,
+    /// OpenTelemetry propagator for distributed tracing context propagation.
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[expect(
@@ -52,8 +57,8 @@ pub struct Context {
 impl Context {
     /// Creates a new `Context` wrapping a [`BoxEventContext`].
     #[must_use]
-    pub fn new(inner: BoxEventContext) -> Self {
-        Self { inner }
+    pub fn new(inner: BoxEventContext, propagator: Arc<TextMapCompositePropagator>) -> Self {
+        Self { inner, propagator }
     }
 }
 
@@ -86,11 +91,21 @@ impl Context {
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.propagator.extract(&carrier);
+
         let compact_time = CompactDateTime::try_from(time)
             .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+
+        // Create span with extracted context as parent (matches C# ScheduleAsync)
+        let span = info_span!("Schedule", time = %compact_time);
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+
         self.inner
             .schedule(compact_time, TimerType::Application)
+            .instrument(span)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -111,11 +126,21 @@ impl Context {
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.propagator.extract(&carrier);
+
         let compact_time = CompactDateTime::try_from(time)
             .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+
+        // Create span with extracted context as parent (matches C# ClearAndScheduleAsync)
+        let span = info_span!("ClearAndSchedule", time = %compact_time);
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+
         self.inner
             .clear_and_schedule(compact_time, TimerType::Application)
+            .instrument(span)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -136,11 +161,21 @@ impl Context {
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.propagator.extract(&carrier);
+
         let compact_time = CompactDateTime::try_from(time)
             .map_err(|e| ProsodyError::InvalidArgument(format!("{e:#}")))?;
+
+        // Create span with extracted context as parent (matches C# UnscheduleAsync)
+        let span = info_span!("Unschedule", time = %compact_time);
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+
         self.inner
             .unschedule(compact_time, TimerType::Application)
+            .instrument(span)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -158,9 +193,18 @@ impl Context {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<(), ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.propagator.extract(&carrier);
+
+        // Create span with extracted context as parent (matches C# ClearScheduledAsync)
+        let span = info_span!("ClearScheduled");
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+
         self.inner
             .clear_scheduled(TimerType::Application)
+            .instrument(span)
             .await
             .map_err(|_| ProsodyError::Internal)
     }
@@ -182,11 +226,20 @@ impl Context {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<SystemTime>, ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.propagator.extract(&carrier);
+
+        // Create span with extracted context as parent (matches C# ScheduledAsync)
+        let span = info_span!("Scheduled");
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+
         self.inner
             .scheduled(TimerType::Application)
             .map_ok(Into::<SystemTime>::into)
             .try_collect()
+            .instrument(span)
             .await
             .map_err(|_| ProsodyError::Internal)
     }

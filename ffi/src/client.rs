@@ -16,7 +16,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use simd_json::serde::from_slice;
+use tracing::{Instrument, debug, info_span};
+use tracing::field::Empty;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
@@ -31,6 +35,7 @@ use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
 use prosody::high_level::HighLevelClient;
 use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
+use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
 
 /// Internal handler that bridges C# `EventHandler` to prosody's
@@ -38,12 +43,15 @@ use prosody::timers::{TimerType, Trigger};
 struct CsHandler {
     /// The C# native event handler implementation.
     handler: Arc<dyn EventHandler>,
+    /// OpenTelemetry propagator for distributed tracing context propagation.
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 impl Clone for CsHandler {
     fn clone(&self) -> Self {
         Self {
             handler: Arc::clone(&self.handler),
+            propagator: Arc::clone(&self.propagator),
         }
     }
 }
@@ -60,18 +68,26 @@ impl FallibleHandler for CsHandler {
     where
         C: EventContext,
     {
-        // Wrap the context and message for C#
-        let ctx = Arc::new(Context::new(context.boxed()));
-        let msg = Arc::new(Message::new(message).map_err(|_| CsHandlerError::Permanent)?);
+        // Get the span from the message for distributed tracing
+        let span = message.span();
 
-        // TODO: Extract OpenTelemetry carrier from prosody context
-        // For now, pass an empty carrier - C# can populate it if needed
-        let carrier: HashMap<String, String> = HashMap::new();
+        // Inject span context into carrier for C#
+        let mut carrier = HashMap::with_capacity(2);
+        self.propagator
+            .inject_context(&span.context(), &mut carrier);
+
+        // Wrap the context and message for C#
+        let ctx = Arc::new(Context::new(
+            context.boxed(),
+            Arc::clone(&self.propagator),
+        ));
+        let msg = Arc::new(Message::new(message).map_err(|_| CsHandlerError::Permanent)?);
 
         // Call the C# handler - it returns a result code
         let result = self
             .handler
             .on_message(ctx, msg, carrier)
+            .instrument(span)
             .await
             .map_err(|_| CsHandlerError::Permanent)?;
 
@@ -98,18 +114,26 @@ impl FallibleHandler for CsHandler {
             return Ok(());
         }
 
-        // Wrap the context and timer for C#
-        let ctx = Arc::new(Context::new(context.boxed()));
-        let tmr = Arc::new(Timer::new(trigger));
+        // Get the span from the trigger for distributed tracing
+        let span = trigger.span();
 
-        // TODO: Extract OpenTelemetry carrier from prosody context
-        // For now, pass an empty carrier - C# can populate it if needed
-        let carrier: HashMap<String, String> = HashMap::new();
+        // Inject span context into carrier for C#
+        let mut carrier = HashMap::with_capacity(2);
+        self.propagator
+            .inject_context(&span.context(), &mut carrier);
+
+        // Wrap the context and timer for C#
+        let ctx = Arc::new(Context::new(
+            context.boxed(),
+            Arc::clone(&self.propagator),
+        ));
+        let tmr = Arc::new(Timer::new(trigger));
 
         // Call the C# handler - it returns a result code
         let result = self
             .handler
             .on_timer(ctx, tmr, carrier)
+            .instrument(span)
             .await
             .map_err(|_| CsHandlerError::Permanent)?;
 
@@ -216,8 +240,11 @@ impl ProsodyClient {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
-        // Create the internal handler and subscribe
-        let cs_handler = CsHandler { handler };
+        // Create the internal handler with propagator for distributed tracing
+        let cs_handler = CsHandler {
+            handler,
+            propagator: Arc::new(new_propagator()),
+        };
         self.client
             .subscribe(cs_handler)
             .await
@@ -267,29 +294,39 @@ impl ProsodyClient {
         carrier: HashMap<String, String>,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), ProsodyError> {
-        let _ = carrier; // TODO: Use for tracing propagation
+        // Extract OpenTelemetry context from carrier passed by C#
+        let context = self.client.propagator().extract(&carrier);
+
+        // Create span with extracted context as parent (matches C# SendAsync/SendRawAsync)
+        let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
 
         // Parse the payload as JSON using simd_json's serde integration.
         // This deserializes into serde_json::Value which prosody expects.
         let json_value: serde_json::Value = from_slice(&mut payload)?;
 
-        // Send the message, with optional cancellation
-        let send_future = self.client.send(topic.as_str().into(), &key, &json_value);
+        // Send the message with tracing, with optional cancellation
+        let send_future = self
+            .client
+            .send(topic.as_str().into(), &key, &json_value)
+            .instrument(span.clone());
 
-        match cancel {
-            Some(signal) => {
-                tokio::select! {
-                    result = send_future => {
-                        result.map_err(|_| ProsodyError::Internal)?;
-                    }
-                    () = signal.cancelled() => {
-                        return Err(ProsodyError::Cancelled);
-                    }
+        if let Some(signal) = cancel {
+            tokio::select! {
+                result = send_future => {
+                    span.record("aborted", false);
+                    result.map_err(|_| ProsodyError::Internal)?;
+                }
+                () = signal.cancelled() => {
+                    span.record("aborted", true);
+                    return Err(ProsodyError::Cancelled);
                 }
             }
-            None => {
-                send_future.await.map_err(|_| ProsodyError::Internal)?;
-            }
+        } else {
+            send_future.await.map_err(|_| ProsodyError::Internal)?;
+            span.record("aborted", false);
         }
 
         Ok(())
