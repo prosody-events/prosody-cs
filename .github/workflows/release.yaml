@@ -99,9 +99,9 @@ jobs:
 
       - name: Install cross (for cross-compilation)
         if: matrix.target.use_cross
-        uses: taiki-e/install-action@v2
+        uses: baptiste0928/cargo-install@v3
         with:
-          tool: cross
+          crate: cross
 
       - name: Build native library
         shell: bash

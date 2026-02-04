@@ -111,9 +111,9 @@ jobs:
           components: rustfmt
 
       - name: Install taplo
-        uses: taiki-e/install-action@v2
+        uses: baptiste0928/cargo-install@v3
         with:
-          tool: taplo-cli
+          crate: taplo-cli
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -153,9 +153,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-udeps
-        uses: taiki-e/install-action@v2
+        uses: baptiste0928/cargo-install@v3
         with:
-          tool: cargo-udeps
+          crate: cargo-udeps
 
       - name: Check unused dependencies
         run: cargo +nightly udeps
