@@ -30,12 +30,12 @@
 //! var client = new ProsodyClient(options);
 //! ```
 
-use arc_swap::ArcSwap;
+use arc_swap::ArcSwapOption;
 use prosody::tracing::initialize_tracing;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
-use std::sync::{Arc, LazyLock, Once};
+use std::sync::{Arc, Once};
 use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
@@ -72,18 +72,6 @@ impl From<Level> for LogLevel {
     }
 }
 
-impl From<LogLevel> for Level {
-    fn from(level: LogLevel) -> Self {
-        match level {
-            LogLevel::Trace => Self::TRACE,
-            LogLevel::Debug => Self::DEBUG,
-            LogLevel::Information => Self::INFO,
-            LogLevel::Warning => Self::WARN,
-            LogLevel::Error | LogLevel::Critical => Self::ERROR,
-        }
-    }
-}
-
 /// Structured fields from a tracing event, organized by type.
 ///
 /// Fields are separated by their native types to preserve type information
@@ -102,34 +90,9 @@ pub struct LogFields {
     pub bools: HashMap<String, bool>,
 }
 
-/// A no-op log sink that discards all messages.
-struct NullLogSink;
-
-impl LogSink for NullLogSink {
-    fn is_enabled(&self, _level: LogLevel) -> bool {
-        false
-    }
-
-    fn log(
-        &self,
-        _level: LogLevel,
-        _target: String,
-        _message: String,
-        _file: Option<String>,
-        _line: Option<u32>,
-        _fields: LogFields,
-    ) {
-    }
-}
-
-/// Global log sink instance. Defaults to a no-op sink that discards all
-/// messages. Uses `Arc<Arc<dyn LogSink>>` to work around arc-swap's `Sized`
-/// requirement.
-static LOG_SINK: LazyLock<ArcSwap<Arc<dyn LogSink>>> =
-    LazyLock::new(|| ArcSwap::from_pointee(Arc::new(NullLogSink) as Arc<dyn LogSink>));
-
-/// Guard for one-time tracing initialization.
-static TRACING_INIT: Once = Once::new();
+/// Global log sink instance. Starts empty (logging disabled) until configured.
+/// Uses `Arc<Arc<dyn LogSink>>` because arc-swap requires `Sized` types.
+static LOG_SINK: ArcSwapOption<Arc<dyn LogSink>> = ArcSwapOption::const_empty();
 
 /// Callback interface for log messages from Rust to C#.
 ///
@@ -166,15 +129,13 @@ pub trait LogSink: Send + Sync {
     );
 }
 
-/// Initialize the tracing system.
+/// Initialize the tracing system with the `LogSinkLayer`.
 ///
-/// This function sets up the Rust tracing infrastructure with the
-/// `LogSinkLayer`. It should be called once at application startup, typically
-/// by the C# wrapper before any logging configuration.
-///
-/// This function is idempotent - subsequent calls after the first are no-ops.
-#[allow(clippy::print_stderr, reason = "tracing is not initialized yet")]
+/// Idempotent - subsequent calls after the first are no-ops.
+#[expect(clippy::print_stderr, reason = "tracing is not initialized yet")]
 pub(crate) fn ensure_tracing_initialized() {
+    static TRACING_INIT: Once = Once::new();
+
     TRACING_INIT.call_once(|| {
         if let Err(error) = initialize_tracing(Some(LogSinkLayer)) {
             eprintln!("failed to initialize tracing: {error:#}");
@@ -201,7 +162,7 @@ pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
     // Ensure tracing is initialized before configuring the sink
     ensure_tracing_initialized();
 
-    LOG_SINK.store(Arc::new(sink));
+    LOG_SINK.store(Some(Arc::new(sink)));
 }
 
 /// Clear the global log sink (disable logging).
@@ -210,7 +171,7 @@ pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
 /// a new log sink is configured via `configure_log_sink`.
 #[uniffi::export]
 pub fn clear_log_sink() {
-    LOG_SINK.store(Arc::new(Arc::new(NullLogSink) as Arc<dyn LogSink>));
+    LOG_SINK.store(None);
 }
 
 /// A tracing layer that forwards events to the configured C# log sink.
@@ -223,13 +184,19 @@ pub struct LogSinkLayer;
 
 impl<S: Subscriber> Layer<S> for LogSinkLayer {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        // Load the current log sink
+        // Load the current log sink, return early if none configured
         let sink = LOG_SINK.load();
+        let Some(ref sink) = sink.as_ref() else {
+            return;
+        };
 
         let metadata = event.metadata();
-        let level = LogLevel::from(*metadata.level());
+        if !metadata.is_event() {
+            return;
+        }
 
         // Check if this level is enabled before doing any formatting work
+        let level = LogLevel::from(*metadata.level());
         if !sink.is_enabled(level) {
             return;
         }
