@@ -1,0 +1,337 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - uses: google-github-actions/release-please-action@v3
+        id: release
+        with:
+          release-type: simple
+          package-name: Prosody
+          token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
+
+  build-native:
+    name: Build Native (${{ matrix.target.rid }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            lib_prefix: ""
+            lib_ext: .dll
+
+          - rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
+            runner: windows-latest
+            lib_prefix: ""
+            lib_ext: .dll
+
+          - rid: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            lib_prefix: lib
+            lib_ext: .so
+
+          - rid: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            lib_prefix: lib
+            lib_ext: .so
+            use_cross: true
+
+          - rid: osx-x64
+            rust_target: x86_64-apple-darwin
+            runner: macos-13
+            lib_prefix: lib
+            lib_ext: .dylib
+
+          - rid: osx-arm64
+            rust_target: aarch64-apple-darwin
+            runner: macos-14
+            lib_prefix: lib
+            lib_ext: .dylib
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://git:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.rust_target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target.rid }}
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.target.use_cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build native library
+        shell: bash
+        env:
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+        run: |
+          if [ "${{ matrix.target.use_cross }}" = "true" ]; then
+            cross build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+          else
+            cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+          fi
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts/${{ matrix.target.rid }}
+          cp target/${{ matrix.target.rust_target }}/release/${{ matrix.target.lib_prefix }}prosody_ffi${{ matrix.target.lib_ext }} \
+             artifacts/${{ matrix.target.rid }}/
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target.rid }}
+          path: artifacts/${{ matrix.target.rid }}/
+          if-no-files-found: error
+
+  build-package:
+    name: Build NuGet Package
+    needs: [release-please, build-native]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://git:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust (nightly for fmt)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        run: cargo install uniffi-bindgen-cs --git https://github.com/hadronzoo/uniffi-bindgen-cs.git --branch fix/issue-152-pascalcase-record-properties --force
+
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: artifacts/
+          merge-multiple: false
+
+      - name: Reorganize artifacts for NuGet packing
+        run: |
+          # Create prosody-ffi/artifacts structure expected by Prosody.csproj
+          mkdir -p prosody-ffi/artifacts
+          cd artifacts
+          for dir in native-*; do
+            rid="${dir#native-}"
+            mv "$dir" "../prosody-ffi/artifacts/$rid"
+          done
+          cd ../prosody-ffi/artifacts
+          ls -laR
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI (for bindgen only, not packaging)
+        run: cargo build -p prosody-ffi
+
+      - name: Generate C# bindings
+        run: make bindgen
+
+      - name: Pack NuGet package
+        run: |
+          dotnet pack src/Prosody/Prosody.csproj \
+            -c Release \
+            -p:PackageVersion=${{ needs.release-please.outputs.version }} \
+            -p:ContinuePackingAfterGeneratingNuspec=true \
+            -o ./packages
+
+      - name: Upload NuGet package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: packages/*.nupkg
+          if-no-files-found: error
+
+  test-linux-x64:
+    name: Test Linux x64
+    needs: [release-please, build-native]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: bitnamilegacy/kafka:3.7
+        ports:
+          - 9094:9094
+        env:
+          KAFKA_CFG_NODE_ID: 0
+          KAFKA_CFG_PROCESS_ROLES: controller,broker
+          KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+          KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+          KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+          KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+        options: >-
+          --health-cmd "kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 30s
+
+      cassandra:
+        image: cassandra:latest
+        ports:
+          - 9042:9042
+        options: >-
+          --health-cmd "cqlsh -e 'SELECT cluster_name FROM system.local'"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 15
+          --health-start-period 60s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://git:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust (nightly for fmt)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        run: cargo install uniffi-bindgen-cs --git https://github.com/hadronzoo/uniffi-bindgen-cs.git --branch fix/issue-152-pascalcase-record-properties --force
+
+      - name: Download linux-x64 native artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x64
+          path: artifacts/linux-x64/
+
+      - name: Setup native library paths
+        run: |
+          # Create prosody-ffi/target structure expected by .NET build
+          mkdir -p prosody-ffi/target/x86_64-unknown-linux-gnu/release
+          cp artifacts/linux-x64/libprosody_ffi.so prosody-ffi/target/x86_64-unknown-linux-gnu/release/
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI (for bindgen)
+        run: cargo build -p prosody-ffi
+
+      - name: Generate C# bindings
+        run: make bindgen
+
+      - name: Build .NET
+        run: dotnet build
+
+      - name: Run tests
+        run: dotnet run --project test/Prosody.Tests --no-build
+        env:
+          PROSODY_BOOTSTRAP_SERVERS: localhost:9094
+          PROSODY_CASSANDRA_NODES: localhost:9042
+          PROSODY_CASSANDRA_KEYSPACE: prosody_test
+
+  publish:
+    name: Publish
+    needs: [release-please, build-package, test-linux-x64]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: packages/
+
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget push packages/*.nupkg \
+            --source "https://nuget.pkg.github.com/cincpro/index.json" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate
+
+      # Uncomment when ready to publish to NuGet.org
+      # - name: Publish to NuGet.org
+      #   run: |
+      #     dotnet nuget push packages/*.nupkg \
+      #       --source "https://api.nuget.org/v3/index.json" \
+      #       --api-key ${{ secrets.NUGET_API_KEY }} \
+      #       --skip-duplicate

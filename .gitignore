@@ -18,6 +18,7 @@ riderModule.iml
 target/
 ffi/artifacts/
 ffi-build/artifacts/
+prosody-ffi/artifacts/
 debug/
 release/
 *.rs.bk

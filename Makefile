@@ -8,7 +8,7 @@
 #   make format     - Format all code
 #   make clean      - Clean build artifacts
 
-.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-csharp clean help copy-native-to-test-output
+.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-csharp clean help copy-native-to-test-output pack
 
 # ==============================================================================
 # Platform Detection
@@ -83,6 +83,7 @@ help:
 	@echo "  make test         - Run all tests"
 	@echo "  make lint         - Run all linters (Rust + C#)"
 	@echo "  make format       - Format all code (Rust + C#)"
+	@echo "  make pack         - Build NuGet package locally (current platform only)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
 	@echo "Individual commands:"
@@ -246,6 +247,55 @@ test: build
 	dotnet run --project test/Prosody.Tests --no-build
 
 # ==============================================================================
+# Pack
+# ==============================================================================
+
+# NuGet package output directory
+PACK_OUTPUT := packages
+
+# RID for current platform (matches .NET runtime identifier)
+ifeq ($(UNAME),Darwin)
+    ifeq ($(ARCH),arm64)
+        RID := osx-arm64
+    else
+        RID := osx-x64
+    endif
+else ifeq ($(UNAME),Linux)
+    ifeq ($(ARCH),aarch64)
+        RID := linux-arm64
+    else
+        RID := linux-x64
+    endif
+else
+    ifeq ($(ARCH),ARM64)
+        RID := win-arm64
+    else
+        RID := win-x64
+    endif
+endif
+
+# Build NuGet package locally (current platform only)
+# This exercises the packaging machinery without needing all platform builds
+pack: build-ffi-release bindgen-release
+	@echo "==> Staging native library for NuGet packaging..."
+	@mkdir -p "prosody-ffi/artifacts/$(RID)"
+	cp "$(CDYLIB_RELEASE)" "prosody-ffi/artifacts/$(RID)/$(LIB_NAME)"
+	@echo "Native library staged at prosody-ffi/artifacts/$(RID)/$(LIB_NAME)"
+	@echo ""
+	@echo "==> Building NuGet package..."
+	@mkdir -p "$(PACK_OUTPUT)"
+	dotnet pack src/Prosody/Prosody.csproj \
+		-c Release \
+		-p:ContinuePackingAfterGeneratingNuspec=true \
+		-o "$(PACK_OUTPUT)"
+	@echo ""
+	@echo "==> NuGet package created:"
+	@ls -la "$(PACK_OUTPUT)"/*.nupkg
+	@echo ""
+	@echo "Note: This package only contains the $(RID) native library."
+	@echo "For a full multi-platform package, use the release workflow."
+
+# ==============================================================================
 # Clean
 # ==============================================================================
 
@@ -253,6 +303,8 @@ clean:
 	cargo clean
 	rm -rf "$(BINDINGS_DIR)"/*.cs
 	rm -rf prosody-ffi/target
+	rm -rf prosody-ffi/artifacts
+	rm -rf "$(PACK_OUTPUT)"
 	dotnet clean 2>/dev/null || true
 	find . -type d -name 'bin' -not -path './target/*' -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name 'obj' -not -path './target/*' -exec rm -rf {} + 2>/dev/null || true

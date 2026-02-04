@@ -15,10 +15,16 @@
     <Description>A high-level Kafka client library with OpenTelemetry integration for distributed tracing</Description>
     <Authors>Josh Griffith</Authors>
     <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing</PackageTags>
-    <PackageLicenseExpression>UNLICENSED</PackageLicenseExpression>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <RepositoryUrl>https://github.com/cincpro/prosody-cs</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.2" />
@@ -66,30 +72,33 @@
     </ProsodyNativeArtifact>
   </ItemGroup>
 
-  <!-- Include native libraries from Rust output during build -->
+  <!-- Include native libraries from Rust output during build (for local development) -->
   <Target Name="IncludeNativeLibraries" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup Condition="'$(Configuration)' == 'Debug'">
       <Content Include="%(ProsodyNativeArtifact.RustOutputDebugPath)"
                Condition="Exists('%(ProsodyNativeArtifact.RustOutputDebugPath)')"
                Link="%(ProsodyNativeArtifact.Link)"
-               CopyToOutputDirectory="Always" />
+               CopyToOutputDirectory="Always"
+               Pack="false" />
     </ItemGroup>
     <ItemGroup Condition="'$(Configuration)' == 'Release'">
       <Content Include="%(ProsodyNativeArtifact.RustOutputReleasePath)"
                Condition="Exists('%(ProsodyNativeArtifact.RustOutputReleasePath)')"
                Link="%(ProsodyNativeArtifact.Link)"
-               CopyToOutputDirectory="Always" />
+               CopyToOutputDirectory="Always"
+               Pack="false" />
     </ItemGroup>
   </Target>
 
-  <!-- When packaging, use artifacts directory -->
-  <Target Name="ProsodyBeforePack" BeforeTargets="DispatchToInnerBuilds" Condition="'$(ContinuePackingAfterGeneratingNuspec)' != ''">
+  <!-- When packaging, include native libraries in runtimes/{rid}/native/ -->
+  <Target Name="ProsodyBeforePack" BeforeTargets="GenerateNuspec">
     <ItemGroup>
-      <Content Include="%(ProsodyNativeArtifact.LibraryPath)"
-               Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')"
-               Link="%(ProsodyNativeArtifact.Link)"
-               CopyToOutputDirectory="Always" />
+      <_PackageFiles Include="%(ProsodyNativeArtifact.LibraryPath)"
+                     Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')"
+                     PackagePath="%(ProsodyNativeArtifact.PackagePath)" />
     </ItemGroup>
+    <Message Importance="high" Text="Including native library: %(ProsodyNativeArtifact.LibraryPath) -> %(ProsodyNativeArtifact.PackagePath)"
+             Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')" />
   </Target>
 
 </Project>
