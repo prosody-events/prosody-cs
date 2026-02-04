@@ -143,12 +143,6 @@ public sealed class LoggingTests : IDisposable
         Assert.NotNull(entry.Fields);
         Assert.True(entry.Fields.ContainsKey("Target"), "Should have Target field");
         Assert.True(entry.Fields.ContainsKey("Message"), "Should have Message field");
-
-        // Print all fields for visibility
-        foreach (var (key, value) in entry.Fields)
-        {
-            Console.WriteLine($"  {key}: {value} ({value?.GetType().Name ?? "null"})");
-        }
     }
 
     /// <summary>
