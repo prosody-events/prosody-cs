@@ -86,7 +86,7 @@ jobs:
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
         with:
-          credentials: https://geekbot:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -138,7 +138,7 @@ jobs:
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
         with:
-          credentials: https://geekbot:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -250,7 +250,7 @@ jobs:
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
         with:
-          credentials: https://geekbot:${{ secrets.GH_ALL_REPOS_RO }}@github.com/
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
