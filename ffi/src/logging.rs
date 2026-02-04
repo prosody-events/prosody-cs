@@ -186,7 +186,7 @@ impl<S: Subscriber> Layer<S> for LogSinkLayer {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         // Load the current log sink, return early if none configured
         let sink = LOG_SINK.load();
-        let Some(ref sink) = sink.as_ref() else {
+        let Some(sink) = sink.as_ref() else {
             return;
         };
 
