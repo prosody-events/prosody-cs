@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -21,8 +21,13 @@
     <PackageReference Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
 
-  <ItemGroup>
+  <!-- Use ProjectReference for local development, PackageReference for CI package testing -->
+  <ItemGroup Condition="'$(TestPackage)' != 'true'">
     <ProjectReference Include="..\..\src\Prosody\Prosody.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TestPackage)' == 'true'">
+    <PackageReference Include="Prosody" Version="*-*" />
   </ItemGroup>
 
   <ItemGroup>

@@ -226,120 +226,118 @@ jobs:
           path: packages/*.nupkg
           if-no-files-found: error
 
-  test-linux-x64:
-    name: Test Linux x64
-    needs: [build-native]
-    # TEMPORARILY REMOVED: needs: [release-please, build-native]
-    # TEMPORARILY REMOVED: if: needs.release-please.outputs.release_created == 'true'
+  test:
+    name: Test ${{ matrix.target.name }} (.NET ${{ matrix.dotnet }})
+    needs: [build-package]
     runs-on: ubuntu-latest
-    services:
-      kafka:
-        image: bitnamilegacy/kafka:3.7
-        ports:
-          - 9094:9094
-        env:
-          KAFKA_CFG_NODE_ID: 0
-          KAFKA_CFG_PROCESS_ROLES: controller,broker
-          KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-          KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
-          KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
-          KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
-          KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-        options: >-
-          --health-cmd "kafka-topics.sh --bootstrap-server localhost:9092 --list"
-          --health-interval 15s
-          --health-timeout 10s
-          --health-retries 10
-          --health-start-period 30s
-
-      cassandra:
-        image: cassandra:latest
-        ports:
-          - 9042:9042
-        options: >-
-          --health-cmd "cqlsh -e 'SELECT cluster_name FROM system.local'"
-          --health-interval 15s
-          --health-timeout 10s
-          --health-retries 15
-          --health-start-period 60s
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: linux-x64
+            platform: ""
+          - name: linux-arm64
+            platform: linux/arm64
+            needs_qemu: true
+        dotnet: ["8.0", "9.0", "10.0"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
-
-      - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-          packages: cmake libcurl4-openssl-dev
-          version: 1.0
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.x
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust (nightly for fmt)
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install uniffi-bindgen-cs
-        run: cargo install uniffi-bindgen-cs --git https://github.com/hadronzoo/uniffi-bindgen-cs.git --branch fix/issue-152-pascalcase-record-properties --force
-
-      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
-        run: dotnet tool install -g csharpier
-
-      - name: Download linux-x64 native artifact
+      - name: Download NuGet package
         uses: actions/download-artifact@v4
         with:
-          name: native-linux-x64
-          path: artifacts/linux-x64/
+          name: nuget-package
+          path: ./packages
 
-      - name: Setup native library paths
+      - name: Set up QEMU
+        if: matrix.target.needs_qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up binfmt_misc
+        if: matrix.target.needs_qemu
+        run: docker run --rm --privileged tonistiigi/binfmt --install all
+
+      - name: Create Docker network
+        run: docker network create test-network-${{ matrix.target.name }}-${{ matrix.dotnet }}
+
+      - name: Start Kafka container
         run: |
-          # Create prosody-ffi/target structure expected by .NET build
-          mkdir -p prosody-ffi/target/x86_64-unknown-linux-gnu/release
-          cp artifacts/linux-x64/libprosody_ffi.so prosody-ffi/target/x86_64-unknown-linux-gnu/release/
+          docker run -d --name kafka-${{ matrix.target.name }}-${{ matrix.dotnet }} --network test-network-${{ matrix.target.name }}-${{ matrix.dotnet }} \
+            -e KAFKA_CFG_NODE_ID=0 \
+            -e KAFKA_CFG_PROCESS_ROLES=controller,broker \
+            -e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka-${{ matrix.target.name }}-${{ matrix.dotnet }}:9093 \
+            -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+            -e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka-${{ matrix.target.name }}-${{ matrix.dotnet }}:9092 \
+            -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            docker.io/bitnamilegacy/kafka:3.7
 
-      - name: Restore .NET tools
-        run: dotnet tool restore
+      - name: Start Cassandra container
+        run: |
+          docker run -d --name cassandra-${{ matrix.target.name }}-${{ matrix.dotnet }} --network test-network-${{ matrix.target.name }}-${{ matrix.dotnet }} \
+            cassandra:latest
 
-      - name: Restore .NET dependencies
-        run: dotnet restore
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Cassandra and Kafka to be ready..."
 
-      - name: Build FFI (for bindgen)
-        run: cargo build -p prosody-ffi
+          # Wait for Cassandra
+          for i in {1..60}; do
+            if docker exec cassandra-${{ matrix.target.name }}-${{ matrix.dotnet }} cqlsh -e "SELECT cluster_name FROM system.local;" >/dev/null 2>&1; then
+              echo "Cassandra is ready after ${i} attempts"
+              break
+            elif [ $i -eq 60 ]; then
+              echo "Cassandra failed to start after 60 seconds"
+              docker logs cassandra-${{ matrix.target.name }}-${{ matrix.dotnet }}
+              exit 1
+            else
+              sleep 1
+            fi
+          done
 
-      - name: Generate C# bindings
-        run: make bindgen
-
-      - name: Build .NET
-        run: dotnet build
+          # Wait for Kafka
+          for i in {1..60}; do
+            if docker exec kafka-${{ matrix.target.name }}-${{ matrix.dotnet }} kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+              echo "Kafka is ready after ${i} attempts"
+              break
+            elif [ $i -eq 60 ]; then
+              echo "Kafka failed to start after 60 seconds"
+              docker logs kafka-${{ matrix.target.name }}-${{ matrix.dotnet }}
+              exit 1
+            fi
+            sleep 1
+          done
 
       - name: Run tests
-        run: dotnet run --project test/Prosody.Tests --no-build
-        env:
-          PROSODY_BOOTSTRAP_SERVERS: localhost:9094
-          PROSODY_CASSANDRA_NODES: localhost:9042
-          PROSODY_CASSANDRA_KEYSPACE: prosody_test
+        run: |
+          docker run --rm --network test-network-${{ matrix.target.name }}-${{ matrix.dotnet }} \
+            ${{ matrix.target.platform && format('--platform {0}', matrix.target.platform) || '' }} \
+            -e PROSODY_BOOTSTRAP_SERVERS=kafka-${{ matrix.target.name }}-${{ matrix.dotnet }}:9092 \
+            -e PROSODY_CASSANDRA_NODES=cassandra-${{ matrix.target.name }}-${{ matrix.dotnet }}:9042 \
+            -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            -e DOTNET_NOLOGO=1 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
+            bash -c "
+              # Restore with explicit sources (local package + nuget.org)
+              dotnet restore test/Prosody.Tests -p:TestPackage=true \
+                --source /workspace/packages \
+                --source https://api.nuget.org/v3/index.json
+
+              # Run tests using the NuGet package (not ProjectReference)
+              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore -p:TestPackage=true
+            "
 
   # TEMPORARILY DISABLED for testing package builds
   # publish:
   #   name: Publish
-  #   needs: [release-please, build-package, test-linux-x64]
+  #   needs: [release-please, build-package, test]
   #   if: needs.release-please.outputs.release_created == 'true'
   #   runs-on: ubuntu-latest
   #   steps:
