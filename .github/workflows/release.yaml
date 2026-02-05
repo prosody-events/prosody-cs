@@ -73,7 +73,7 @@ jobs:
 
           - rid: osx-x64
             rust_target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-15
             lib_prefix: lib
             lib_ext: .dylib
 
