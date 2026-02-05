@@ -33,10 +33,8 @@ tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 uniffi = { workspace = true, features = ["tokio"] }
 
-#[cfg(not(target_env = "msvc"))]
-tikv-jemallocator = { workspace = true, features = [
-  "disable_initial_exec_tls",
-] }
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true, features = ["disable_initial_exec_tls"] }
 
 [dev-dependencies]
 color-eyre.workspace = true
