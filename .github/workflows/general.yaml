@@ -127,14 +127,8 @@ jobs:
       - name: Restore .NET tools
         run: dotnet tool restore
 
-      - name: Check Rust formatting
-        run: cargo +nightly fmt --all -- --check
-
-      - name: Check TOML formatting
-        run: taplo validate
-
-      - name: Check C# formatting
-        run: dotnet tool run dotnet-csharpier --check .
+      - name: Check formatting
+        run: make format-check
 
   dependencies:
     name: Unused Dependencies

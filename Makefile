@@ -8,7 +8,7 @@
 #   make format     - Format all code
 #   make clean      - Clean build artifacts
 
-.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-csharp clean help copy-native-to-test-output pack
+.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
 
 # ==============================================================================
 # Platform Detection
@@ -108,6 +108,9 @@ setup:
 	@echo ""
 	@echo "==> Installing uniffi-bindgen-cs..."
 	cargo install uniffi-bindgen-cs --git $(BINDGEN_REPO) --branch $(BINDGEN_BRANCH) --force
+	@echo ""
+	@echo "==> Installing taplo (TOML formatter)..."
+	cargo install taplo-cli
 	@echo ""
 	@echo "==> Restoring .NET tools..."
 	dotnet tool restore
@@ -219,10 +222,13 @@ format: format-rust format-csharp
 format-check-rust:
 	cargo +nightly fmt --all -- --check
 
+format-check-toml:
+	taplo check
+
 format-check-csharp:
 	dotnet tool run dotnet-csharpier --check .
 
-format-check: format-check-rust format-check-csharp
+format-check: format-check-rust format-check-toml format-check-csharp
 
 # ==============================================================================
 # Test

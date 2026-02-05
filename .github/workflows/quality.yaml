@@ -41,9 +41,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: |
-          cargo clippy --workspace -- -D warnings
-          cargo clippy --workspace --all-targets -- -D warnings
+        run: make lint-rust
 
   dotnet-lint:
     name: .NET Lint
@@ -87,5 +85,5 @@ jobs:
       - name: Build FFI and generate bindings
         run: make build
 
-      - name: Build with warnings as errors
-        run: dotnet build --warnaserror --no-restore
+      - name: Run C# lint
+        run: make lint-csharp
