@@ -342,9 +342,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.11.0"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b35204fbdc0b3f4446b89fc1ac2cf84a8a68971995d0bf2e925ec7cd960f9cb3"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "camino"
@@ -1699,9 +1699,9 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bee689443a2bd0a16ab0348b52ee43e3b2d1b1f931c8aa5c9f8de4c86fbe8c40"
+checksum = "37566cb3fdacef14c0737f9546df7cfeadbfbc9fef10991038bf5015d0c80532"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1973,9 +1973,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.2"
+version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843bc0191f75f3e22651ae5f1e72939ab2f72a4bc30fa80a066bd66edefc24d4"
+checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1985,9 +1985,9 @@ dependencies = [
 
 [[package]]
 name = "regex-automata"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
+checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1996,9 +1996,9 @@ dependencies = [
 
 [[package]]
 name = "regex-syntax"
-version = "0.8.8"
+version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
+checksum = "a96887878f22d7bad8a3b6dc5b7440e0ada9a245242924394987b21cf2210a4c"
 
 [[package]]
 name = "reqwest"
@@ -2108,9 +2108,9 @@ checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
 name = "saa"
-version = "5.4.5"
+version = "5.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78d0325695c3a94a3751f300fbf253ccc33db53eeed81b1474eec1081921e43e"
+checksum = "da0ba8adb63e0deebd0744d8fc5bea394c08029159deaf680513fec1a3949144"
 
 [[package]]
 name = "same-file"
@@ -2123,9 +2123,9 @@ dependencies = [
 
 [[package]]
 name = "scc"
-version = "3.5.5"
+version = "3.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ccbc3c0af6257ff8e8b50d4e58974631aeaa2af1ea25c4e1398f7de3a7d7dd3"
+checksum = "e4bd9d1727de391b6982925d830baad51692fa2aa6e337733c03d95121ca2793"
 dependencies = [
  "saa",
  "sdd",
@@ -2159,9 +2159,9 @@ dependencies = [
 
 [[package]]
 name = "scylla"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3321054d79dc75f9f3ca449111983ddc3f59aff4561cddb860af884504b4fbc9"
+checksum = "7ab73aaea18839882f43c08bc6367dfd1d4e9d285a2ab6ac4335b9dc06b63c19"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2184,9 +2184,9 @@ dependencies = [
 
 [[package]]
 name = "scylla-cql"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa54ff27320ff09e24c9edf2acef2fa4a2a9b60bfb5832454d1a1768f6c036b7"
+checksum = "87834c927e9336270725aac24fada6e86f9d14aa04a8c8f93223b002e86f3891"
 dependencies = [
  "byteorder",
  "bytes",
@@ -2204,9 +2204,9 @@ dependencies = [
 
 [[package]]
 name = "scylla-macros"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c9e9660119726312cd6c7bd3e286ffc80fb06a9b6d0e214a16df00600829e9"
+checksum = "ad97e5f7ccd8a1d41e631e361c9851c21b093e15ff5dcd08861f6ac83215d434"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2216,9 +2216,9 @@ dependencies = [
 
 [[package]]
 name = "sdd"
-version = "4.6.0"
+version = "4.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caac2546b7d3b36e0ca5d57a5435b4d5967d3d2f9b72c5a492c7a9893684daed"
+checksum = "c25da4ae64b24edfcb0b0d30b96b2b0dbc64ec63aefeb6ec35bfc5ef167e5c9e"
 
 [[package]]
 name = "semver"
@@ -3481,18 +3481,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.37"
+version = "0.8.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7456cf00f0685ad319c5b1693f291a650eaf345e941d082fc4e03df8a03996ac"
+checksum = "57cf3aa6855b23711ee9852dfc97dfaa51c45feaba5b645d0c777414d494a961"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.37"
+version = "0.8.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1328722bbf2115db7e19d69ebcc15e795719e2d66b60827c6a69a117365e37a0"
+checksum = "8a616990af1a287837c4fe6596ad77ef57948f787e46ce28e166facc0cc1cb75"
 dependencies = [
  "proc-macro2",
  "quote",
