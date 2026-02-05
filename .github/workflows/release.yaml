@@ -63,6 +63,7 @@ jobs:
             runner: ubuntu-latest
             lib_prefix: lib
             lib_ext: .so
+            use_cross: true
 
           - rid: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
@@ -322,7 +323,7 @@ jobs:
             -e DOTNET_NOLOGO=1 \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
-            mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }}-noble \
+            mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
             bash -c "
               # Restore for specific framework only (SDK may not support other frameworks)
               dotnet restore test/Prosody.Tests -p:TestPackage=true \
