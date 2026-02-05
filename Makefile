@@ -248,9 +248,10 @@ copy-native-to-test-output:
 
 # Run all tests
 # xUnit v3 test projects are executables - run directly for proper output
+# Uses net10.0 as default framework for local development
 test: build
 	@echo "Running tests..."
-	dotnet run --project test/Prosody.Tests --no-build
+	dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
 
 # ==============================================================================
 # Pack

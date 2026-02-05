@@ -11,7 +11,7 @@
     <VersionPrefix>0.1.0</VersionPrefix>
 
     <!-- NuGet Package -->
-    <PackageId>Prosody</PackageId>
+    <PackageId>Witco.Prosody</PackageId>
     <Description>A high-level Kafka client library with OpenTelemetry integration for distributed tracing</Description>
     <Authors>Josh Griffith</Authors>
     <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing</PackageTags>

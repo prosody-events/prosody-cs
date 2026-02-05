@@ -34,7 +34,7 @@ jobs:
   #       id: release
   #       with:
   #         release-type: simple
-  #         package-name: Prosody
+  #         package-name: Witco.Prosody
   #         token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
 
   build-native:
@@ -211,9 +211,11 @@ jobs:
         run: |
           dotnet pack src/Prosody/Prosody.csproj \
             -c Release \
-            -p:PackageVersion=0.1.0-test \
+            -p:PackageVersion=0.1.0 \
             -p:ContinuePackingAfterGeneratingNuspec=true \
             -o ./packages
+        # TODO: When release-please is re-enabled, use:
+        # -p:PackageVersion=${{ needs.release-please.outputs.version }}
 
       - name: Upload NuGet package
         uses: actions/upload-artifact@v4

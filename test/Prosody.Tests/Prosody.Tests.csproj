@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TestPackage)' == 'true'">
-    <PackageReference Include="Prosody" Version="*-*" />
+    <PackageReference Include="Witco.Prosody" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
