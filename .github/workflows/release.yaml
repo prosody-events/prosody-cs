@@ -92,10 +92,6 @@ jobs:
           packages: cmake libcurl4-openssl-dev
           version: 1.0
 
-      - name: Install build dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cmake curl
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
