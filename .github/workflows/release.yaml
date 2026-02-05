@@ -71,12 +71,6 @@ jobs:
             lib_ext: .so
             use_cross: true
 
-          - rid: osx-x64
-            rust_target: x86_64-apple-darwin
-            runner: macos-15
-            lib_prefix: lib
-            lib_ext: .dylib
-
           - rid: osx-arm64
             rust_target: aarch64-apple-darwin
             runner: macos-14
