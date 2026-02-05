@@ -32,6 +32,12 @@ jobs:
         with:
           credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
 
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -53,6 +59,12 @@ jobs:
         uses: de-vri-es/setup-git-credentials@v2
         with:
           credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
