@@ -1,7 +1,7 @@
 //! Configuration conversion utilities.
 //!
 //! This module provides functions to convert [`ClientOptions`] into the various
-//! prosody builder types needed to construct a [`HighLevelClient`].
+//! prosody builder types needed to construct a `HighLevelClient`.
 //!
 //! The pattern follows sibling wrappers (prosody-js, prosody-py, prosody-rb):
 //! - Only set builder fields when the option is `Some`

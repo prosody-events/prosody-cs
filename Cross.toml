@@ -2,15 +2,11 @@
 # See: https://github.com/cross-rs/cross
 
 [build.env]
-passthrough = [
-  "CARGO_NET_GIT_FETCH_WITH_CLI",
-]
+passthrough = ["CARGO_NET_GIT_FETCH_WITH_CLI"]
 volumes = [
   "/home/runner/.config/git/credentials:/root/.config/git/credentials:ro",
 ]
 
 [target.aarch64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
-pre-build = [
-  "apt-get update && apt-get install -y cmake",
-]
+pre-build = ["apt-get update && apt-get install -y cmake"]
