@@ -9,6 +9,11 @@ namespace Prosody.Tests.TestHelpers;
 /// This fixture is shared across all integration tests in a collection to avoid
 /// creating multiple AdminClient instances. The AdminClient is expensive to create
 /// and can be safely shared across tests.
+///
+/// Configuration is read from environment variables (matching the prosody library):
+/// - PROSODY_BOOTSTRAP_SERVERS: Kafka bootstrap servers (required)
+/// - PROSODY_CASSANDRA_NODES: Cassandra contact points (required)
+/// - PROSODY_CASSANDRA_KEYSPACE: Cassandra keyspace name (default: prosody_test)
 /// </remarks>
 [SuppressMessage(
     "Design",
@@ -18,19 +23,30 @@ namespace Prosody.Tests.TestHelpers;
 public sealed class IntegrationTestFixture : IAsyncLifetime
 {
     /// <summary>
-    /// Bootstrap servers for Kafka.
+    /// Bootstrap servers for Kafka. Read from PROSODY_BOOTSTRAP_SERVERS environment variable.
     /// </summary>
-    public const string BootstrapServers = "localhost:9094";
+    public static string BootstrapServers { get; } =
+        Environment.GetEnvironmentVariable("PROSODY_BOOTSTRAP_SERVERS")
+        ?? throw new InvalidOperationException(
+            "PROSODY_BOOTSTRAP_SERVERS environment variable is required. "
+                + "Set it to your Kafka bootstrap servers (e.g., 'localhost:9094')."
+        );
 
     /// <summary>
-    /// Cassandra nodes for timer storage.
+    /// Cassandra nodes for timer storage. Read from PROSODY_CASSANDRA_NODES environment variable.
     /// </summary>
-    public const string CassandraNodes = "localhost:9042";
+    public static string CassandraNodes { get; } =
+        Environment.GetEnvironmentVariable("PROSODY_CASSANDRA_NODES")
+        ?? throw new InvalidOperationException(
+            "PROSODY_CASSANDRA_NODES environment variable is required. "
+                + "Set it to your Cassandra contact points (e.g., 'localhost:9042')."
+        );
 
     /// <summary>
-    /// Cassandra keyspace for tests.
+    /// Cassandra keyspace for tests. Read from PROSODY_CASSANDRA_KEYSPACE environment variable.
     /// </summary>
-    public const string CassandraKeyspace = "prosody_test";
+    public static string CassandraKeyspace { get; } =
+        Environment.GetEnvironmentVariable("PROSODY_CASSANDRA_KEYSPACE") ?? "prosody_test";
 
     /// <summary>
     /// Default timeout for async operations.

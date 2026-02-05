@@ -246,11 +246,21 @@ copy-native-to-test-output:
 		fi; \
 	done
 
+# Environment variables for local testing (matching docker-compose.yaml)
+# These use the EXTERNAL listener on localhost for local development
+export PROSODY_BOOTSTRAP_SERVERS ?= localhost:9094
+export PROSODY_CASSANDRA_NODES ?= localhost:9042
+export PROSODY_CASSANDRA_KEYSPACE ?= prosody_test
+
 # Run all tests
 # xUnit v3 test projects are executables - run directly for proper output
 # Uses net10.0 as default framework for local development
+# Requires docker-compose up (kafka, cassandra) to be running
 test: build
 	@echo "Running tests..."
+	@echo "  PROSODY_BOOTSTRAP_SERVERS=$(PROSODY_BOOTSTRAP_SERVERS)"
+	@echo "  PROSODY_CASSANDRA_NODES=$(PROSODY_CASSANDRA_NODES)"
+	@echo "  PROSODY_CASSANDRA_KEYSPACE=$(PROSODY_CASSANDRA_KEYSPACE)"
 	dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
 
 # ==============================================================================
