@@ -1,4 +1,4 @@
-name: General
+name: CI
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # Run daily at midnight UTC to catch new security advisories
+    - cron: "0 0 * * *"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -103,7 +107,7 @@ jobs:
         run: make build
 
       - name: Run tests
-        run: dotnet run --project test/Prosody.Tests --no-build
+        run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
         env:
           PROSODY_BOOTSTRAP_SERVERS: localhost:9094
           PROSODY_CASSANDRA_NODES: localhost:9042
@@ -195,3 +199,85 @@ jobs:
 
       - name: Build documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: make lint-rust
+
+  dotnet-lint:
+    name: .NET Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust (nightly for fmt)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        run: cargo install uniffi-bindgen-cs --git https://github.com/hadronzoo/uniffi-bindgen-cs.git --branch fix/issue-152-pascalcase-record-properties --force
+
+      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
+        run: dotnet tool install -g csharpier
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI and generate bindings
+        run: make build
+
+      - name: Run C# lint
+        run: make lint-csharp

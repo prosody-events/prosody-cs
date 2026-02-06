@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-      # TEMPORARY: Allow testing on feature branches
-      - csharp-client
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,26 +19,24 @@ permissions:
   packages: write
 
 jobs:
-  # TEMPORARILY DISABLED for testing package builds
-  # release-please:
-  #   name: Release Please
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     release_created: ${{ steps.release.outputs.release_created }}
-  #     tag_name: ${{ steps.release.outputs.tag_name }}
-  #     version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
-  #   steps:
-  #     - uses: google-github-actions/release-please-action@v3
-  #       id: release
-  #       with:
-  #         release-type: simple
-  #         package-name: Witco.Prosody
-  #         token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: simple
+          token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
 
   build-native:
     name: Build Native (${{ matrix.target.rid }})
-    # TEMPORARILY REMOVED: needs: release-please
-    # TEMPORARILY REMOVED: if: needs.release-please.outputs.release_created == 'true'
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
@@ -134,9 +130,8 @@ jobs:
 
   build-package:
     name: Build NuGet Package
-    needs: [build-native]
-    # TEMPORARILY REMOVED: needs: [release-please, build-native]
-    # TEMPORARILY REMOVED: if: needs.release-please.outputs.release_created == 'true'
+    needs: [release-please, build-native]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -212,11 +207,9 @@ jobs:
         run: |
           dotnet pack src/Prosody/Prosody.csproj \
             -c Release \
-            -p:PackageVersion=0.1.0 \
+            -p:PackageVersion=${{ needs.release-please.outputs.version }} \
             -p:ContinuePackingAfterGeneratingNuspec=true \
             -o ./packages
-        # TODO: When release-please is re-enabled, use:
-        # -p:PackageVersion=${{ needs.release-please.outputs.version }}
 
       - name: Upload NuGet package
         uses: actions/upload-artifact@v4
@@ -335,30 +328,29 @@ jobs:
               dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore -p:TestPackage=true
             "
 
-  # TEMPORARILY DISABLED for testing package builds
-  # publish:
-  #   name: Publish
-  #   needs: [release-please, build-package, test]
-  #   if: needs.release-please.outputs.release_created == 'true'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Download NuGet package
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: nuget-package
-  #         path: packages/
-  #
-  #     - name: Publish to GitHub Packages
-  #       run: |
-  #         dotnet nuget push packages/*.nupkg \
-  #           --source "https://nuget.pkg.github.com/cincpro/index.json" \
-  #           --api-key ${{ secrets.GITHUB_TOKEN }} \
-  #           --skip-duplicate
-  #
-  #     # Uncomment when ready to publish to NuGet.org
-  #     # - name: Publish to NuGet.org
-  #     #   run: |
-  #     #     dotnet nuget push packages/*.nupkg \
-  #     #       --source "https://api.nuget.org/v3/index.json" \
-  #     #       --api-key ${{ secrets.NUGET_API_KEY }} \
-  #     #       --skip-duplicate
+  publish:
+    name: Publish
+    needs: [release-please, build-package, test]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: packages/
+
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget push packages/*.nupkg \
+            --source "https://nuget.pkg.github.com/cincpro/index.json" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate
+
+      # Uncomment when ready to publish to NuGet.org
+      # - name: Publish to NuGet.org
+      #   run: |
+      #     dotnet nuget push packages/*.nupkg \
+      #       --source "https://api.nuget.org/v3/index.json" \
+      #       --api-key ${{ secrets.NUGET_API_KEY }} \
+      #       --skip-duplicate
