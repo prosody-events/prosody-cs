@@ -1,0 +1,6 @@
+# EditorConfig for test projects
+# Inherits from root .editorconfig
+
+[*.cs]
+# CA1515: xUnit requires test classes to be public
+dotnet_diagnostic.CA1515.severity = none

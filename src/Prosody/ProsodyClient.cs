@@ -1,70 +1,129 @@
+using System.Text.Json;
+
 namespace Prosody;
 
 /// <summary>
-/// High-level client for interacting with Kafka using the Prosody library.
+/// Main client for interacting with the Prosody messaging system.
 /// </summary>
 /// <remarks>
-/// This client provides async/await-friendly methods for producing and consuming
-/// Kafka messages with built-in support for OpenTelemetry distributed tracing.
+/// Provides functionality for sending messages, subscribing to topics,
+/// and managing consumer state.
 /// </remarks>
-public sealed class ProsodyClient : IAsyncDisposable
+public sealed class ProsodyClient : IDisposable
 {
-    private readonly ProsodyClientOptions _options;
+    private readonly Native.ProsodyClient _native;
     private bool _disposed;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ProsodyClient"/> class.
+    /// Creates a new ProsodyClient with the given options.
     /// </summary>
-    /// <param name="options">The client configuration options.</param>
-    public ProsodyClient(ProsodyClientOptions options)
+    /// <param name="options">Configuration options for the client.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
+    public ProsodyClient(ClientOptions options)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+        ArgumentNullException.ThrowIfNull(options);
+        _native = new Native.ProsodyClient(options.ToNative());
     }
 
     /// <summary>
-    /// Sends a message to the specified topic.
+    /// Gets the source system identifier configured for this client.
     /// </summary>
-    /// <param name="topic">The target topic.</param>
-    /// <param name="key">The message key for partitioning.</param>
-    /// <param name="payload">The message payload.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that completes when the message is sent.</returns>
-    public Task SendAsync(string topic, string key, object payload, CancellationToken cancellationToken = default)
+    public string SourceSystem => _native.SourceSystem();
+
+    /// <summary>
+    /// Gets the current consumer state.
+    /// </summary>
+    public async Task<ConsumerState> ConsumerStateAsync()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        throw new NotImplementedException();
+        return await _native.ConsumerState() switch
+        {
+            Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
+            Native.ConsumerState.Configured => ConsumerState.Configured,
+            Native.ConsumerState.Running => ConsumerState.Running,
+            _ => throw new InvalidOperationException("Unknown consumer state"),
+        };
     }
 
     /// <summary>
-    /// Subscribes to messages using the specified event handler.
+    /// Gets the number of partitions currently assigned to this consumer.
     /// </summary>
-    /// <param name="handler">The handler to process incoming messages and timers.</param>
-    /// <param name="cancellationToken">A token to cancel the subscription.</param>
-    /// <returns>A task that completes when the subscription is established.</returns>
-    public Task SubscribeAsync(IEventHandler handler, CancellationToken cancellationToken = default)
+    public Task<uint> AssignedPartitionCountAsync() => _native.AssignedPartitionCount();
+
+    /// <summary>
+    /// Gets a value indicating whether the consumer is currently stalled.
+    /// </summary>
+    public Task<bool> IsStalledAsync() => _native.IsStalled();
+
+    /// <summary>
+    /// Sends a message to a topic.
+    /// </summary>
+    /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
+    /// <param name="topic">The topic to send to.</param>
+    /// <param name="key">The message key.</param>
+    /// <param name="payload">The message payload (will be serialized to JSON).</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    public Task SendAsync<T>(
+        string topic,
+        string key,
+        T payload,
+        CancellationToken cancellationToken = default
+    )
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        throw new NotImplementedException();
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+        return SendRawAsync(topic, key, jsonBytes, cancellationToken);
     }
 
     /// <summary>
-    /// Unsubscribes from the current subscription.
+    /// Sends a raw JSON message to a topic.
     /// </summary>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task that completes when unsubscribed.</returns>
-    public Task UnsubscribeAsync(CancellationToken cancellationToken = default)
+    /// <param name="topic">The topic to send to.</param>
+    /// <param name="key">The message key.</param>
+    /// <param name="jsonPayload">The message payload as UTF-8 JSON bytes.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    public async Task SendRawAsync(
+        string topic,
+        string key,
+        byte[] jsonPayload,
+        CancellationToken cancellationToken = default
+    )
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        throw new NotImplementedException();
+
+        var carrier = new Dictionary<string, string>();
+        TracePropagation.Inject(carrier);
+        using var signal = CancellationHelper.CreateSignal(cancellationToken);
+
+        await _native.Send(topic, key, jsonPayload, carrier, signal).ConfigureAwait(false);
     }
 
-    /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    /// Subscribes to receive messages using the provided event handler.
+    /// </summary>
+    /// <param name="handler">The event handler to process messages and timers.</param>
+    public Task SubscribeAsync(IProsodyHandler handler)
     {
-        if (_disposed) return;
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var bridge = new EventHandlerBridge(handler);
+        return _native.Subscribe(bridge);
+    }
+
+    /// <summary>
+    /// Unsubscribes from receiving messages and shuts down the consumer.
+    /// </summary>
+    public Task UnsubscribeAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _native.Unsubscribe();
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
         _disposed = true;
-
-        // TODO: Dispose native resources
-        await Task.CompletedTask;
+        _native.Dispose();
     }
 }

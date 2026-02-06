@@ -3,48 +3,56 @@ using System.Text.Json;
 namespace Prosody;
 
 /// <summary>
-/// Represents a Kafka message received from a topic.
+/// Kafka message data.
 /// </summary>
+/// <remarks>
+/// Wraps the native message and provides typed JSON payload access.
+/// Properties are pass-through to native (no caching) - each access makes an FFI call.
+/// </remarks>
 public sealed class Message
 {
-    /// <summary>
-    /// Gets the topic the message was received from.
-    /// </summary>
-    public required string Topic { get; init; }
+    private readonly Native.Message _native;
+
+    internal Message(Native.Message native)
+    {
+        _native = native ?? throw new ArgumentNullException(nameof(native));
+    }
 
     /// <summary>
-    /// Gets the partition the message was received from.
+    /// Gets the topic name.
     /// </summary>
-    public required int Partition { get; init; }
-
-    /// <summary>
-    /// Gets the offset of the message within the partition.
-    /// </summary>
-    public required long Offset { get; init; }
+    public string Topic => _native.Topic();
 
     /// <summary>
     /// Gets the message key.
     /// </summary>
-    public required string Key { get; init; }
+    public string Key => _native.Key();
 
     /// <summary>
-    /// Gets the message timestamp.
+    /// Gets the partition number.
     /// </summary>
-    public required DateTimeOffset Timestamp { get; init; }
+    public int Partition => _native.Partition();
 
     /// <summary>
-    /// Gets the raw JSON payload.
+    /// Gets the message offset.
     /// </summary>
-    public required JsonElement Payload { get; init; }
+    public long Offset => _native.Offset();
+
+    /// <summary>
+    /// Gets the message timestamp (UTC).
+    /// </summary>
+    public DateTimeOffset Timestamp => new(_native.Timestamp(), TimeSpan.Zero);
 
     /// <summary>
     /// Deserializes the payload to the specified type.
     /// </summary>
     /// <typeparam name="T">The type to deserialize to.</typeparam>
-    /// <param name="options">Optional JSON serializer options.</param>
     /// <returns>The deserialized payload.</returns>
-    public T? GetPayload<T>(JsonSerializerOptions? options = null)
+    /// <exception cref="JsonException">If deserialization fails.</exception>
+    public T GetPayload<T>()
     {
-        return Payload.Deserialize<T>(options);
+        var payload = _native.Payload();
+        return JsonSerializer.Deserialize<T>(payload)
+            ?? throw new JsonException("Deserialization returned null");
     }
 }

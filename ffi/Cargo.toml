@@ -1,0 +1,45 @@
+[package]
+authors = ["Josh Griffith <joshua.griffith@realgeeks.com>"]
+categories = ["api-bindings", "asynchronous", "database"]
+description = "C# bindings for the Prosody Kafka client library"
+edition = "2024"
+homepage = "https://github.com/cincpro/prosody-cs"
+keywords = ["bindings", "client", "csharp", "kafka", "prosody"]
+license = "UNLICENSED"
+name = "prosody-ffi"
+readme = "../README.md"
+repository = "https://github.com/cincpro/prosody-cs"
+version = "0.1.0"
+
+# Produces libprosody_ffi.dylib (macOS) / libprosody_ffi.so (Linux) / prosody_ffi.dll (Windows)
+# C# loads this via P/Invoke, and uniffi-bindgen-cs reads it to generate bindings
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+arc-swap.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+opentelemetry.workspace = true
+parking_lot.workspace = true
+prosody.workspace = true
+serde_json.workspace = true
+simd-json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+uniffi = { workspace = true, features = ["tokio"] }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true, features = [
+  "disable_initial_exec_tls",
+] }
+
+[dev-dependencies]
+color-eyre.workspace = true
+
+[lints]
+workspace = true

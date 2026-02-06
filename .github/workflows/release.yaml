@@ -1,0 +1,356 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: simple
+          token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
+
+  build-native:
+    name: Build Native (${{ matrix.target.rid }})
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - rid: win-x64
+            rust_target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            lib_prefix: ""
+            lib_ext: .dll
+
+          - rid: win-arm64
+            rust_target: aarch64-pc-windows-msvc
+            runner: windows-latest
+            lib_prefix: ""
+            lib_ext: .dll
+
+          - rid: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            lib_prefix: lib
+            lib_ext: .so
+            use_cross: true
+
+          - rid: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            lib_prefix: lib
+            lib_ext: .so
+            use_cross: true
+
+          - rid: osx-arm64
+            rust_target: aarch64-apple-darwin
+            runner: macos-14
+            lib_prefix: lib
+            lib_ext: .dylib
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target.rust_target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target.rid }}
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.target.use_cross
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cross
+
+      - name: Build native library
+        shell: bash
+        run: |
+          if [ "${{ matrix.target.use_cross }}" = "true" ]; then
+            cross build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+          else
+            cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+          fi
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts/${{ matrix.target.rid }}
+          cp target/${{ matrix.target.rust_target }}/release/${{ matrix.target.lib_prefix }}prosody_ffi${{ matrix.target.lib_ext }} \
+             artifacts/${{ matrix.target.rid }}/
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target.rid }}
+          path: artifacts/${{ matrix.target.rid }}/
+          if-no-files-found: error
+
+  build-package:
+    name: Build NuGet Package
+    needs: [release-please, build-native]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust (nightly for fmt)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        run: cargo install uniffi-bindgen-cs --git https://github.com/hadronzoo/uniffi-bindgen-cs.git --branch fix/issue-152-pascalcase-record-properties --force
+
+      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
+        run: dotnet tool install -g csharpier
+
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: artifacts/
+          merge-multiple: false
+
+      - name: Reorganize artifacts for NuGet packing
+        run: |
+          # Create prosody-ffi/artifacts structure expected by Prosody.csproj
+          mkdir -p prosody-ffi/artifacts
+          cd artifacts
+          for dir in native-*; do
+            rid="${dir#native-}"
+            mv "$dir" "../prosody-ffi/artifacts/$rid"
+          done
+          cd ../prosody-ffi/artifacts
+          ls -laR
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI (for bindgen only, not packaging)
+        run: cargo build -p prosody-ffi
+
+      - name: Generate C# bindings
+        run: make bindgen
+
+      - name: Pack NuGet package
+        run: |
+          dotnet pack src/Prosody/Prosody.csproj \
+            -c Release \
+            -p:PackageVersion=${{ needs.release-please.outputs.version }} \
+            -p:ContinuePackingAfterGeneratingNuspec=true \
+            -o ./packages
+
+      - name: Upload NuGet package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: packages/*.nupkg
+          if-no-files-found: error
+
+  test:
+    name: Test ${{ matrix.target.name }} (.NET ${{ matrix.dotnet }})
+    needs: [build-package]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - name: linux-x64
+            platform: ""
+          - name: linux-arm64
+            platform: linux/arm64
+            needs_qemu: true
+        dotnet: ["8.0", "9.0", "10.0"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: ./packages
+
+      - name: Set up QEMU
+        if: matrix.target.needs_qemu
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up binfmt_misc
+        if: matrix.target.needs_qemu
+        run: docker run --rm --privileged tonistiigi/binfmt --install all
+
+      - name: Create Docker network
+        run: docker network create test-network
+
+      - name: Start Kafka container
+        run: |
+          docker run -d --name kafka --network test-network \
+            -e KAFKA_CFG_NODE_ID=0 \
+            -e KAFKA_CFG_PROCESS_ROLES=controller,broker \
+            -e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093 \
+            -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+            -e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
+            -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            docker.io/bitnamilegacy/kafka:3.7
+
+      - name: Start Cassandra container
+        run: |
+          docker run -d --name cassandra --network test-network \
+            -p 9042:9042 \
+            cassandra:latest
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for Cassandra and Kafka to be ready..."
+
+          # Wait for Cassandra
+          for i in {1..60}; do
+            if docker exec cassandra cqlsh -e "SELECT cluster_name FROM system.local;" >/dev/null 2>&1; then
+              echo "Cassandra is ready after ${i} attempts"
+              break
+            elif [ $i -eq 60 ]; then
+              echo "Cassandra failed to start after 60 seconds"
+              docker logs cassandra
+              exit 1
+            else
+              sleep 1
+            fi
+          done
+
+          # Wait for Kafka
+          for i in {1..60}; do
+            if docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+              echo "Kafka is ready after ${i} attempts"
+              break
+            elif [ $i -eq 60 ]; then
+              echo "Kafka failed to start after 60 seconds"
+              docker logs kafka
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Run tests
+        run: |
+          docker run --rm --network test-network \
+            ${{ matrix.target.platform && format('--platform {0}', matrix.target.platform) || '' }} \
+            -e PROSODY_BOOTSTRAP_SERVERS=kafka:9092 \
+            -e PROSODY_CASSANDRA_NODES=cassandra:9042 \
+            -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            -e DOTNET_NOLOGO=1 \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
+            bash -c "
+              # Restore for specific framework only (SDK may not support other frameworks)
+              dotnet restore test/Prosody.Tests -p:TestPackage=true \
+                --source /workspace/packages \
+                --source https://api.nuget.org/v3/index.json \
+                /p:TargetFramework=net${{ matrix.dotnet }}
+
+              # Run tests using the NuGet package (not ProjectReference)
+              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore -p:TestPackage=true
+            "
+
+  publish:
+    name: Publish
+    needs: [release-please, build-package, test]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download NuGet package
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-package
+          path: packages/
+
+      - name: Publish to GitHub Packages
+        run: |
+          dotnet nuget push packages/*.nupkg \
+            --source "https://nuget.pkg.github.com/cincpro/index.json" \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate
+
+      # Uncomment when ready to publish to NuGet.org
+      # - name: Publish to NuGet.org
+      #   run: |
+      #     dotnet nuget push packages/*.nupkg \
+      #       --source "https://api.nuget.org/v3/index.json" \
+      #       --api-key ${{ secrets.NUGET_API_KEY }} \
+      #       --skip-duplicate

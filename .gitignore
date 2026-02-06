@@ -14,12 +14,23 @@ riderModule.iml
 .vs/
 .claude/
 
-# Rust
-native/target/
-native/artifacts/
+# Rust (workspace with ffi/ and ffi-build/ crates)
+target/
+ffi/artifacts/
+ffi-build/artifacts/
+prosody-ffi/artifacts/
+debug/
+release/
+*.rs.bk
+*.rlib
+*.prof*
 
-# Generated files
-src/Prosody/Native/NativeMethods.g.cs
+# Generated C# bindings (UniFFI output via uniffi-bindgen-cs)
+src/Prosody/Generated/ProsodyFfi.cs
+
+# Environment and secrets
+.env*
+*.log
 
 # OS
 .DS_Store
@@ -27,4 +38,5 @@ Thumbs.db
 
 # Test results
 TestResults/
+coverage/
 *.trx

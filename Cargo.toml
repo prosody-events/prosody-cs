@@ -1,0 +1,80 @@
+[workspace]
+members = ["ffi"]
+resolver = "2"
+
+[workspace.dependencies]
+arc-swap = "1.7"
+async-trait = "0.1"
+chrono = "0.4"
+color-eyre = "0.6"
+futures = "0.3"
+once_cell = "1.21"
+opentelemetry = "0.31"
+parking_lot = "0.12"
+prosody = { git = "https://github.com/cincpro/prosody", rev = "e771ff2c5fbeb4b0a3b4237072614baf322f85cd", features = [
+  "libz-static",
+] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+simd-json = "0.17"
+thiserror = "2.0"
+tokio = { version = "1.46", features = ["rt-multi-thread", "sync"] }
+tokio-util = "0.7"
+tracing = { version = "0.1", features = ["log-always"] }
+tracing-opentelemetry = "0.32"
+tracing-subscriber = "0.3"
+uniffi = "0.29"
+tikv-jemallocator = "0.6"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+multiple_crate_versions = "allow"
+absolute_paths = "warn"
+blocks_in_conditions = "allow"
+cargo = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+create_dir = "warn"
+dbg_macro = "warn"
+default_numeric_fallback = "warn"
+empty_structs_with_brackets = "warn"
+error_impl_error = "warn"
+exit = "warn"
+expect_used = "deny"
+format_push_string = "warn"
+if_then_some_else_none = "warn"
+impl_trait_in_params = "warn"
+implicit_clone = "warn"
+missing_assert_message = "warn"
+module_name_repetitions = "allow"
+multiple_inherent_impl = "warn"
+mutex_atomic = "warn"
+needless_raw_strings = "warn"
+panic = "deny"
+pedantic = { level = "warn", priority = -1 }
+print_stderr = "warn"
+print_stdout = "warn"
+rc_mutex = "warn"
+redundant_type_annotations = "warn"
+rest_pat_in_fully_bound_structs = "warn"
+same_name_method = "warn"
+self_named_module_files = "warn"
+semicolon_outside_block = "warn"
+str_to_string = "warn"
+string_lit_chars_any = "warn"
+todo = "warn"
+try_err = "warn"
+unimplemented = "warn"
+unnecessary_self_imports = "warn"
+unneeded_field_pattern = "warn"
+unreachable = "warn"
+unwrap_used = "deny"
+verbose_file_reads = "warn"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
