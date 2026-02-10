@@ -38,7 +38,7 @@
   </ItemGroup>
 
   <!-- Native library configuration -->
-  <!-- Library name matches Interoptopus-generated bindings: prosody_ffi -->
+  <!-- Library name matches UniFFI-generated bindings: prosody_ffi -->
   <PropertyGroup>
     <ProsodyNativeLibraryName>prosody_ffi</ProsodyNativeLibraryName>
   </PropertyGroup>
