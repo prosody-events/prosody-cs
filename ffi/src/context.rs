@@ -1,4 +1,11 @@
-//! Event context for scheduling timers and checking cancellation.
+//! Event context for Prosody message handlers.
+//!
+//! This module provides the [`Context`] type, which is passed to message
+//! handlers during event processing. It enables handlers to:
+//!
+//! - Schedule, reschedule, and cancel timers for the current message key
+//! - Check for and respond to cancellation requests
+//! - Propagate OpenTelemetry tracing context across service boundaries
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,14 +22,17 @@ use prosody::timers::datetime::CompactDateTime;
 
 use crate::error::FfiError;
 
-/// Event context for scheduling timers and checking cancellation.
+/// Event context passed to message handlers during event processing.
 ///
-/// Wraps prosody's `BoxEventContext` and exposes scheduling/cancellation
-/// methods. This matches the Python `Context` class.
+/// This type wraps Prosody's [`BoxEventContext`] and provides FFI-safe methods
+/// for timer management and cancellation handling. All timer operations are
+/// scoped to the current message key.
+///
+/// Timer operations accept an OpenTelemetry carrier for distributed tracing
+/// context propagation, allowing traces to span across service boundaries.
 #[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext,
-    /// OpenTelemetry propagator for distributed tracing context propagation.
     propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -31,7 +41,7 @@ pub struct Context {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
-    /// Creates a new `Context` wrapping a [`BoxEventContext`].
+    /// Creates a new context wrapping the given event context and propagator.
     #[must_use]
     pub fn new(inner: BoxEventContext, propagator: Arc<TextMapCompositePropagator>) -> Self {
         Self { inner, propagator }
@@ -40,28 +50,36 @@ impl Context {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl Context {
-    /// Returns true if cancellation has been requested.
+    /// Checks whether the handler should stop processing.
+    ///
+    /// Handlers should periodically check this flag during long-running
+    /// operations and exit gracefully when it returns `true`. This enables
+    /// cooperative cancellation during consumer shutdown or rebalancing.
     #[must_use]
     pub fn should_cancel(&self) -> bool {
         self.inner.should_cancel()
     }
 
-    /// Async method that completes when cancellation is requested.
+    /// Waits until cancellation is requested.
+    ///
+    /// Use this in a `select!` or similar construct to respond to cancellation
+    /// while awaiting other operations. Completes immediately if cancellation
+    /// has already been requested.
     pub async fn on_cancel(&self) {
         self.inner.on_cancel().await;
     }
 
-    /// Schedule a new timer at the given time for the current message key.
+    /// Schedules a new timer to fire at the specified time.
     ///
-    /// # Arguments
+    /// The timer is associated with the current message key. When the timer
+    /// fires, the handler will be invoked with a timer event for that key.
     ///
-    /// * `time` - The time to schedule the timer
-    /// * `carrier` - OpenTelemetry carrier for context propagation
+    /// Multiple timers can be scheduled for the same key at different times.
     ///
     /// # Errors
     ///
-    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
-    /// or `FfiError::Internal` if the scheduling fails.
+    /// Returns an error if `time` cannot be converted to a valid timestamp
+    /// or if the scheduling operation fails.
     pub async fn schedule(
         &self,
         time: SystemTime,
@@ -86,17 +104,16 @@ impl Context {
         Ok(())
     }
 
-    /// Unschedule all existing timers, then schedule exactly one new timer.
+    /// Clears all timers for the current key, then schedules a new one.
     ///
-    /// # Arguments
-    ///
-    /// * `time` - The time to schedule the timer
-    /// * `carrier` - OpenTelemetry carrier for context propagation
+    /// This is an atomic operation that ensures exactly one timer exists for
+    /// the key after completion. Useful for "snooze" or "reschedule" patterns
+    /// where previous timers should be replaced.
     ///
     /// # Errors
     ///
-    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
-    /// or `FfiError::Internal` if the scheduling fails.
+    /// Returns an error if `time` cannot be converted to a valid timestamp
+    /// or if the operation fails.
     pub async fn clear_and_schedule(
         &self,
         time: SystemTime,
@@ -122,17 +139,15 @@ impl Context {
         Ok(())
     }
 
-    /// Unschedule a specific timer at the given time.
+    /// Cancels a timer scheduled for the specified time.
     ///
-    /// # Arguments
-    ///
-    /// * `time` - The time of the timer to unschedule
-    /// * `carrier` - OpenTelemetry carrier for context propagation
+    /// If no timer exists at the given time for the current key, this is a
+    /// no-op.
     ///
     /// # Errors
     ///
-    /// Returns `FfiError::InvalidArgument` if the timestamp is invalid,
-    /// or `FfiError::Internal` if the operation fails.
+    /// Returns an error if `time` cannot be converted to a valid timestamp
+    /// or if the operation fails.
     pub async fn unschedule(
         &self,
         time: SystemTime,
@@ -157,15 +172,14 @@ impl Context {
         Ok(())
     }
 
-    /// Unschedule all timers for the current key.
+    /// Cancels all timers for the current key.
     ///
-    /// # Arguments
-    ///
-    /// * `carrier` - OpenTelemetry carrier for context propagation
+    /// After this call, no timers will be scheduled for the key until new ones
+    /// are explicitly scheduled.
     ///
     /// # Errors
     ///
-    /// Returns `FfiError::Internal` if the operation fails.
+    /// Returns an error if the operation fails.
     pub async fn clear_scheduled(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.propagator.extract(&carrier);
@@ -184,19 +198,13 @@ impl Context {
         Ok(())
     }
 
-    /// List all scheduled timer times for the current key.
+    /// Returns all scheduled timer times for the current key.
     ///
-    /// # Arguments
-    ///
-    /// * `carrier` - OpenTelemetry carrier for context propagation
-    ///
-    /// # Returns
-    ///
-    /// A list of scheduled times.
+    /// The returned times are not guaranteed to be in any particular order.
     ///
     /// # Errors
     ///
-    /// Returns `FfiError::Internal` if the operation fails.
+    /// Returns an error if the operation fails.
     pub async fn scheduled(
         &self,
         carrier: HashMap<String, String>,

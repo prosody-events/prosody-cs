@@ -1,62 +1,88 @@
 //! FFI type definitions for the Prosody C# client.
 //!
-//! This module defines the configuration and data types exposed to C# via
-//! `UniFFI`. Types are designed to be idiomatic for C# consumers while mapping
-//! cleanly to prosody's builder pattern.
+//! This module defines configuration and data types exposed to C# via `UniFFI`.
+//! Types are designed to be idiomatic for C# consumers while mapping cleanly
+//! to the underlying Prosody builder pattern.
 //!
 //! # Design Principles
 //!
-//! - **Idiomatic C# types**: `Duration` → `TimeSpan`, `f64` → `double`, enums →
-//!   enums
+//! - **Idiomatic C# types**: [`Duration`] maps to `TimeSpan`, `f64` to
+//!   `double`, enums to enums
 //! - **Optional fields with defaults**: `None` means "use environment variable
 //!   or library default"
-//! - **Required fields**: No `#[uniffi(default = None)]` attribute, must be
-//!   specified
-//! - **Named parameters**: C# users can specify only the fields they want to
-//!   override
+//! - **Named parameters**: C# consumers can specify only the fields they want
+//!   to override
 
 use std::time::Duration;
 
-/// Client operating mode.
-///
 /// Determines how the client handles message processing failures.
+///
+/// Each mode offers different trade-offs between reliability and throughput:
+///
+/// - [`Pipeline`][Self::Pipeline]: Maximum reliability with automatic deferral
+/// - [`LowLatency`][Self::LowLatency]: Bounded retries with dead-letter queue
+/// - [`BestEffort`][Self::BestEffort]: Fire-and-forget for non-critical
+///   workloads
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum ClientMode {
-    /// Retry failed messages indefinitely. Uses defer and monopolization
-    /// detection. This is the default mode for production workloads.
+    /// Retries failed messages indefinitely using deferral and monopolization
+    /// detection.
+    ///
+    /// This is the default mode for production workloads where no message loss
+    /// is acceptable. Failed messages are deferred and retried with exponential
+    /// backoff. Hot keys that monopolize processing are automatically
+    /// throttled.
     #[default]
     Pipeline,
 
-    /// Retry a few times, then send to a dead letter topic.
-    /// Use when you need to keep moving and can reprocess failures later.
-    /// Requires `failure_topic` to be set.
+    /// Retries a bounded number of times, then sends to a dead-letter topic.
+    ///
+    /// Use when you need predictable latency and can reprocess failures later.
+    /// Requires [`ClientOptions::failure_topic`] to be set.
     LowLatency,
 
-    /// Log failures and move on. No retries.
-    /// Use for development or when message loss is acceptable.
+    /// Logs failures and moves on without retrying.
+    ///
+    /// Use for development, testing, or workloads where occasional message
+    /// loss is acceptable.
     BestEffort,
 }
 
-/// Consumer state.
+/// Represents the current lifecycle state of a consumer.
 ///
-/// Represents the current lifecycle state of the consumer.
+/// The consumer progresses through states linearly:
+/// [`Unconfigured`][Self::Unconfigured] -> [`Configured`][Self::Configured] ->
+/// [`Running`][Self::Running].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum ConsumerState {
-    /// Consumer has not been configured.
+    /// Initial state before configuration is applied.
     #[default]
     Unconfigured,
 
-    /// Consumer is configured but not running.
+    /// Configuration applied but consumption not yet started.
     Configured,
 
-    /// Consumer is actively processing messages.
+    /// Actively polling and processing messages.
     Running,
 }
 
 /// Configuration options for the Prosody client.
 ///
-/// All optional fields default to `null` in C#, which means "use the
-/// environment variable or library default". Required fields must be specified.
+/// All fields are optional and default to `null` in C#, meaning "use the
+/// environment variable or library default". Configure only the settings you
+/// need to override.
+///
+/// # Sections
+///
+/// Options are grouped by functionality:
+/// - **Core**: Bootstrap servers, group ID, topics, operating mode
+/// - **Consumer**: Concurrency, timeouts, polling intervals
+/// - **Producer**: Send timeout
+/// - **Retry**: Attempt limits and backoff configuration
+/// - **Deferral**: Pipeline mode message deferral settings
+/// - **Monopolization**: Hot key detection and throttling
+/// - **Scheduler**: Fair scheduling weights and limits
+/// - **Cassandra**: Timer storage backend configuration
 ///
 /// # Example (C#)
 ///
@@ -76,260 +102,386 @@ pub struct ClientOptions {
     // ========================================================================
     // Core options
     // ========================================================================
-    /// Kafka bootstrap servers to connect to.
-    /// Falls back to `PROSODY_BOOTSTRAP_SERVERS` environment variable.
+    /// Kafka bootstrap servers for initial cluster connection.
     ///
-    /// Example: `["localhost:9092"]` or `["broker1:9092", "broker2:9092"]`
+    /// Falls back to `PROSODY_BOOTSTRAP_SERVERS` environment variable if unset.
+    ///
+    /// **Example:** `["localhost:9092"]` or `["broker1:9092", "broker2:9092"]`
     #[uniffi(default = None)]
     pub bootstrap_servers: Option<Vec<String>>,
 
-    /// Consumer group ID. Should be set to your application name.
-    /// Falls back to `PROSODY_GROUP_ID` environment variable.
+    /// Consumer group ID, typically your application name.
+    ///
+    /// Falls back to `PROSODY_GROUP_ID` environment variable if unset.
     #[uniffi(default = None)]
     pub group_id: Option<String>,
 
-    /// Topics to subscribe to.
-    /// Falls back to `PROSODY_SUBSCRIBED_TOPICS` environment variable.
+    /// Topics to subscribe to for message consumption.
     ///
-    /// Example: `["my-topic"]` or `["topic1", "topic2"]`
+    /// Falls back to `PROSODY_SUBSCRIBED_TOPICS` environment variable if unset.
+    ///
+    /// **Example:** `["my-topic"]` or `["topic1", "topic2"]`
     #[uniffi(default = None)]
     pub subscribed_topics: Option<Vec<String>>,
 
-    /// Client operating mode. Default: `Pipeline`.
+    /// Operating mode controlling failure handling behavior.
+    ///
+    /// **Default:** [`ClientMode::Pipeline`]
     #[uniffi(default = None)]
     pub mode: Option<ClientMode>,
 
-    /// Allowed event type prefixes. `null` = all events allowed.
+    /// Event type prefixes to process; `None` allows all events.
     ///
-    /// Example: `["user.", "account."]` to only process events starting with
-    /// those prefixes.
+    /// Messages with event types not matching any prefix are skipped.
+    ///
+    /// **Example:** `["user.", "account."]` processes only events starting
+    /// with those prefixes.
     #[uniffi(default = None)]
     pub allowed_events: Option<Vec<String>>,
 
-    /// Source system identifier for outgoing messages.
-    /// `null` = defaults to `group_id`.
+    /// Source system identifier attached to outgoing messages.
     ///
-    /// Set this to a different value than `group_id` if you need to allow
-    /// your application to consume its own produced messages (loopback).
+    /// Defaults to [`group_id`][Self::group_id] if unset. Set to a different
+    /// value to enable consuming your own produced messages (loopback).
     #[uniffi(default = None)]
     pub source_system: Option<String>,
 
-    /// Use in-memory mock client for testing. Default: `false`.
+    /// Enables in-memory mock client for testing.
+    ///
+    /// **Default:** `false`
     #[uniffi(default = None)]
     pub mock: Option<bool>,
 
     // ========================================================================
     // Consumer options
     // ========================================================================
-    /// Maximum number of messages being processed simultaneously.
-    /// Default: 32.
+    /// Maximum messages processed concurrently.
+    ///
+    /// **Default:** `32`
     #[uniffi(default = None)]
     pub max_concurrency: Option<u32>,
 
-    /// Maximum queued messages before pausing consumption.
-    /// Default: 64.
+    /// Maximum uncommitted messages before pausing consumption.
+    ///
+    /// Prevents unbounded memory growth when processing lags behind ingestion.
+    ///
+    /// **Default:** `64`
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
-    /// Maximum queued messages per key before pausing.
-    /// Default: 8.
+    /// Maximum queued messages per partition key before pausing.
+    ///
+    /// Provides per-key backpressure to prevent hot keys from starving others.
+    ///
+    /// **Default:** `8`
     #[uniffi(default = None)]
     pub max_enqueued_per_key: Option<u32>,
 
-    /// Size of LRU cache for message deduplication. Set to 0 to disable.
-    /// Default: 4096.
+    /// LRU cache size for message deduplication.
+    ///
+    /// Set to `0` to disable idempotence checking entirely.
+    ///
+    /// **Default:** `4096`
     #[uniffi(default = None)]
     pub idempotence_cache_size: Option<u32>,
 
-    /// Handler timeout. Handlers running longer than this are cancelled.
-    /// Default: 80% of `stall_threshold`.
+    /// Maximum handler execution time before cancellation.
+    ///
+    /// Handlers exceeding this duration are cancelled and the message is
+    /// retried according to the current [`mode`][Self::mode].
+    ///
+    /// **Default:** 80% of [`stall_threshold`][Self::stall_threshold]
     #[uniffi(default = None)]
     pub timeout: Option<Duration>,
 
-    /// Report unhealthy if no progress for this long.
-    /// Default: 5 minutes.
+    /// Duration without progress before reporting unhealthy.
+    ///
+    /// The `/readyz` health endpoint returns unhealthy when no messages have
+    /// been processed within this window.
+    ///
+    /// **Default:** 5 minutes
     #[uniffi(default = None)]
     pub stall_threshold: Option<Duration>,
 
-    /// Wait this long for in-flight work before force-quit on shutdown.
-    /// Default: 30 seconds.
+    /// Grace period for in-flight work during shutdown.
+    ///
+    /// After this timeout, remaining handlers are cancelled and uncommitted
+    /// work is abandoned.
+    ///
+    /// **Default:** 30 seconds
     #[uniffi(default = None)]
     pub shutdown_timeout: Option<Duration>,
 
-    /// How often to fetch new messages from Kafka.
-    /// Default: 100ms.
+    /// Interval between Kafka poll operations.
+    ///
+    /// Lower values reduce latency; higher values reduce CPU usage.
+    ///
+    /// **Default:** 100ms
     #[uniffi(default = None)]
     pub poll_interval: Option<Duration>,
 
-    /// How often to save progress (commit offsets) to Kafka.
-    /// Default: 1 second.
+    /// Interval between offset commits to Kafka.
+    ///
+    /// More frequent commits reduce duplicate processing on restart but
+    /// increase broker load.
+    ///
+    /// **Default:** 1 second
     #[uniffi(default = None)]
     pub commit_interval: Option<Duration>,
 
-    /// HTTP port for health check probes (`/livez`, `/readyz`).
-    /// - `null`: use default (8000) or environment variable
-    /// - `0`: explicitly disable the probe server
-    /// - `1-65535`: use this port
+    /// HTTP port for health check endpoints (`/livez`, `/readyz`).
+    ///
+    /// - `None`: Use default port `8000` or `PROSODY_PROBE_PORT` env var
+    /// - `Some(0)`: Disable the probe server entirely
+    /// - `Some(1..=65535)`: Use the specified port
     #[uniffi(default = None)]
     pub probe_port: Option<u16>,
 
-    /// Timer storage granularity. Rarely needs changing.
-    /// Default: 1 hour.
+    /// Timer storage bucket granularity.
+    ///
+    /// Controls how timers are partitioned in Cassandra. Smaller values use
+    /// more storage but allow finer-grained queries. Rarely needs adjustment.
+    ///
+    /// **Default:** 1 hour
     #[uniffi(default = None)]
     pub slab_size: Option<Duration>,
 
     // ========================================================================
     // Producer options
     // ========================================================================
-    /// Give up sending after this long.
-    /// Default: 1 second.
+    /// Maximum time to wait for message delivery acknowledgment.
+    ///
+    /// Messages not acknowledged within this duration are considered failed.
+    ///
+    /// **Default:** 1 second
     #[uniffi(default = None)]
     pub send_timeout: Option<Duration>,
 
     // ========================================================================
     // Retry options
     // ========================================================================
-    /// Maximum retry attempts. Set to 0 for unlimited retries.
-    /// Default: 3.
+    /// Maximum retry attempts before giving up or deferring.
+    ///
+    /// Set to `0` for unlimited retries (only effective in
+    /// [`Pipeline`][ClientMode::Pipeline] mode).
+    ///
+    /// **Default:** `3`
     #[uniffi(default = None)]
     pub max_retries: Option<u32>,
 
-    /// Wait this long before first retry (exponential backoff base).
-    /// Default: 20ms.
+    /// Initial delay for exponential backoff between retries.
+    ///
+    /// Subsequent retries double this delay up to
+    /// [`max_retry_delay`][Self::max_retry_delay].
+    ///
+    /// **Default:** 20ms
     #[uniffi(default = None)]
     pub retry_base: Option<Duration>,
 
-    /// Never wait longer than this between retries.
-    /// Default: 5 minutes.
+    /// Maximum delay between retry attempts.
+    ///
+    /// Caps the exponential backoff to prevent excessively long waits.
+    ///
+    /// **Default:** 5 minutes
     #[uniffi(default = None)]
     pub max_retry_delay: Option<Duration>,
 
-    /// Topic for unprocessable messages (dead letter queue).
-    /// Required for `LowLatency` mode.
+    /// Dead-letter topic for unprocessable messages.
+    ///
+    /// Required when using [`LowLatency`][ClientMode::LowLatency] mode.
+    /// Messages exceeding [`max_retries`][Self::max_retries] are sent here.
     #[uniffi(default = None)]
     pub failure_topic: Option<String>,
 
     // ========================================================================
     // Deferral options (Pipeline mode)
     // ========================================================================
-    /// Enable deferral for failing messages.
-    /// Default: `true`.
+    /// Enables message deferral for transient failures.
+    ///
+    /// When enabled, messages that fail processing are persisted and retried
+    /// later with exponential backoff. Only applies to
+    /// [`Pipeline`][ClientMode::Pipeline] mode.
+    ///
+    /// **Default:** `true`
     #[uniffi(default = None)]
     pub defer_enabled: Option<bool>,
 
-    /// Wait this long before first deferred retry.
-    /// Default: 1 second.
+    /// Initial delay before retrying a deferred message.
+    ///
+    /// **Default:** 1 second
     #[uniffi(default = None)]
     pub defer_base: Option<Duration>,
 
-    /// Never wait longer than this for deferred retries.
-    /// Default: 24 hours.
+    /// Maximum delay between deferred retry attempts.
+    ///
+    /// **Default:** 24 hours
     #[uniffi(default = None)]
     pub defer_max_delay: Option<Duration>,
 
-    /// Disable deferral when failure rate exceeds this threshold (0.0-1.0).
-    /// Default: 0.9 (90%).
+    /// Failure rate threshold for disabling deferral.
+    ///
+    /// When the failure rate within
+    /// [`defer_failure_window`][Self::defer_failure_window] exceeds this
+    /// fraction, deferral is temporarily disabled to prevent
+    /// cascading failures.
+    ///
+    /// **Range:** `0.0` to `1.0`
+    ///
+    /// **Default:** `0.9` (90%)
     #[uniffi(default = None)]
     pub defer_failure_threshold: Option<f64>,
 
-    /// Measure failure rate over this time window.
-    /// Default: 5 minutes.
+    /// Time window for measuring failure rate.
+    ///
+    /// **Default:** 5 minutes
     #[uniffi(default = None)]
     pub defer_failure_window: Option<Duration>,
 
-    /// Track this many deferred keys in memory.
-    /// Default: 1024.
+    /// Maximum deferred keys tracked in memory.
+    ///
+    /// Limits memory usage for deferral state. Excess keys are evicted using
+    /// LRU policy.
+    ///
+    /// **Default:** `1024`
     #[uniffi(default = None)]
     pub defer_cache_size: Option<u32>,
 
-    /// Timeout when loading deferred messages from Kafka.
-    /// Default: 30 seconds.
+    /// Timeout for loading deferred messages from Kafka.
+    ///
+    /// **Default:** 30 seconds
     #[uniffi(default = None)]
     pub defer_seek_timeout: Option<Duration>,
 
-    /// Read optimization threshold. Rarely needs changing.
-    /// Default: 100.
+    /// Read optimization threshold for discarding old deferrals.
+    ///
+    /// Advanced tuning parameter; rarely needs adjustment.
+    ///
+    /// **Default:** `100`
     #[uniffi(default = None)]
     pub defer_discard_threshold: Option<u32>,
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)
     // ========================================================================
-    /// Enable hot key protection.
-    /// Default: `true`.
+    /// Enables hot key detection and throttling.
+    ///
+    /// When enabled, keys consuming excessive processing time are temporarily
+    /// rejected to prevent starvation of other keys. Only applies to
+    /// [`Pipeline`][ClientMode::Pipeline] mode.
+    ///
+    /// **Default:** `true`
     #[uniffi(default = None)]
     pub monopolization_enabled: Option<bool>,
 
-    /// Reject keys using more than this fraction of window time (0.0-1.0).
-    /// Default: 0.9 (90%).
+    /// Processing time fraction that triggers monopolization throttling.
+    ///
+    /// Keys using more than this fraction of total processing time within
+    /// [`monopolization_window`][Self::monopolization_window] are throttled.
+    ///
+    /// **Range:** `0.0` to `1.0`
+    ///
+    /// **Default:** `0.9` (90%)
     #[uniffi(default = None)]
     pub monopolization_threshold: Option<f64>,
 
-    /// Measurement window for monopolization detection.
-    /// Default: 5 minutes.
+    /// Time window for measuring key processing time.
+    ///
+    /// **Default:** 5 minutes
     #[uniffi(default = None)]
     pub monopolization_window: Option<Duration>,
 
-    /// Maximum distinct keys to track for monopolization.
-    /// Default: 8192.
+    /// Maximum distinct keys tracked for monopolization detection.
+    ///
+    /// Limits memory usage for tracking state. Keys beyond this limit are not
+    /// tracked individually.
+    ///
+    /// **Default:** `8192`
     #[uniffi(default = None)]
     pub monopolization_cache_size: Option<u32>,
 
     // ========================================================================
     // Fair scheduling options (all modes)
     // ========================================================================
-    /// Fraction of processing time reserved for retries (0.0-1.0).
-    /// Default: 0.3 (30%).
+    /// Fraction of processing capacity reserved for retry attempts.
+    ///
+    /// Ensures retries make progress even under high load from new messages.
+    ///
+    /// **Range:** `0.0` to `1.0`
+    ///
+    /// **Default:** `0.3` (30%)
     #[uniffi(default = None)]
     pub scheduler_failure_weight: Option<f64>,
 
-    /// Messages waiting this long get maximum priority boost.
-    /// Default: 2 minutes.
+    /// Wait duration for maximum priority boost.
+    ///
+    /// Messages waiting this long receive the full priority boost defined by
+    /// [`scheduler_wait_weight`][Self::scheduler_wait_weight].
+    ///
+    /// **Default:** 2 minutes
     #[uniffi(default = None)]
     pub scheduler_max_wait: Option<Duration>,
 
-    /// Priority boost multiplier for waiting messages. Higher = more
-    /// aggressive. Default: 200.0.
+    /// Priority boost multiplier for waiting messages.
+    ///
+    /// Higher values more aggressively prioritize older messages. The boost
+    /// scales linearly from `0` at enqueue time to this value at
+    /// [`scheduler_max_wait`][Self::scheduler_max_wait].
+    ///
+    /// **Default:** `200.0`
     #[uniffi(default = None)]
     pub scheduler_wait_weight: Option<f64>,
 
-    /// Maximum distinct keys to track in scheduler.
-    /// Default: 8192.
+    /// Maximum distinct keys tracked by the fair scheduler.
+    ///
+    /// Limits memory usage for scheduling state.
+    ///
+    /// **Default:** `8192`
     #[uniffi(default = None)]
     pub scheduler_cache_size: Option<u32>,
 
     // ========================================================================
     // Cassandra options (required for timers in non-mock mode)
     // ========================================================================
-    /// Cassandra contact nodes.
+    /// Cassandra contact nodes for timer storage.
     ///
-    /// Example: `["localhost:9042"]` or `["cass1:9042", "cass2:9042"]`
+    /// Required for deferral functionality when [`mock`][Self::mock] is
+    /// `false`.
+    ///
+    /// **Example:** `["localhost:9042"]` or `["cass1:9042", "cass2:9042"]`
     #[uniffi(default = None)]
     pub cassandra_nodes: Option<Vec<String>>,
 
-    /// Cassandra keyspace name.
-    /// Default: "prosody".
+    /// Cassandra keyspace for timer tables.
+    ///
+    /// **Default:** `"prosody"`
     #[uniffi(default = None)]
     pub cassandra_keyspace: Option<String>,
 
-    /// Cassandra datacenter for queries.
+    /// Cassandra datacenter for query routing.
+    ///
+    /// Used for datacenter-aware load balancing.
     #[uniffi(default = None)]
     pub cassandra_datacenter: Option<String>,
 
-    /// Cassandra rack for queries.
+    /// Cassandra rack for query routing.
+    ///
+    /// Used for rack-aware load balancing within a datacenter.
     #[uniffi(default = None)]
     pub cassandra_rack: Option<String>,
 
-    /// Cassandra username.
+    /// Username for Cassandra authentication.
     #[uniffi(default = None)]
     pub cassandra_user: Option<String>,
 
-    /// Cassandra password.
+    /// Password for Cassandra authentication.
     #[uniffi(default = None)]
     pub cassandra_password: Option<String>,
 
-    /// Delete timer data older than this.
-    /// Default: 1 year.
+    /// Retention period for timer data.
+    ///
+    /// Timer records older than this are automatically deleted via TTL.
+    ///
+    /// **Default:** 1 year
     #[uniffi(default = None)]
     pub cassandra_retention: Option<Duration>,
 }

@@ -1,18 +1,23 @@
-//! Cancellation signaling for async operations.
+//! Cooperative cancellation signaling for async operations.
+//!
+//! This module provides [`CancellationSignal`], a thread-safe mechanism for
+//! signaling cancellation from C# to Rust async operations. The pattern follows
+//! cooperative cancellation: the caller requests cancellation, and the async
+//! operation checks for that request at appropriate points.
 
 use tokio_util::sync::CancellationToken;
 
-/// A cancellation signal that can be created by C# and passed to Rust async
-/// operations.
+/// A thread-safe signal for cooperative cancellation of async operations.
 ///
-/// C# creates this object, passes it to an async method, and can call
-/// `cancel()` to signal that the operation should be aborted. Rust code awaits
-/// `cancelled()` to detect when cancellation has been requested.
+/// Created by C# code and passed to Rust async methods. The C# caller can
+/// invoke [`cancel`](Self::cancel) at any time to request cancellation, and
+/// Rust code uses [`cancelled`](Self::cancelled) to await that signal.
 #[derive(uniffi::Object)]
 pub struct CancellationSignal {
     token: CancellationToken,
 }
 
+/// Delegates to [`CancellationSignal::new`].
 impl Default for CancellationSignal {
     fn default() -> Self {
         Self::new()
@@ -21,7 +26,7 @@ impl Default for CancellationSignal {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl CancellationSignal {
-    /// Creates a new cancellation signal.
+    /// Creates a new cancellation signal in the unsignalled state.
     #[uniffi::constructor]
     #[must_use]
     pub fn new() -> Self {
@@ -30,15 +35,20 @@ impl CancellationSignal {
         }
     }
 
-    /// Signals cancellation. Any async operation waiting on this signal will be
-    /// notified.
+    /// Signals cancellation, waking any tasks awaiting
+    /// [`cancelled`](Self::cancelled).
+    ///
+    /// This method is idempotent: calling it multiple times has no additional
+    /// effect after the first call.
     pub fn cancel(&self) {
         self.token.cancel();
     }
 
     /// Waits until cancellation is signaled.
     ///
-    /// This is used internally by Rust async operations to detect cancellation.
+    /// Returns immediately if [`cancel`](Self::cancel) has already been called.
+    /// Typically used in a `tokio::select!` branch to abort work when
+    /// cancellation is requested.
     pub async fn cancelled(&self) {
         self.token.cancelled().await;
     }

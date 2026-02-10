@@ -1,9 +1,11 @@
 //! Prosody FFI bindings for C#.
 //!
 //! This crate provides FFI bindings for the Prosody Kafka client library,
-//! using `UniFFI` for automatic C# bindings generation via uniffi-bindgen-cs.
+//! enabling C# applications to use Prosody's event-driven message processing
+//! capabilities. Bindings are generated automatically using `UniFFI` via
+//! uniffi-bindgen-cs.
 //!
-//! ## Building
+//! # Building
 //!
 //! ```bash
 //! # Build the cdylib (produces libprosody_ffi.dylib/.so/.dll)
@@ -13,19 +15,28 @@
 //! uniffi-bindgen-cs --library target/release/libprosody_ffi.dylib -o src/Prosody/Generated
 //! ```
 //!
-//! ## Module Organization
+//! # Architecture
 //!
-//! - [`admin`]: Admin client for topic management
-//! - [`cancellation`]: Cancellation signaling for async operations
-//! - [`client`]: `ProsodyClient` service implementation
-//! - [`config`]: Configuration types
-//! - [`context`]: Event context for scheduling and cancellation
-//! - [`error`]: Error types for FFI boundary crossing
-//! - [`handler`]: `EventHandler` trait for FFI callback interface
-//! - [`logging`]: Logging bridge to C# `ILoggerFactory`
-//! - [`message`]: Kafka message wrapper
-//! - [`timer`]: Timer trigger wrapper
-//! - [`types`]: Configuration types (`ClientOptions`)
+//! This crate serves as the FFI boundary layer. C# code wraps the generated
+//! bindings in idiomatic classes that provide:
+//! - Typed JSON payloads via `Send<T>()` and `GetPayload<T>()`
+//! - `CancellationToken` support on async methods
+//! - Properties instead of methods for simple accessors
+//!
+//! # Modules
+//!
+//! - [`admin`]: Admin client for Kafka topic management (create, delete)
+//! - [`cancellation`]: Cancellation signaling for cooperative async
+//!   cancellation
+//! - [`client`]: Core [`ProsodyClient`] service implementation
+//! - [`config`]: Configuration conversion utilities for builder types
+//! - [`context`]: Event context for timer scheduling and cancellation checks
+//! - [`error`]: Error types that cross the FFI boundary
+//! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
+//! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
+//! - [`message`]: Kafka message wrapper for C# consumption
+//! - [`timer`]: Timer trigger wrapper for scheduled event handling
+//! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
 
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -48,12 +59,20 @@ pub mod message;
 pub mod timer;
 pub mod types;
 
-/// OpenTelemetry carrier for context propagation.
+/// OpenTelemetry context carrier for distributed tracing propagation.
 ///
-/// In C#, this becomes `IDictionary<string, string>`.
+/// This type alias is used to pass trace context (trace ID, span ID, etc.)
+/// across the FFI boundary. Rust injects context into the carrier before
+/// calling C# handlers, and C# injects context before calling Rust methods.
+///
+/// In C#, this maps to `IDictionary<string, string>`.
 pub type Carrier = HashMap<String, String>;
 
-// Re-export key types for the UDL interface
+// Re-exports for UniFFI scaffolding.
+//
+// UniFFI discovers exported types through the crate root. These re-exports
+// ensure all public FFI types are visible for binding generation.
+
 pub use admin::AdminClient;
 pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
@@ -64,5 +83,5 @@ pub use message::Message;
 pub use timer::Timer;
 pub use types::{ClientMode, ClientOptions, ConsumerState};
 
-// Setup UniFFI scaffolding using proc-macro approach (no UDL file)
+// Initialize UniFFI scaffolding (proc-macro approach, no UDL file required).
 uniffi::setup_scaffolding!();
