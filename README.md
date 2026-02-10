@@ -47,19 +47,19 @@ var options = new ClientOptions
 
 await using var client = new ProsodyClient(options);
 
-// Subscribe to messages using a custom handler
-await client.SubscribeAsync(new MyHandler());
+// Define a message handler
+var messageHandler = new MyHandler();
+
+// Subscribe to messages using the message handler
+await client.SubscribeAsync(messageHandler);
 
 // Send a message to a topic
 await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!" });
 
 // Ensure proper shutdown when done
 await client.UnsubscribeAsync();
-```
 
-### Implementing a Handler
-
-```csharp
+// Handler implementation
 public class MyHandler : IProsodyHandler
 {
     public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
@@ -604,8 +604,8 @@ var app = builder.Build();
 Set the following standard OpenTelemetry environment variables:
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_SERVICE_NAME=my-service-name
 ```
 
@@ -951,6 +951,47 @@ Or via environment variable:
 PROSODY_BOOTSTRAP_SERVERS=localhost:9092  # Single server
 PROSODY_BOOTSTRAP_SERVERS=localhost:9092,localhost:9093  # Multiple servers
 ```
+
+## Release Process
+
+Prosody uses an automated release process managed by GitHub Actions. Here's an overview of how releases are handled:
+
+1. **Trigger**: The release process is triggered automatically on pushes to the `main` branch.
+
+2. **Release Please**: The process starts with the "Release Please" action, which:
+    - Analyzes commit messages since the last release.
+    - Creates or updates a release pull request with changelog updates and version bumps.
+    - When the PR is merged, it creates a GitHub release and a git tag.
+
+3. **Build Process**: If a new release is created, the following build jobs are triggered:
+    - Linux builds for x86_64 and aarch64 architectures.
+    - Windows builds for x64 and arm64 architectures.
+    - macOS builds for x86_64 and arm64 architectures.
+
+4. **Artifact Upload**: Each build job uploads its artifacts (native libraries) to GitHub Actions.
+
+5. **Publication**: If all builds are successful, the final step publishes the NuGet package to the GitHub Packages
+   registry.
+
+### Contributing to Releases
+
+To contribute to a release:
+
+1. Make your changes in a feature branch.
+2. Use [Conventional Commits](https://www.conventionalcommits.org/) syntax for your commit messages. This helps Release
+   Please determine the next version number and generate the changelog.
+3. Create a pull request to merge your changes into the `main` branch.
+4. Once your PR is approved and merged, Release Please will include your changes in the next release PR.
+
+### Manual Releases
+
+While the process is automated, manual intervention may sometimes be necessary:
+
+- You can manually trigger the release workflow from the GitHub Actions tab if needed.
+- If you need to make changes to the release PR created by Release Please, you can do so before merging it.
+
+Remember, all releases are automatically published to the GitHub Packages registry. Ensure you have thoroughly tested
+your changes before merging to `main`.
 
 ## API Reference
 
