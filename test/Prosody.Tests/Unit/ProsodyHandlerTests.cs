@@ -1,13 +1,10 @@
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for implementing the IProsodyHandler interface and error classification.
+/// Tests for IProsodyHandler interface implementation and error classification.
 /// </summary>
 public sealed class ProsodyHandlerTests
 {
-    /// <summary>
-    /// Test implementation of IProsodyHandler that completes successfully.
-    /// </summary>
     private sealed class SuccessHandler : IProsodyHandler
     {
         public int MessageCount { get; private set; }
@@ -37,9 +34,6 @@ public sealed class ProsodyHandlerTests
         Assert.NotNull(handler);
     }
 
-    /// <summary>
-    /// Test handler that uses async/await properly.
-    /// </summary>
     private sealed class AsyncHandler : IProsodyHandler
     {
         public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
@@ -171,9 +165,6 @@ public sealed class ProsodyHandlerTests
 
     #region Handler with Attribute Tests
 
-    /// <summary>
-    /// Handler that uses PermanentErrorAttribute to declare permanent exceptions.
-    /// </summary>
     private sealed class AttributeHandler : IProsodyHandler
     {
         [PermanentError(typeof(FormatException), typeof(ArgumentException))]
@@ -209,9 +200,6 @@ public sealed class ProsodyHandlerTests
 
     #region Custom Permanent Exception Tests
 
-    /// <summary>
-    /// Custom domain exception that implements IPermanentError.
-    /// </summary>
     private sealed class OrderValidationException : Exception, IPermanentError
     {
         public OrderValidationException() { }
@@ -235,9 +223,6 @@ public sealed class ProsodyHandlerTests
         );
     }
 
-    /// <summary>
-    /// Handler that throws custom IPermanentError exception.
-    /// </summary>
     private sealed class CustomExceptionHandler : IProsodyHandler
     {
         public Task OnMessageAsync(

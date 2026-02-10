@@ -1,11 +1,8 @@
 namespace Prosody;
 
 /// <summary>
-/// Client for Kafka administrative operations.
+/// Client for Kafka administrative operations, used primarily for integration testing.
 /// </summary>
-/// <remarks>
-/// Used primarily for integration testing to create and delete test topics.
-/// </remarks>
 public sealed class AdminClient : IDisposable
 {
     private readonly Native.AdminClient _native;

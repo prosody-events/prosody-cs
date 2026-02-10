@@ -5,10 +5,6 @@ namespace Prosody;
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
 /// </summary>
-/// <remarks>
-/// Provides functionality for sending messages, subscribing to topics,
-/// and managing consumer state.
-/// </remarks>
 public sealed class ProsodyClient : IDisposable
 {
     private readonly Native.ProsodyClient _native;

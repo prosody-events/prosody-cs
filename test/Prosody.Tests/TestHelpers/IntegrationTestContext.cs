@@ -28,7 +28,6 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
 
     /// <summary>
     /// Creates a new isolated test context with its own topic and client.
-    /// The AdminClient is shared and should come from the test fixture.
     /// </summary>
     public static async Task<IntegrationTestContext> CreateAsync(AdminClient sharedAdmin)
     {

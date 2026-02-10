@@ -5,26 +5,17 @@ using Prosody.Native;
 namespace Prosody;
 
 /// <summary>
-/// Global logging configuration for the Prosody library.
+/// Global logging configuration for Prosody. Configure once at startup before creating clients.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Prosody uses a global logging configuration that applies to all client instances.
-/// Configure logging once at application startup before creating any <see cref="ProsodyClient"/> instances.
-/// </para>
-/// <para>
-/// For dependency injection scenarios, use the <see cref="ProsodyServiceCollectionExtensions.AddProsodyLogging"/>
-/// extension method instead.
-/// </para>
+/// For DI scenarios, use <see cref="ProsodyServiceCollectionExtensions.AddProsodyLogging"/> instead.
 /// </remarks>
 /// <example>
 /// <code>
-/// // Configure logging at startup
 /// var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 /// ProsodyLogging.Configure(loggerFactory);
 ///
-/// // Create clients - they all use the configured logger
-/// var client = new ProsodyClient(options);
+/// var client = new ProsodyClient(options); // Uses configured logger
 /// </code>
 /// </example>
 public static class ProsodyLogging
@@ -35,21 +26,10 @@ public static class ProsodyLogging
     /// <summary>
     /// Configures logging for all Prosody clients.
     /// </summary>
-    /// <param name="loggerFactory">
-    /// The logger factory to use for creating loggers.
-    /// Pass <c>null</c> to disable logging.
-    /// </param>
+    /// <param name="loggerFactory">The logger factory to use, or <c>null</c> to disable logging.</param>
     /// <remarks>
-    /// <para>
-    /// This method is thread-safe and can be called multiple times.
-    /// Each call replaces the previous logger configuration.
-    /// </para>
-    /// <para>
-    /// Log categories used:
-    /// <list type="bullet">
-    /// <item><description><c>Prosody.Native</c> - All native library logs</description></item>
-    /// </list>
-    /// </para>
+    /// Thread-safe; each call replaces the previous configuration.
+    /// Logs use the <c>Prosody.Native</c> category.
     /// </remarks>
     public static void Configure(ILoggerFactory? loggerFactory)
     {
