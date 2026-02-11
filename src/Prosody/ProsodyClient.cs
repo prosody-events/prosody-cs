@@ -5,7 +5,7 @@ namespace Prosody;
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
 /// </summary>
-public sealed class ProsodyClient : IDisposable
+public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
     private bool _disposed;
@@ -114,6 +114,25 @@ public sealed class ProsodyClient : IDisposable
     }
 
     /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        // Only unsubscribe if the consumer is running
+        var state = await _native.ConsumerState().ConfigureAwait(false);
+        if (state == Native.ConsumerState.Running)
+        {
+            await _native.Unsubscribe().ConfigureAwait(false);
+        }
+
+        _disposed = true;
+        _native.Dispose();
+
+        GC.SuppressFinalize(this);
+    }
+
+    /// <inheritdoc/>
     public void Dispose()
     {
         if (_disposed)
@@ -121,5 +140,7 @@ public sealed class ProsodyClient : IDisposable
 
         _disposed = true;
         _native.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }
