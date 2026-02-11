@@ -70,8 +70,8 @@ public enum ConsumerState
 /// </example>
 /// <para>
 /// Alternatively, you can use this record directly. All optional fields default to <c>null</c>,
-/// which means "use the environment variable or library default". Use <c>with</c> expressions
-/// to override only the fields you need.
+/// which means "use the environment variable or library default". Use an object initializer
+/// to set only the fields you need.
 /// </para>
 /// <example>
 /// <code>

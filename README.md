@@ -1027,6 +1027,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 
 ### ProsodyClient
 
+- `ProsodyClient(ClientOptions options)`: Create a new ProsodyClient with the specified options.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
 - `Task<ConsumerState> ConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
