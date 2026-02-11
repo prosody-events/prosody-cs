@@ -577,6 +577,78 @@ public sealed class ProsodyClientBuilder
     }
 
     // ========================================================================
+    // Options access (for DI integration)
+    // ========================================================================
+
+    /// <summary>
+    /// Applies values from an existing <see cref="ClientOptions"/> instance.
+    /// </summary>
+    /// <param name="options">The options to apply.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// Values from <paramref name="options"/> are merged with existing builder state.
+    /// Only non-null values are applied; null values do not override previously set values.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
+    public ProsodyClientBuilder WithOptions(ClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        _options = _options with
+        {
+            BootstrapServers = options.BootstrapServers ?? _options.BootstrapServers,
+            GroupId = options.GroupId ?? _options.GroupId,
+            SubscribedTopics = options.SubscribedTopics ?? _options.SubscribedTopics,
+            Mode = options.Mode ?? _options.Mode,
+            AllowedEvents = options.AllowedEvents ?? _options.AllowedEvents,
+            SourceSystem = options.SourceSystem ?? _options.SourceSystem,
+            Mock = options.Mock ?? _options.Mock,
+            MaxConcurrency = options.MaxConcurrency ?? _options.MaxConcurrency,
+            MaxUncommitted = options.MaxUncommitted ?? _options.MaxUncommitted,
+            MaxEnqueuedPerKey = options.MaxEnqueuedPerKey ?? _options.MaxEnqueuedPerKey,
+            IdempotenceCacheSize = options.IdempotenceCacheSize ?? _options.IdempotenceCacheSize,
+            Timeout = options.Timeout ?? _options.Timeout,
+            StallThreshold = options.StallThreshold ?? _options.StallThreshold,
+            ShutdownTimeout = options.ShutdownTimeout ?? _options.ShutdownTimeout,
+            PollInterval = options.PollInterval ?? _options.PollInterval,
+            CommitInterval = options.CommitInterval ?? _options.CommitInterval,
+            ProbePort = options.ProbePort ?? _options.ProbePort,
+            SlabSize = options.SlabSize ?? _options.SlabSize,
+            SendTimeout = options.SendTimeout ?? _options.SendTimeout,
+            MaxRetries = options.MaxRetries ?? _options.MaxRetries,
+            RetryBase = options.RetryBase ?? _options.RetryBase,
+            MaxRetryDelay = options.MaxRetryDelay ?? _options.MaxRetryDelay,
+            FailureTopic = options.FailureTopic ?? _options.FailureTopic,
+            DeferEnabled = options.DeferEnabled ?? _options.DeferEnabled,
+            DeferBase = options.DeferBase ?? _options.DeferBase,
+            DeferMaxDelay = options.DeferMaxDelay ?? _options.DeferMaxDelay,
+            DeferFailureThreshold = options.DeferFailureThreshold ?? _options.DeferFailureThreshold,
+            DeferFailureWindow = options.DeferFailureWindow ?? _options.DeferFailureWindow,
+            DeferCacheSize = options.DeferCacheSize ?? _options.DeferCacheSize,
+            DeferSeekTimeout = options.DeferSeekTimeout ?? _options.DeferSeekTimeout,
+            DeferDiscardThreshold = options.DeferDiscardThreshold ?? _options.DeferDiscardThreshold,
+            MonopolizationEnabled = options.MonopolizationEnabled ?? _options.MonopolizationEnabled,
+            MonopolizationThreshold =
+                options.MonopolizationThreshold ?? _options.MonopolizationThreshold,
+            MonopolizationWindow = options.MonopolizationWindow ?? _options.MonopolizationWindow,
+            MonopolizationCacheSize =
+                options.MonopolizationCacheSize ?? _options.MonopolizationCacheSize,
+            SchedulerFailureWeight =
+                options.SchedulerFailureWeight ?? _options.SchedulerFailureWeight,
+            SchedulerMaxWait = options.SchedulerMaxWait ?? _options.SchedulerMaxWait,
+            SchedulerWaitWeight = options.SchedulerWaitWeight ?? _options.SchedulerWaitWeight,
+            SchedulerCacheSize = options.SchedulerCacheSize ?? _options.SchedulerCacheSize,
+            CassandraNodes = options.CassandraNodes ?? _options.CassandraNodes,
+            CassandraKeyspace = options.CassandraKeyspace ?? _options.CassandraKeyspace,
+            CassandraDatacenter = options.CassandraDatacenter ?? _options.CassandraDatacenter,
+            CassandraRack = options.CassandraRack ?? _options.CassandraRack,
+            CassandraUser = options.CassandraUser ?? _options.CassandraUser,
+            CassandraPassword = options.CassandraPassword ?? _options.CassandraPassword,
+            CassandraRetention = options.CassandraRetention ?? _options.CassandraRetention,
+        };
+        return this;
+    }
+
+    // ========================================================================
     // Build
     // ========================================================================
 
