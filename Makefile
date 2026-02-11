@@ -157,19 +157,20 @@ bindgen-release: $(CDYLIB_RELEASE)
 	@$(MAKE) --no-print-directory patch-generated-bindings
 	@echo "C# bindings generated in $(BINDINGS_DIR)"
 
-# Patch generated bindings to add pragma warning disable for P/Invoke warnings
-# CA5392: P/Invoke methods should use DefaultDllImportSearchPaths (generated code, can't fix)
+# Patch generated bindings to suppress warnings that can't be fixed in generated code
+# CA5392: P/Invoke methods should use DefaultDllImportSearchPaths
+# CS1587: XML comment is not placed on a valid language element
 patch-generated-bindings:
 	@for f in "$(BINDINGS_DIR)"/*.cs; do \
 		if [ -f "$$f" ]; then \
 			tmp=$$(mktemp); \
 			head -5 "$$f" > "$$tmp"; \
 			echo "" >> "$$tmp"; \
-			echo "#pragma warning disable CA5392" >> "$$tmp"; \
+			echo "#pragma warning disable CA5392, CS1587" >> "$$tmp"; \
 			echo "" >> "$$tmp"; \
 			tail -n +6 "$$f" >> "$$tmp"; \
 			echo "" >> "$$tmp"; \
-			echo "#pragma warning restore CA5392" >> "$$tmp"; \
+			echo "#pragma warning restore CA5392, CS1587" >> "$$tmp"; \
 			mv "$$tmp" "$$f"; \
 		fi; \
 	done

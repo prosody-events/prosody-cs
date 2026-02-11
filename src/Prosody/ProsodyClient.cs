@@ -124,13 +124,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
 
         _native.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc/>
-    public void Dispose()
-    {
-        _native.Dispose();
-        GC.SuppressFinalize(this);
-    }
+    public void Dispose() => _native.Dispose();
 }

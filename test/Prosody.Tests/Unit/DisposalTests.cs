@@ -31,26 +31,21 @@ public sealed class DisposalTests
     [Fact]
     public async Task DisposeAsyncSafeWhenNotSubscribed()
     {
-        // DisposeAsync should not throw when consumer was never subscribed
-        await using var client = new ProsodyClient(MockOptions);
+        var client = new ProsodyClient(MockOptions);
 
-        var exception = await Record.ExceptionAsync(async () => await client.DisposeAsync());
-
-        Assert.Null(exception);
+        // Should not throw when consumer was never subscribed
+        await client.DisposeAsync();
     }
 
     [Fact]
     public async Task DisposeAsyncIsIdempotent()
     {
-        // Calling DisposeAsync multiple times should be safe
         var client = new ProsodyClient(MockOptions);
-        var handler = new NoOpHandler();
 
-        await client.SubscribeAsync(handler);
+        await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 
-        var exception = await Record.ExceptionAsync(async () => await client.DisposeAsync());
-
-        Assert.Null(exception);
+        // Should not throw on second call
+        await client.DisposeAsync();
     }
 }
