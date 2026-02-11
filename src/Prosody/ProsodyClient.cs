@@ -8,7 +8,6 @@ namespace Prosody;
 public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
-    private bool _disposed;
 
     /// <summary>
     /// Creates a new ProsodyClient with the given options.
@@ -83,8 +82,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var carrier = new Dictionary<string, string>();
         TracePropagation.Inject(carrier);
         using var signal = CancellationHelper.CreateSignal(cancellationToken);
@@ -98,8 +95,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="handler">The event handler to process messages and timers.</param>
     public Task SubscribeAsync(IProsodyHandler handler)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var bridge = new EventHandlerBridge(handler);
         return _native.Subscribe(bridge);
     }
@@ -109,38 +104,33 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </summary>
     public Task UnsubscribeAsync()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         return _native.Unsubscribe();
     }
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
-
-        // Only unsubscribe if the consumer is running
-        var state = await _native.ConsumerState().ConfigureAwait(false);
-        if (state == Native.ConsumerState.Running)
+        try
         {
             await _native.Unsubscribe().ConfigureAwait(false);
         }
+        catch (Native.FfiException.Client)
+        {
+            // Ignore - consumer was not running or already unsubscribed
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore - already disposed
+        }
 
-        _disposed = true;
         _native.Dispose();
-
         GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (_disposed)
-            return;
-
-        _disposed = true;
         _native.Dispose();
-
         GC.SuppressFinalize(this);
     }
 }
