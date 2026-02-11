@@ -246,6 +246,10 @@ copy-native-to-test-output:
 		fi; \
 	done
 
+# Environment variables for Cargo
+# Use git CLI for fetches (required for private repos with SSH keys)
+export CARGO_NET_GIT_FETCH_WITH_CLI := true
+
 # Environment variables for local testing (matching docker-compose.yaml)
 # These use the EXTERNAL listener on localhost for local development
 export PROSODY_BOOTSTRAP_SERVERS ?= localhost:9094
