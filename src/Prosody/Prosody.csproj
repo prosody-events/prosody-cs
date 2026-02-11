@@ -24,6 +24,10 @@
 
     <!-- Generate XML documentation for IntelliSense -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Suppress CA1724: Type name conflicts with namespace -->
+    <!-- Deliberate design choice: Prosody.CreateClient() is the intended API -->
+    <NoWarn>$(NoWarn);CA1724</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -54,13 +54,28 @@ public enum ConsumerState
 /// </summary>
 /// <remarks>
 /// <para>
-/// All optional fields default to <c>null</c>, which means "use the
-/// environment variable or library default". Use <c>with</c> expressions
+/// <b>Prefer using <see cref="ProsodyClientBuilder"/> via <see cref="Prosody.CreateClient()"/>
+/// for a fluent configuration experience:</b>
+/// </para>
+/// <example>
+/// <code>
+/// await using var client = Prosody.CreateClient()
+///     .WithBootstrapServers("localhost:9092")
+///     .WithGroupId("my-app")
+///     .WithSubscribedTopics("my-topic")
+///     .WithMode(ClientMode.LowLatency)
+///     .WithFailureTopic("dead-letters")
+///     .Build();
+/// </code>
+/// </example>
+/// <para>
+/// Alternatively, you can use this record directly. All optional fields default to <c>null</c>,
+/// which means "use the environment variable or library default". Use <c>with</c> expressions
 /// to override only the fields you need.
 /// </para>
 /// <example>
 /// <code>
-/// var options = new ClientOptions() with
+/// var options = new ClientOptions
 /// {
 ///     BootstrapServers = ["localhost:9092"],
 ///     GroupId = "my-app",
@@ -69,6 +84,7 @@ public enum ConsumerState
 ///     Mode = ClientMode.LowLatency,
 ///     FailureTopic = "dead-letters"
 /// };
+/// await using var client = new ProsodyClient(options);
 /// </code>
 /// </example>
 /// </remarks>
