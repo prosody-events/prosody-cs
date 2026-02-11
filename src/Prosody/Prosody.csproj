@@ -10,15 +10,20 @@
     <RootNamespace>Prosody</RootNamespace>
     <VersionPrefix>0.1.0</VersionPrefix>
 
-    <!-- NuGet Package -->
+    <!-- NuGet package metadata -->
     <PackageId>Witco.Prosody</PackageId>
-    <Description>A high-level Kafka client library with OpenTelemetry integration for distributed tracing</Description>
     <Authors>Josh Griffith</Authors>
-    <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing</PackageTags>
+    <Copyright>Copyright (c) Witco</Copyright>
+    <Description>C# bindings for the Prosody Kafka client with configurable retry mechanisms, failure handling strategies, timer scheduling, and OpenTelemetry distributed tracing.</Description>
+    <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing;retry;timers</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageProjectUrl>https://github.com/cincpro/prosody-cs</PackageProjectUrl>
     <RepositoryUrl>https://github.com/cincpro/prosody-cs</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <!-- Generate XML documentation for IntelliSense -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -58,11 +63,11 @@
   <ItemGroup>
     <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)" />
 
-    <!-- Native library paths - uses forward slashes for cross-platform compatibility -->
+    <!-- Native library paths (forward slashes for cross-platform compatibility) -->
     <ProsodyNativeArtifact Include="@(ProsodyNativeArtifactTarget)">
-      <LibraryPath>../../prosody-ffi/artifacts/%(Identity)/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
-      <RustOutputDebugPath>../../prosody-ffi/target/%(RustTarget)/debug/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
-      <RustOutputReleasePath>../../prosody-ffi/target/%(RustTarget)/release/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
+      <LibraryPath>../../ffi/artifacts/%(Identity)/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</LibraryPath>
+      <RustOutputDebugPath>../../target/%(RustTarget)/debug/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputDebugPath>
+      <RustOutputReleasePath>../../target/%(RustTarget)/release/%(Prefix)$(ProsodyNativeLibraryName)%(Ext)</RustOutputReleasePath>
 
       <Link>runtimes/%(ProsodyNativeArtifact.Rid)/native/%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</Link>
       <PackagePath>runtimes/%(ProsodyNativeArtifact.Rid)/native/%(ProsodyNativeArtifact.Prefix)$(ProsodyNativeLibraryName)%(Ext)</PackagePath>

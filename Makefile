@@ -58,8 +58,8 @@ CDYLIB := $(CARGO_TARGET_DEBUG)/$(LIB_NAME)
 CDYLIB_RELEASE := $(CARGO_TARGET_RELEASE)/$(LIB_NAME)
 
 # Path where .NET csproj expects native libraries (matches RustOutputDebugPath in csproj)
-# This creates: prosody-ffi/target/<rust-target>/debug/<lib>
-DOTNET_NATIVE_BASE := prosody-ffi/target/$(RUST_TARGET)
+# This creates: target/<rust-target>/debug/<lib>
+DOTNET_NATIVE_BASE := target/$(RUST_TARGET)
 DOTNET_NATIVE_DEBUG := $(DOTNET_NATIVE_BASE)/debug
 DOTNET_NATIVE_RELEASE := $(DOTNET_NATIVE_BASE)/release
 
@@ -295,9 +295,9 @@ endif
 # This exercises the packaging machinery without needing all platform builds
 pack: build-ffi-release bindgen-release
 	@echo "==> Staging native library for NuGet packaging..."
-	@mkdir -p "prosody-ffi/artifacts/$(RID)"
-	cp "$(CDYLIB_RELEASE)" "prosody-ffi/artifacts/$(RID)/$(LIB_NAME)"
-	@echo "Native library staged at prosody-ffi/artifacts/$(RID)/$(LIB_NAME)"
+	@mkdir -p "ffi/artifacts/$(RID)"
+	cp "$(CDYLIB_RELEASE)" "ffi/artifacts/$(RID)/$(LIB_NAME)"
+	@echo "Native library staged at ffi/artifacts/$(RID)/$(LIB_NAME)"
 	@echo ""
 	@echo "==> Building NuGet package..."
 	@mkdir -p "$(PACK_OUTPUT)"
@@ -319,8 +319,7 @@ pack: build-ffi-release bindgen-release
 clean:
 	cargo clean
 	rm -rf "$(BINDINGS_DIR)"/*.cs
-	rm -rf prosody-ffi/target
-	rm -rf prosody-ffi/artifacts
+	rm -rf ffi/artifacts
 	rm -rf "$(PACK_OUTPUT)"
 	dotnet clean 2>/dev/null || true
 	find . -type d -name 'bin' -not -path './target/*' -exec rm -rf {} + 2>/dev/null || true

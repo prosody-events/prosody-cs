@@ -181,14 +181,14 @@ jobs:
 
       - name: Reorganize artifacts for NuGet packing
         run: |
-          # Create prosody-ffi/artifacts structure expected by Prosody.csproj
-          mkdir -p prosody-ffi/artifacts
+          # Create ffi/artifacts structure expected by Prosody.csproj
+          mkdir -p ffi/artifacts
           cd artifacts
           for dir in native-*; do
             rid="${dir#native-}"
-            mv "$dir" "../prosody-ffi/artifacts/$rid"
+            mv "$dir" "../ffi/artifacts/$rid"
           done
-          cd ../prosody-ffi/artifacts
+          cd ../ffi/artifacts
           ls -laR
 
       - name: Restore .NET tools
