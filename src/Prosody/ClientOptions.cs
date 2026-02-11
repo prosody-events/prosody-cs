@@ -31,9 +31,6 @@ public enum ClientMode
 /// <summary>
 /// Consumer state.
 /// </summary>
-/// <remarks>
-/// Represents the current lifecycle state of the consumer.
-/// </remarks>
 public enum ConsumerState
 {
     /// <summary>

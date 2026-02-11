@@ -145,10 +145,7 @@ public sealed class LoggingTests : IDisposable
         Assert.True(entry.Fields.ContainsKey("Message"), "Should have Message field");
     }
 
-    /// <summary>
-    /// Creates a producer-only client (no consumer config).
-    /// This triggers an info log: "disabling consumer (safe to ignore if you're only producing)"
-    /// </summary>
+    // Creates a producer-only client, which triggers a "disabling consumer" info log.
     private static void CreateProducerOnlyClient()
     {
         using var client = new ProsodyClient(

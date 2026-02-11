@@ -32,9 +32,6 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
         );
     }
 
-    /// <summary>
-    /// Test payload for messages.
-    /// </summary>
     protected sealed record TestPayload
     {
         public string Content { get; init; } = "";
@@ -42,7 +39,7 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     }
 
     /// <summary>
-    /// Configurable test handler using the exception-based pattern.
+    /// Configurable handler for tests. Pass lambdas for OnMessage/OnTimer callbacks.
     /// </summary>
     protected sealed class TestProsodyHandler : IProsodyHandler
     {

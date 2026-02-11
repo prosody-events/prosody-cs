@@ -1,16 +1,18 @@
-//! Admin client for Kafka topic management.
+//! FFI bindings for Kafka administrative operations.
 //!
-//! Provides FFI bindings for administrative operations on Kafka topics,
-//! such as creating and deleting topics for testing.
+//! This module exposes [`AdminClient`], which provides async methods for
+//! managing Kafka topics (create, delete). All operations are asynchronous
+//! and run on the Tokio runtime.
 
 use std::sync::Arc;
 
 use crate::error::FfiError;
 use prosody::admin::{AdminConfiguration, ProsodyAdminClient, TopicConfiguration};
 
-/// A client for performing administrative operations on Kafka topics.
+/// Async client for Kafka topic administration.
 ///
-/// Used primarily for integration testing to create and delete test topics.
+/// Wraps the Prosody admin client for FFI exposure. Primarily used in
+/// integration tests to set up and tear down test topics.
 #[derive(uniffi::Object)]
 pub struct AdminClient {
     client: Arc<ProsodyAdminClient>,
@@ -18,15 +20,12 @@ pub struct AdminClient {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl AdminClient {
-    /// Creates a new `AdminClient` with the specified bootstrap servers.
-    ///
-    /// # Arguments
-    ///
-    /// * `bootstrap_servers` - Kafka bootstrap servers to connect to.
+    /// Creates a new admin client connected to the given brokers.
     ///
     /// # Errors
     ///
-    /// Returns a `FfiError` if the client cannot be created.
+    /// Returns [`FfiError`] if configuration is invalid or the underlying
+    /// client fails to initialize.
     #[uniffi::constructor]
     pub fn new(bootstrap_servers: Vec<String>) -> Result<Self, FfiError> {
         let config = AdminConfiguration::new(bootstrap_servers)?;
@@ -37,17 +36,13 @@ impl AdminClient {
         })
     }
 
-    /// Creates a new Kafka topic.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the topic to create.
-    /// * `partition_count` - Number of partitions for the topic.
-    /// * `replication_factor` - Replication factor for the topic.
+    /// Creates a Kafka topic with the specified configuration.
     ///
     /// # Errors
     ///
-    /// Returns a `FfiError` if topic creation fails.
+    /// Returns [`FfiError`] if the topic configuration is invalid or
+    /// the broker rejects the creation request (e.g., topic already exists,
+    /// insufficient replication factor).
     pub async fn create_topic(
         &self,
         name: String,
@@ -65,15 +60,12 @@ impl AdminClient {
         Ok(())
     }
 
-    /// Deletes a Kafka topic.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the topic to delete.
+    /// Deletes a Kafka topic by name.
     ///
     /// # Errors
     ///
-    /// Returns a `FfiError` if topic deletion fails.
+    /// Returns [`FfiError`] if the topic does not exist or the broker
+    /// rejects the deletion request.
     pub async fn delete_topic(&self, name: String) -> Result<(), FfiError> {
         self.client.delete_topic(&name).await?;
 

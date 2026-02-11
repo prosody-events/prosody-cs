@@ -3,12 +3,8 @@ using System.Diagnostics.CodeAnalysis;
 namespace Prosody;
 
 /// <summary>
-/// Event context for scheduling timers and checking cancellation.
+/// Event context for scheduling timers and checking cancellation. All times are in UTC.
 /// </summary>
-/// <remarks>
-/// Wraps the native context and exposes scheduling and cancellation methods.
-/// All times are in UTC.
-/// </remarks>
 [SuppressMessage(
     "Naming",
     "CA1724:Type names should not match namespaces",

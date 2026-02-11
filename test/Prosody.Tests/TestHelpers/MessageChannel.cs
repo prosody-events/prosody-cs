@@ -3,14 +3,8 @@ using System.Threading.Channels;
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
-/// Thread-safe channel for collecting messages in tests.
-/// Uses System.Threading.Channels for efficient async coordination.
+/// Thread-safe channel for collecting messages in tests with timeout-based waiting.
 /// </summary>
-/// <remarks>
-/// Reference: prosody-py uses tsasync.Channel, prosody-rb uses Thread::Queue.
-///
-/// Constitution Principle IV: Never use sleep in tests. Use channel-based waiting with timeout.
-/// </remarks>
 /// <typeparam name="T">The type of items to collect.</typeparam>
 internal sealed class MessageChannel<T>
 {
@@ -18,18 +12,10 @@ internal sealed class MessageChannel<T>
         new UnboundedChannelOptions { SingleReader = false, SingleWriter = false }
     );
 
-    /// <summary>
-    /// Sends an item to the channel.
-    /// </summary>
-    /// <param name="item">The item to send.</param>
+    /// <summary>Sends an item to the channel.</summary>
     public void Send(T item) => _channel.Writer.TryWrite(item);
 
-    /// <summary>
-    /// Receives a single item from the channel with timeout.
-    /// </summary>
-    /// <param name="timeout">Maximum time to wait.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The received item.</returns>
+    /// <summary>Receives a single item from the channel with timeout.</summary>
     /// <exception cref="TimeoutException">Thrown if no item is received within timeout.</exception>
     public async Task<T> ReceiveAsync(
         TimeSpan timeout,
@@ -49,14 +35,8 @@ internal sealed class MessageChannel<T>
         }
     }
 
-    /// <summary>
-    /// Receives multiple items from the channel with timeout.
-    /// </summary>
-    /// <param name="count">Number of items to receive.</param>
-    /// <param name="timeout">Maximum time to wait for all items.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>List of received items.</returns>
-    /// <exception cref="TimeoutException">Thrown if not enough items are received within timeout.</exception>
+    /// <summary>Receives multiple items from the channel with timeout.</summary>
+    /// <exception cref="TimeoutException">Thrown if not all items are received within timeout.</exception>
     public async Task<List<T>> ReceiveAsync(
         int count,
         TimeSpan timeout,
@@ -84,15 +64,9 @@ internal sealed class MessageChannel<T>
         }
     }
 
-    /// <summary>
-    /// Tries to receive an item without waiting.
-    /// </summary>
-    /// <param name="item">The received item if available.</param>
-    /// <returns>True if an item was received, false otherwise.</returns>
+    /// <summary>Tries to receive an item without waiting.</summary>
     public bool TryReceive(out T? item) => _channel.Reader.TryRead(out item);
 
-    /// <summary>
-    /// Gets the number of items currently in the channel.
-    /// </summary>
+    /// <summary>Gets the number of items currently in the channel.</summary>
     public int Count => _channel.Reader.Count;
 }

@@ -1,11 +1,17 @@
-//! Configuration conversion utilities.
+//! Configuration conversion utilities for FFI bindings.
 //!
-//! This module provides functions to convert [`ClientOptions`] into the various
-//! prosody builder types needed to construct a `HighLevelClient`.
+//! This module converts [`ClientOptions`] into the various prosody builder
+//! types needed to construct a [`prosody::high_level::HighLevelClient`].
 //!
-//! The pattern follows sibling wrappers (prosody-js, prosody-py, prosody-rb):
-//! - Only set builder fields when the option is `Some`
-//! - Let builder defaults handle environment variable fallbacks
+//! # Design Pattern
+//!
+//! Following sibling wrappers (prosody-js, prosody-py, prosody-rb):
+//!
+//! - Builder fields are only set when the corresponding option is `Some`
+//! - `None` values allow builder defaults and environment variable fallbacks to
+//!   apply
+//! - All functions are infallible; validation happens when builders are
+//!   finalized
 
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::consumer::ConsumerConfigurationBuilder;
@@ -21,7 +27,10 @@ use prosody::producer::ProducerConfigurationBuilder;
 
 use crate::types::{ClientMode, ClientOptions};
 
-/// Builds a [`ProducerConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a producer configuration builder from client options.
+///
+/// Configures Kafka producer settings including bootstrap servers, mock mode,
+/// source system identifier, and send timeout.
 #[must_use]
 pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBuilder {
     let mut builder = ProducerConfigurationBuilder::default();
@@ -45,7 +54,17 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
     builder
 }
 
-/// Builds a [`ConsumerConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a consumer configuration builder from client options.
+///
+/// Configures Kafka consumer settings including bootstrap servers, group ID,
+/// topic subscriptions, idempotence, and flow control parameters.
+///
+/// # Probe Port Handling
+///
+/// The `probe_port` option uses special semantics:
+/// - `None`: Use builder default (typically enabled with auto-assigned port)
+/// - `Some(0)`: Explicitly disable the probe endpoint
+/// - `Some(1..=65535)`: Use the specified port number
 #[must_use]
 pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBuilder {
     let mut builder = ConsumerConfigurationBuilder::default();
@@ -98,7 +117,6 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
         builder.commit_interval(commit_interval);
     }
 
-    // Handle probe port: None = use default, 0 = disabled, 1-65535 = use that port
     if let Some(probe_port) = options.probe_port {
         if probe_port == 0 {
             builder.probe_port(None);
@@ -114,7 +132,10 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
     builder
 }
 
-/// Builds a [`RetryConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a retry configuration builder from client options.
+///
+/// Configures exponential backoff retry behavior with base delay, maximum
+/// retry count, and maximum delay cap.
 #[must_use]
 pub fn build_retry_config(options: &ClientOptions) -> RetryConfigurationBuilder {
     let mut builder = RetryConfigurationBuilder::default();
@@ -134,7 +155,10 @@ pub fn build_retry_config(options: &ClientOptions) -> RetryConfigurationBuilder 
     builder
 }
 
-/// Builds a [`FailureTopicConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a failure topic configuration builder from client options.
+///
+/// Configures the dead-letter topic where messages are sent after exhausting
+/// all retry attempts.
 #[must_use]
 pub fn build_failure_topic_config(options: &ClientOptions) -> FailureTopicConfigurationBuilder {
     let mut builder = FailureTopicConfigurationBuilder::default();
@@ -146,7 +170,10 @@ pub fn build_failure_topic_config(options: &ClientOptions) -> FailureTopicConfig
     builder
 }
 
-/// Builds a [`SchedulerConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a scheduler configuration builder from client options.
+///
+/// Configures the message scheduler which controls concurrency limits, failure
+/// weighting for adaptive throttling, and wait time parameters.
 #[must_use]
 pub fn build_scheduler_config(options: &ClientOptions) -> SchedulerConfigurationBuilder {
     let mut builder = SchedulerConfigurationBuilder::default();
@@ -174,7 +201,10 @@ pub fn build_scheduler_config(options: &ClientOptions) -> SchedulerConfiguration
     builder
 }
 
-/// Builds a [`MonopolizationConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a monopolization configuration builder from client options.
+///
+/// Configures monopolization detection which prevents a single message key
+/// from consuming excessive processing capacity within a time window.
 #[must_use]
 pub fn build_monopolization_config(options: &ClientOptions) -> MonopolizationConfigurationBuilder {
     let mut builder = MonopolizationConfigurationBuilder::default();
@@ -198,7 +228,10 @@ pub fn build_monopolization_config(options: &ClientOptions) -> MonopolizationCon
     builder
 }
 
-/// Builds a [`DeferConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a defer configuration builder from client options.
+///
+/// Configures the defer middleware which delays reprocessing of messages
+/// from keys that have experienced recent failures, using exponential backoff.
 #[must_use]
 pub fn build_defer_config(options: &ClientOptions) -> DeferConfigurationBuilder {
     let mut builder = DeferConfigurationBuilder::default();
@@ -238,7 +271,10 @@ pub fn build_defer_config(options: &ClientOptions) -> DeferConfigurationBuilder 
     builder
 }
 
-/// Builds a [`TimeoutConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a timeout configuration builder from client options.
+///
+/// Configures the per-message processing timeout after which handlers are
+/// cancelled and the message is marked as failed.
 #[must_use]
 pub fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurationBuilder {
     let mut builder = TimeoutConfigurationBuilder::default();
@@ -250,10 +286,11 @@ pub fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurationBuil
     builder
 }
 
-/// Builds [`ConsumerBuilders`] from [`ClientOptions`].
+/// Creates all consumer-related configuration builders from client options.
 ///
-/// This creates all the consumer-related configuration builders in one call,
-/// which is what `HighLevelClient::new()` expects.
+/// Aggregates the individual builder functions into a single
+/// [`ConsumerBuilders`] struct, which is the format expected by
+/// [`prosody::high_level::HighLevelClient::new`].
 #[must_use]
 pub fn build_consumer_builders(options: &ClientOptions) -> ConsumerBuilders {
     ConsumerBuilders {
@@ -267,7 +304,10 @@ pub fn build_consumer_builders(options: &ClientOptions) -> ConsumerBuilders {
     }
 }
 
-/// Builds a [`CassandraConfigurationBuilder`] from [`ClientOptions`].
+/// Creates a Cassandra configuration builder from client options.
+///
+/// Configures the Cassandra connection for storing idempotence records,
+/// including cluster nodes, keyspace, authentication, and data retention.
 #[must_use]
 pub fn build_cassandra_config(options: &ClientOptions) -> CassandraConfigurationBuilder {
     let mut builder = CassandraConfigurationBuilder::default();
@@ -303,7 +343,10 @@ pub fn build_cassandra_config(options: &ClientOptions) -> CassandraConfiguration
     builder
 }
 
-/// Converts [`ClientMode`] to prosody's [`Mode`].
+/// Converts the client mode option to prosody's internal mode type.
+///
+/// Defaults to [`Mode::Pipeline`] when no mode is specified, which provides
+/// balanced throughput and latency characteristics for most workloads.
 #[must_use]
 pub fn get_mode(options: &ClientOptions) -> Mode {
     match options.mode {

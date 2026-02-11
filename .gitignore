@@ -14,11 +14,9 @@ riderModule.iml
 .vs/
 .claude/
 
-# Rust (workspace with ffi/ and ffi-build/ crates)
+# Rust (workspace with ffi/ crate)
 target/
 ffi/artifacts/
-ffi-build/artifacts/
-prosody-ffi/artifacts/
 debug/
 release/
 *.rs.bk

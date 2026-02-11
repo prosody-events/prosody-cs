@@ -1,13 +1,17 @@
-//! Timer trigger wrapper for C# handler invocation.
+//! Timer trigger wrapper for FFI export.
+//!
+//! Provides a [`Timer`] type that wraps prosody's internal [`Trigger`] and
+//! exposes timer data through UniFFI-exported methods for use in C# callbacks.
 
 use std::time::SystemTime;
 
 use prosody::timers::Trigger;
 
-/// Timer trigger data.
+/// A scheduled timer trigger.
 ///
-/// Wraps prosody's `Trigger` and exposes timer data via methods.
-/// This matches the Python `Timer` dataclass.
+/// Wraps prosody's [`Trigger`] and exposes timer metadata through
+/// UniFFI-exported methods. Each timer has a unique key and a scheduled
+/// fire time.
 #[derive(uniffi::Object)]
 pub struct Timer {
     trigger: Trigger,
@@ -19,7 +23,9 @@ pub struct Timer {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Timer {
-    /// Creates a new Timer wrapping a Trigger.
+    /// Creates a new `Timer` from a [`Trigger`].
+    ///
+    /// Extracts and caches the key as a `String` for efficient repeated access.
     #[must_use]
     pub fn new(trigger: Trigger) -> Self {
         let key = trigger.key.to_string();
@@ -29,13 +35,13 @@ impl Timer {
 
 #[uniffi::export]
 impl Timer {
-    /// Returns the timer key.
+    /// The unique identifier for this timer.
     #[must_use]
     pub fn key(&self) -> String {
         self.key.clone()
     }
 
-    /// Returns the timer fire time.
+    /// The scheduled time when this timer should fire.
     #[must_use]
     pub fn time(&self) -> SystemTime {
         self.trigger.time.into()

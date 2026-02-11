@@ -1,11 +1,11 @@
-//! Logging module for Prosody-CS.
+//! Logging bridge from Rust tracing to C# `ILoggerFactory`.
 //!
-//! This module provides functionality to bridge Rust's tracing system to C#'s
-//! `ILoggerFactory` via a `UniFFI` callback interface. The logging
-//! configuration is global - once configured, all Prosody clients use the same
-//! logger.
+//! This module bridges Rust's [`tracing`] system to C#'s
+//! `Microsoft.Extensions.Logging.ILoggerFactory` via a `UniFFI` callback
+//! interface. The logging configuration is global and thread-safe: once
+//! configured, all Prosody clients share the same logger.
 //!
-//! ## Log Event Flow
+//! # Log Event Flow
 //!
 //! ```text
 //! Rust tracing event (info!, warn!, etc.)
@@ -20,7 +20,7 @@
 //! C# logging infrastructure
 //! ```
 //!
-//! ## Usage from C#
+//! # Usage from C#
 //!
 //! ```csharp
 //! // Configure once at startup
@@ -29,6 +29,12 @@
 //! // All clients automatically use the configured logger
 //! var client = new ProsodyClient(options);
 //! ```
+//!
+//! # Thread Safety
+//!
+//! All functions in this module are thread-safe. The global log sink uses
+//! atomic operations for lock-free access, making it safe to call
+//! [`configure_log_sink`] and [`clear_log_sink`] from any thread.
 
 use arc_swap::ArcSwapOption;
 use prosody::tracing::initialize_tracing;
@@ -41,22 +47,23 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
 
-/// Log level for messages from Rust to C#.
+/// Log severity level for messages from Rust to C#.
 ///
-/// Maps directly to C#'s `Microsoft.Extensions.Logging.LogLevel` enum values.
+/// These values map directly to C#'s `Microsoft.Extensions.Logging.LogLevel`
+/// enum, preserving integer discriminants for efficient FFI conversion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum LogLevel {
-    /// Most detailed logging, may contain sensitive data.
+    /// Most detailed logging; may contain sensitive data.
     Trace = 0,
-    /// Detailed information useful during development.
+    /// Detailed information useful during development and debugging.
     Debug = 1,
-    /// General operational information.
+    /// General operational information about application flow.
     Information = 2,
-    /// Potential issues or unexpected behavior.
+    /// Potential issues or unexpected behavior that does not prevent operation.
     Warning = 3,
-    /// Errors that prevent normal operation.
+    /// Errors that prevent a specific operation from completing.
     Error = 4,
-    /// Unrecoverable application/system crashes.
+    /// Unrecoverable errors that require immediate attention.
     Critical = 5,
 }
 
@@ -72,52 +79,67 @@ impl From<Level> for LogLevel {
     }
 }
 
-/// Structured fields from a tracing event, organized by type.
+/// Structured fields extracted from a tracing event, organized by type.
 ///
 /// Fields are separated by their native types to preserve type information
-/// across the FFI boundary, enabling proper structured logging in C#.
+/// across the FFI boundary, enabling proper structured logging in C#. This
+/// allows C# loggers to format numeric values appropriately rather than
+/// treating everything as strings.
+///
+/// Values that cannot be represented in the native type maps (such as `i128`
+/// and `u128`) are converted to strings and stored in the
+/// [`strings`](Self::strings) map.
 #[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct LogFields {
-    /// String fields (includes debug-formatted values)
+    /// String-typed fields, including debug-formatted values and `i128`/`u128`.
     pub strings: HashMap<String, String>,
-    /// Signed integer fields (i64 / C# long)
+    /// Signed 64-bit integer fields (maps to C# `long`).
     pub i64s: HashMap<String, i64>,
-    /// Unsigned integer fields (u64 / C# ulong)
+    /// Unsigned 64-bit integer fields (maps to C# `ulong`).
     pub u64s: HashMap<String, u64>,
-    /// Floating point fields (f64 / C# double)
+    /// 64-bit floating point fields (maps to C# `double`).
     pub f64s: HashMap<String, f64>,
-    /// Boolean fields
+    /// Boolean fields (maps to C# `bool`).
     pub bools: HashMap<String, bool>,
 }
 
-/// Global log sink instance. Starts empty (logging disabled) until configured.
-/// Uses `Arc<Arc<dyn LogSink>>` because arc-swap requires `Sized` types.
+/// Global log sink instance.
+///
+/// Starts empty (logging disabled) until configured via [`configure_log_sink`].
+/// Uses `Arc<Arc<dyn LogSink>>` because [`ArcSwapOption`] requires `Sized`
+/// types, and `dyn LogSink` is unsized.
 static LOG_SINK: ArcSwapOption<Arc<dyn LogSink>> = ArcSwapOption::const_empty();
 
-/// Callback interface for log messages from Rust to C#.
+/// Callback interface for forwarding log messages from Rust to C#.
 ///
 /// This trait is implemented by C# via `UniFFI`'s callback interface mechanism.
 /// The C# `LogSinkBridge` class implements this interface and forwards log
-/// messages to `ILogger`.
+/// messages to `Microsoft.Extensions.Logging.ILogger`.
+///
+/// # Implementation Notes
+///
+/// Implementations must be thread-safe (`Send + Sync`) as log events may
+/// originate from any thread in the Prosody runtime.
 #[uniffi::export(with_foreign)]
 pub trait LogSink: Send + Sync {
-    /// Check if a log level is enabled.
+    /// Checks whether logging is enabled for the specified level.
     ///
-    /// This is called before formatting the log message to avoid unnecessary
-    /// work when the level is filtered out on the C# side.
+    /// Called before formatting the log message to avoid unnecessary string
+    /// allocations when the level is filtered out on the C# side.
     fn is_enabled(&self, level: LogLevel) -> bool;
 
-    /// Log a message.
+    /// Forwards a log event to the C# logging infrastructure.
     ///
-    /// # Arguments
+    /// # Parameters
     ///
-    /// * `level` - The log level
-    /// * `target` - The module path (e.g., `prosody::consumer`)
-    /// * `message` - The formatted log message
-    /// * `file` - Source file path (if available)
-    /// * `line` - Source line number (if available)
-    /// * `fields` - Additional structured fields from the tracing event,
-    ///   organized by type
+    /// - `level`: The severity level of this log event.
+    /// - `target`: The Rust module path where the event originated (e.g.,
+    ///   `prosody::consumer`).
+    /// - `message`: The formatted log message text.
+    /// - `file`: Source file path, if available from the tracing metadata.
+    /// - `line`: Source line number, if available from the tracing metadata.
+    /// - `fields`: Additional structured fields from the tracing event,
+    ///   organized by type for proper C# type mapping.
     fn log(
         &self,
         level: LogLevel,
@@ -129,9 +151,11 @@ pub trait LogSink: Send + Sync {
     );
 }
 
-/// Initialize the tracing system with the `LogSinkLayer`.
+/// Initializes the tracing system with the [`LogSinkLayer`].
 ///
-/// Idempotent - subsequent calls after the first are no-ops.
+/// This function is idempotent: the first call initializes the tracing
+/// subscriber, and subsequent calls are no-ops. Initialization failure
+/// is logged to stderr since tracing is not yet available.
 #[expect(clippy::print_stderr, reason = "tracing is not initialized yet")]
 pub(crate) fn ensure_tracing_initialized() {
     static TRACING_INIT: Once = Once::new();
@@ -143,20 +167,21 @@ pub(crate) fn ensure_tracing_initialized() {
     });
 }
 
-/// Configure the global log sink.
+/// Configures the global log sink for forwarding Rust logs to C#.
 ///
 /// Call this once at application startup before creating any `ProsodyClient`
 /// instances. The log sink receives all tracing events from the Prosody
 /// library.
 ///
-/// This function is thread-safe and can be called multiple times. Each call
-/// replaces the previous log sink configuration.
+/// This function is thread-safe and may be called multiple times. Each call
+/// atomically replaces the previous log sink; there is no gap where log
+/// events would be lost during replacement.
 ///
-/// This also ensures the tracing system is initialized.
+/// Also ensures the tracing system is initialized on first call.
 ///
-/// # Arguments
+/// # Parameters
 ///
-/// * `sink` - The log sink implementation (from C#)
+/// - `sink`: The [`LogSink`] implementation provided by C#.
 #[uniffi::export]
 pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
     // Ensure tracing is initialized before configuring the sink
@@ -165,20 +190,28 @@ pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
     LOG_SINK.store(Some(Arc::new(sink)));
 }
 
-/// Clear the global log sink (disable logging).
+/// Clears the global log sink, disabling logging to C#.
 ///
-/// After calling this function, log events will be silently discarded until
-/// a new log sink is configured via `configure_log_sink`.
+/// After calling this function, log events are silently discarded until
+/// a new log sink is configured via [`configure_log_sink`].
+///
+/// This is useful for graceful shutdown or temporarily disabling logging.
 #[uniffi::export]
 pub fn clear_log_sink() {
     LOG_SINK.store(None);
 }
 
-/// A tracing layer that forwards events to the configured C# log sink.
+/// A [`tracing_subscriber::Layer`] that forwards events to the configured C#
+/// log sink.
 ///
 /// This layer is registered with the tracing subscriber during initialization.
-/// When log events occur, it checks if a log sink is configured and forwards
-/// the event to C# via the `UniFFI` callback interface.
+/// When log events occur, it:
+///
+/// 1. Checks if a log sink is configured (early return if not).
+/// 2. Queries [`LogSink::is_enabled`] to avoid formatting work for filtered
+///    levels.
+/// 3. Extracts the message and structured fields from the event.
+/// 4. Forwards the complete event to C# via [`LogSink::log`].
 #[derive(Clone, Default)]
 pub struct LogSinkLayer;
 
@@ -214,14 +247,21 @@ impl<S: Subscriber> Layer<S> for LogSinkLayer {
     }
 }
 
-/// A visitor that extracts the message and all structured fields from a tracing
+/// Visitor that extracts the message and structured fields from a tracing
 /// event.
+///
+/// Implements [`tracing::field::Visit`] to collect all fields from an event.
+/// The special `message` field is stored separately; all other fields are
+/// placed into the appropriate type-specific map in [`LogFields`].
 struct MessageVisitor {
+    /// The extracted log message (from the `message` field).
     message: String,
+    /// Structured fields organized by type.
     fields: LogFields,
 }
 
 impl MessageVisitor {
+    /// Creates a new visitor with empty message and fields.
     fn new() -> Self {
         Self {
             message: String::new(),

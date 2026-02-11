@@ -5,10 +5,6 @@ namespace Prosody;
 /// <summary>
 /// Kafka message data.
 /// </summary>
-/// <remarks>
-/// Wraps the native message and provides typed JSON payload access.
-/// Properties are pass-through to native (no caching) - each access makes an FFI call.
-/// </remarks>
 public sealed class Message
 {
     private readonly Native.Message _native;

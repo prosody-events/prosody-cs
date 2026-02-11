@@ -104,9 +104,6 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture)
         Assert.Equal(1, messageCount);
     }
 
-    /// <summary>
-    /// Handler that uses PermanentErrorAttribute to declare FormatException as permanent.
-    /// </summary>
     private sealed class AttributeBasedHandler(Action onMessage) : IProsodyHandler
     {
         [PermanentError(typeof(FormatException))]

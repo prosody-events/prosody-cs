@@ -1,19 +1,28 @@
-//! Kafka message wrapper for C# handler invocation.
+//! FFI-safe Kafka message wrapper.
+//!
+//! This module provides [`Message`], a wrapper around prosody's
+//! [`ConsumerMessage`] that exposes message data through UniFFI-exported
+//! methods for C# consumption.
 
 use std::time::SystemTime;
 
 use prosody::consumer::Keyed;
 use prosody::consumer::message::ConsumerMessage;
 
-/// Kafka message data.
+/// A Kafka message received from a consumer.
 ///
-/// Wraps prosody's `ConsumerMessage` and exposes message data via methods.
-/// This matches the Python `Message` dataclass.
+/// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
+/// through FFI-safe accessor methods. The payload is eagerly serialized to JSON
+/// bytes at construction time to avoid repeated serialization costs.
 #[derive(uniffi::Object)]
 pub struct Message {
+    /// The underlying prosody message.
     inner: ConsumerMessage,
+    /// Cached topic name to avoid repeated allocation.
     topic: String,
+    /// Cached message key to avoid repeated allocation.
     key: String,
+    /// Pre-serialized JSON payload bytes.
     payload: Vec<u8>,
 }
 
@@ -22,11 +31,15 @@ pub struct Message {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Message {
-    /// Creates a new Message wrapping a [`ConsumerMessage`].
+    /// Creates a new `Message` from a [`ConsumerMessage`].
+    ///
+    /// Eagerly serializes the message payload to JSON bytes and caches the
+    /// topic and key strings for efficient repeated access.
     ///
     /// # Errors
     ///
-    /// Returns an error if the payload cannot be serialized to JSON bytes.
+    /// Returns [`simd_json::Error`] if the payload cannot be serialized to
+    /// JSON.
     pub fn new(inner: ConsumerMessage) -> Result<Self, simd_json::Error> {
         let topic = inner.topic().to_string();
         let key = inner.key().to_string();
@@ -43,37 +56,37 @@ impl Message {
 
 #[uniffi::export]
 impl Message {
-    /// Returns the topic name.
+    /// The Kafka topic this message was consumed from.
     #[must_use]
     pub fn topic(&self) -> String {
         self.topic.clone()
     }
 
-    /// Returns the partition number.
+    /// The partition number within the topic.
     #[must_use]
     pub fn partition(&self) -> i32 {
         self.inner.partition()
     }
 
-    /// Returns the message offset.
+    /// The offset of this message within its partition.
     #[must_use]
     pub fn offset(&self) -> i64 {
         self.inner.offset()
     }
 
-    /// Returns the message timestamp.
+    /// The timestamp when the message was produced.
     #[must_use]
     pub fn timestamp(&self) -> SystemTime {
         (*self.inner.timestamp()).into()
     }
 
-    /// Returns the message key.
+    /// The message key used for partitioning.
     #[must_use]
     pub fn key(&self) -> String {
         self.key.clone()
     }
 
-    /// Returns the message payload (UTF-8 JSON bytes).
+    /// The message payload as UTF-8 JSON bytes.
     #[must_use]
     pub fn payload(&self) -> Vec<u8> {
         self.payload.clone()

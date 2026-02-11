@@ -1,6 +1,6 @@
-//! `ProsodyClient` - FFI service for the Prosody client.
+//! FFI bindings for the Prosody client.
 //!
-//! This module exposes the prosody `HighLevelClient` to C# via `UniFFI`.
+//! This module exposes prosody's [`HighLevelClient`] to C# via `UniFFI`.
 //! The client provides an object-oriented API that maps naturally to C#
 //! classes.
 //!
@@ -11,6 +11,16 @@
 //! - Typed JSON payloads (`Send<T>()`, `GetPayload<T>()`)
 //! - `CancellationToken` support on all async methods
 //! - Properties instead of methods for simple getters
+//!
+//! # Error Handling
+//!
+//! All fallible operations return [`FfiError`], which maps to C# exceptions.
+//! Handler errors from C# are represented as [`CsHandlerError`] and classified
+//! as either transient (retriable) or permanent.
+//!
+//! [`HighLevelClient`]: prosody::high_level::HighLevelClient
+//! [`FfiError`]: crate::error::FfiError
+//! [`CsHandlerError`]: crate::error::CsHandlerError
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,9 +52,15 @@ use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
 use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
 
-/// Maps a `HandlerResult` from C# to a `Result` for prosody.
+/// Converts a [`HandlerResult`] from C# into a Rust `Result`.
 ///
-/// Extracts the error message from the result to preserve it in the error type.
+/// Extracts and preserves the error message from the result when mapping
+/// to [`CsHandlerError`].
+///
+/// # Errors
+///
+/// Returns [`CsHandlerError::Transient`] for retriable failures.
+/// Returns [`CsHandlerError::Permanent`] for non-retriable failures.
 fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
     let error_msg = result.error_message.unwrap_or_default();
 
@@ -55,12 +71,16 @@ fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
     }
 }
 
-/// Internal handler that bridges C# `EventHandler` to prosody's
-/// `FallibleHandler`.
+/// Adapter bridging C# [`EventHandler`] to prosody's [`FallibleHandler`] trait.
+///
+/// This struct wraps a C# event handler and handles:
+/// - Distributed tracing context propagation via OpenTelemetry
+/// - Conversion between prosody message types and FFI-friendly wrappers
+/// - Error classification for retry logic
 struct CsHandler {
-    /// The C# native event handler implementation.
+    /// C# event handler implementation receiving messages and timers.
     handler: Arc<dyn EventHandler>,
-    /// OpenTelemetry propagator for distributed tracing context propagation.
+    /// OpenTelemetry propagator for distributed tracing context injection.
     propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -73,9 +93,17 @@ impl Clone for CsHandler {
     }
 }
 
+/// [`FallibleHandler`] implementation that delegates to the C# handler.
+///
+/// Handles both message and timer events, injecting OpenTelemetry context
+/// for distributed tracing continuity across the FFI boundary.
 impl FallibleHandler for CsHandler {
     type Error = CsHandlerError;
 
+    /// Processes an incoming Kafka message by delegating to the C# handler.
+    ///
+    /// Injects the message's tracing span context into a carrier map that
+    /// C# can use to continue the distributed trace.
     async fn on_message<C>(
         &self,
         context: C,
@@ -109,6 +137,10 @@ impl FallibleHandler for CsHandler {
         map_handler_result(result)
     }
 
+    /// Processes a timer event by delegating to the C# handler.
+    ///
+    /// Only application timers are forwarded to C#; internal prosody timers
+    /// (e.g., heartbeat, rebalance) are silently acknowledged.
     async fn on_timer<C>(
         &self,
         context: C,
@@ -147,13 +179,18 @@ impl FallibleHandler for CsHandler {
         map_handler_result(result)
     }
 
+    /// Called when the handler is being shut down.
+    ///
+    /// No cleanup is needed since the C# handler lifetime is managed by
+    /// [`ProsodyClient::handler`] field via `ArcSwap`.
     async fn shutdown(self) {}
 }
 
-/// Native Prosody client service exposed to C#.
+/// Native Prosody client exposed to C# via `UniFFI`.
 ///
 /// This is the low-level FFI client. C# wraps this in `Prosody.ProsodyClient`
-/// which provides typed JSON, `CancellationToken`, and idiomatic properties.
+/// which provides typed JSON, `CancellationToken` support, and idiomatic
+/// properties.
 ///
 /// # Lifecycle
 ///
@@ -177,27 +214,35 @@ impl FallibleHandler for CsHandler {
 ///       │ Disposed │
 ///       └──────────┘
 /// ```
+///
+/// # Thread Safety
+///
+/// This type is `Send + Sync` and can be safely shared across threads.
+/// The internal state is protected by atomic operations and async-aware locks.
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
-    /// The wrapped high-level client.
+    /// Underlying prosody high-level client instance.
     client: HighLevelClient<CsHandler>,
-    /// Handler registration state (for managing callback lifetime).
+    /// Holds the C# handler reference to prevent premature deallocation.
+    ///
+    /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
     handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
 }
 
-/// `UniFFI` interface implementation for `ProsodyClient`.
+/// UniFFI-exported methods for [`ProsodyClient`].
 #[uniffi::export(async_runtime = "tokio")]
 impl ProsodyClient {
-    /// Creates a new `ProsodyClient` with the given options.
+    /// Creates a new client with the specified configuration.
     ///
-    /// # Arguments
-    ///
-    /// * `options` - Configuration options for the client
+    /// Initializes the tracing subsystem if not already initialized, then
+    /// builds and connects the underlying Kafka producer and consumer.
     ///
     /// # Errors
     ///
-    /// Returns error if the client cannot connect to Kafka or options are
-    /// invalid.
+    /// Returns [`FfiError::Client`] if:
+    /// - Kafka bootstrap servers are unreachable
+    /// - Configuration options are invalid
+    /// - Cassandra connection fails (when persistence is enabled)
     #[uniffi::constructor]
     #[expect(
         clippy::needless_pass_by_value,
@@ -228,17 +273,16 @@ impl ProsodyClient {
         })
     }
 
-    /// Subscribe to topics with the given event handler.
+    /// Subscribes to configured topics and begins consuming messages.
     ///
-    /// The handler will receive messages and timer events asynchronously.
-    ///
-    /// # Arguments
-    ///
-    /// * `handler` - The C# event handler implementation
+    /// The handler receives messages and timer events asynchronously until
+    /// [`unsubscribe`](Self::unsubscribe) is called. The handler reference is
+    /// retained internally to prevent garbage collection on the C# side.
     ///
     /// # Errors
     ///
-    /// Returns error if subscription fails.
+    /// Returns [`FfiError::Client`] if the consumer fails to start or
+    /// topic subscription fails.
     pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), FfiError> {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
@@ -253,11 +297,14 @@ impl ProsodyClient {
         Ok(())
     }
 
-    /// Unsubscribe from topics and stop the consumer.
+    /// Stops consuming messages and unsubscribes from all topics.
+    ///
+    /// In-flight messages are allowed to complete before this method returns.
+    /// The handler reference is released, allowing C# garbage collection.
     ///
     /// # Errors
     ///
-    /// Returns error if unsubscription fails.
+    /// Returns [`FfiError::Client`] if the consumer fails to stop cleanly.
     pub async fn unsubscribe(&self) -> Result<(), FfiError> {
         // Unsubscribe from the client
         self.client.unsubscribe().await?;
@@ -268,21 +315,17 @@ impl ProsodyClient {
         Ok(())
     }
 
-    /// Send a message to a topic.
+    /// Sends a message to a Kafka topic.
     ///
-    /// # Arguments
-    ///
-    /// * `topic` - The topic to send to
-    /// * `key` - The message key
-    /// * `payload` - The message payload (UTF-8 JSON bytes)
-    /// * `carrier` - OpenTelemetry carrier for context propagation
-    /// * `cancel` - Optional cancellation signal to abort the operation
+    /// The payload must be valid UTF-8 encoded JSON. OpenTelemetry tracing
+    /// context is extracted from the carrier to link the send operation with
+    /// the parent span from C#.
     ///
     /// # Errors
     ///
-    /// Returns `Json` if the payload is not valid JSON.
-    /// Returns `Cancelled` if the operation was cancelled.
-    /// Returns `Internal` if the message cannot be sent.
+    /// - [`FfiError::Json`] if the payload is not valid JSON.
+    /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
+    /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
         &self,
         topic: String,

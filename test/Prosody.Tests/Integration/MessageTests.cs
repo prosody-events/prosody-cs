@@ -3,7 +3,7 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Message sending and receiving tests.
+/// Tests for message sending and receiving.
 /// </summary>
 public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
