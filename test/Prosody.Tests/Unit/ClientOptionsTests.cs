@@ -46,10 +46,10 @@ public sealed class ClientOptionsTests
         };
 
         Assert.Multiple(
-            () => Assert.Equal(3, options.BootstrapServers!.Count),
-            () => Assert.Contains("broker1:9092", options.BootstrapServers!),
-            () => Assert.Contains("broker2:9092", options.BootstrapServers!),
-            () => Assert.Contains("broker3:9092", options.BootstrapServers!)
+            () => Assert.Equal(3, options.BootstrapServers!.Value.Length),
+            () => Assert.Contains("broker1:9092", options.BootstrapServers!.Value),
+            () => Assert.Contains("broker2:9092", options.BootstrapServers!.Value),
+            () => Assert.Contains("broker3:9092", options.BootstrapServers!.Value)
         );
     }
 
@@ -61,7 +61,7 @@ public sealed class ClientOptionsTests
             SubscribedTopics = ["orders", "payments", "notifications"],
         };
 
-        Assert.Equal(3, options.SubscribedTopics?.Count);
+        Assert.Equal(3, options.SubscribedTopics!.Value.Length);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public sealed class ClientOptionsTests
         };
 
         Assert.Multiple(
-            () => Assert.Equal(2, options.CassandraNodes?.Count),
+            () => Assert.Equal(2, options.CassandraNodes?.Length),
             () => Assert.Equal("prosody", options.CassandraKeyspace),
             () => Assert.Equal("dc1", options.CassandraDatacenter),
             () => Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention)
