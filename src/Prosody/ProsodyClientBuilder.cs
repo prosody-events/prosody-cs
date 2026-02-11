@@ -44,7 +44,10 @@ public sealed class ProsodyClientBuilder
     /// <example><c>WithBootstrapServers("localhost:9092")</c> or <c>WithBootstrapServers("broker1:9092", "broker2:9092")</c></example>
     public ProsodyClientBuilder WithBootstrapServers(params string[] servers)
     {
-        _options = _options with { BootstrapServers = ImmutableCollectionsMarshal.AsImmutableArray(servers) };
+        _options = _options with
+        {
+            BootstrapServers = ImmutableCollectionsMarshal.AsImmutableArray(servers),
+        };
         return this;
     }
 
@@ -67,7 +70,10 @@ public sealed class ProsodyClientBuilder
     /// <example><c>WithSubscribedTopics("my-topic")</c> or <c>WithSubscribedTopics("topic1", "topic2")</c></example>
     public ProsodyClientBuilder WithSubscribedTopics(params string[] topics)
     {
-        _options = _options with { SubscribedTopics = ImmutableCollectionsMarshal.AsImmutableArray(topics) };
+        _options = _options with
+        {
+            SubscribedTopics = ImmutableCollectionsMarshal.AsImmutableArray(topics),
+        };
         return this;
     }
 
@@ -90,7 +96,10 @@ public sealed class ProsodyClientBuilder
     /// <example><c>WithAllowedEvents("user.", "account.")</c></example>
     public ProsodyClientBuilder WithAllowedEvents(params string[] prefixes)
     {
-        _options = _options with { AllowedEvents = ImmutableCollectionsMarshal.AsImmutableArray(prefixes) };
+        _options = _options with
+        {
+            AllowedEvents = ImmutableCollectionsMarshal.AsImmutableArray(prefixes),
+        };
         return this;
     }
 
@@ -509,7 +518,10 @@ public sealed class ProsodyClientBuilder
     /// <example><c>WithCassandraNodes("localhost:9042")</c> or <c>WithCassandraNodes("cass1:9042", "cass2:9042")</c></example>
     public ProsodyClientBuilder WithCassandraNodes(params string[] nodes)
     {
-        _options = _options with { CassandraNodes = ImmutableCollectionsMarshal.AsImmutableArray(nodes) };
+        _options = _options with
+        {
+            CassandraNodes = ImmutableCollectionsMarshal.AsImmutableArray(nodes),
+        };
         return this;
     }
 
