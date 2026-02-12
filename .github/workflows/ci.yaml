@@ -75,18 +75,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust (nightly for fmt)
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -139,7 +131,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore .NET tools
         run: dotnet tool restore
@@ -252,18 +244,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust (nightly for fmt)
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
