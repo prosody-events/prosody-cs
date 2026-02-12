@@ -30,7 +30,6 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
-          release-type: simple
           token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
 
   build-native:
