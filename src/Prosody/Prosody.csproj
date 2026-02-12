@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Prosody</AssemblyName>
     <RootNamespace>Prosody</RootNamespace>
-    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionPrefix>2.1.0</VersionPrefix>
 
     <!-- NuGet package metadata -->
     <PackageId>Witco.Prosody</PackageId>
@@ -31,20 +31,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="../../README.md" Pack="true" PackagePath="/" />
-    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/"/>
+    <None Include="../../LICENSE" Pack="true" PackagePath="/"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.3" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.3" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.3" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.15.0" />
-    <PackageReference Include="System.Text.Json" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.3"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.3"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.3"/>
+    <PackageReference Include="OpenTelemetry.Api" Version="1.15.0"/>
+    <PackageReference Include="System.Text.Json" Version="9.0.3"/>
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Prosody.Tests" />
+    <InternalsVisibleTo Include="Prosody.Tests"/>
   </ItemGroup>
 
   <!-- Native library configuration -->
@@ -54,19 +54,19 @@
   </PropertyGroup>
 
   <ItemDefinitionGroup>
-    <ProsodyNativeArtifactTarget Visible="false" Pack="true" />
+    <ProsodyNativeArtifactTarget Visible="false" Pack="true"/>
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <ProsodyNativeArtifactTarget Include="win-x64" RustTarget="x86_64-pc-windows-msvc" Prefix="" Ext=".dll" />
-    <ProsodyNativeArtifactTarget Include="win-arm64" RustTarget="aarch64-pc-windows-msvc" Prefix="" Ext=".dll" />
-    <ProsodyNativeArtifactTarget Include="linux-x64" RustTarget="x86_64-unknown-linux-gnu" Prefix="lib" Ext=".so" />
-    <ProsodyNativeArtifactTarget Include="linux-arm64" RustTarget="aarch64-unknown-linux-gnu" Prefix="lib" Ext=".so" />
-    <ProsodyNativeArtifactTarget Include="osx-arm64" RustTarget="aarch64-apple-darwin" Prefix="lib" Ext=".dylib" />
+    <ProsodyNativeArtifactTarget Include="win-x64" RustTarget="x86_64-pc-windows-msvc" Prefix="" Ext=".dll"/>
+    <ProsodyNativeArtifactTarget Include="win-arm64" RustTarget="aarch64-pc-windows-msvc" Prefix="" Ext=".dll"/>
+    <ProsodyNativeArtifactTarget Include="linux-x64" RustTarget="x86_64-unknown-linux-gnu" Prefix="lib" Ext=".so"/>
+    <ProsodyNativeArtifactTarget Include="linux-arm64" RustTarget="aarch64-unknown-linux-gnu" Prefix="lib" Ext=".so"/>
+    <ProsodyNativeArtifactTarget Include="osx-arm64" RustTarget="aarch64-apple-darwin" Prefix="lib" Ext=".dylib"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)" />
+    <ProsodyNativeArtifactTarget Update="@(ProsodyNativeArtifactTarget)" Rid="%(Identity)"/>
 
     <!-- Native library paths (forward slashes for cross-platform compatibility) -->
     <ProsodyNativeArtifact Include="@(ProsodyNativeArtifactTarget)">
@@ -84,30 +84,19 @@
   <!-- Include native libraries from Rust output during build (for local development) -->
   <Target Name="IncludeNativeLibraries" BeforeTargets="ResolveAssemblyReferences">
     <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-      <Content Include="%(ProsodyNativeArtifact.RustOutputDebugPath)"
-               Condition="Exists('%(ProsodyNativeArtifact.RustOutputDebugPath)')"
-               Link="%(ProsodyNativeArtifact.Link)"
-               CopyToOutputDirectory="Always"
-               Pack="false" />
+      <Content Include="%(ProsodyNativeArtifact.RustOutputDebugPath)" Condition="Exists('%(ProsodyNativeArtifact.RustOutputDebugPath)')" Link="%(ProsodyNativeArtifact.Link)" CopyToOutputDirectory="Always" Pack="false"/>
     </ItemGroup>
     <ItemGroup Condition="'$(Configuration)' == 'Release'">
-      <Content Include="%(ProsodyNativeArtifact.RustOutputReleasePath)"
-               Condition="Exists('%(ProsodyNativeArtifact.RustOutputReleasePath)')"
-               Link="%(ProsodyNativeArtifact.Link)"
-               CopyToOutputDirectory="Always"
-               Pack="false" />
+      <Content Include="%(ProsodyNativeArtifact.RustOutputReleasePath)" Condition="Exists('%(ProsodyNativeArtifact.RustOutputReleasePath)')" Link="%(ProsodyNativeArtifact.Link)" CopyToOutputDirectory="Always" Pack="false"/>
     </ItemGroup>
   </Target>
 
   <!-- When packaging, include native libraries in runtimes/{rid}/native/ -->
   <Target Name="ProsodyBeforePack" BeforeTargets="GenerateNuspec">
     <ItemGroup>
-      <_PackageFiles Include="%(ProsodyNativeArtifact.LibraryPath)"
-                     Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')"
-                     PackagePath="%(ProsodyNativeArtifact.PackagePath)" />
+      <_PackageFiles Include="%(ProsodyNativeArtifact.LibraryPath)" Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')" PackagePath="%(ProsodyNativeArtifact.PackagePath)"/>
     </ItemGroup>
-    <Message Importance="high" Text="Including native library: %(ProsodyNativeArtifact.LibraryPath) -> %(ProsodyNativeArtifact.PackagePath)"
-             Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')" />
+    <Message Importance="high" Text="Including native library: %(ProsodyNativeArtifact.LibraryPath) -&gt; %(ProsodyNativeArtifact.PackagePath)" Condition="Exists('%(ProsodyNativeArtifact.LibraryPath)')"/>
   </Target>
 
 </Project>
