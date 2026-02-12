@@ -3,7 +3,6 @@
   "release-type": "simple",
   "packages": {
     ".": {
-      "release-as": "2.1.0",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
