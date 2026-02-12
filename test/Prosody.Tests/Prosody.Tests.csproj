@@ -39,7 +39,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TestPackage)' == 'true'">
-    <PackageReference Include="Witco.Prosody" Version="$(PackageVersion)" />
+    <PackageReference Include="Witco.Prosody" Version="*" />
   </ItemGroup>
 
   <ItemGroup>
