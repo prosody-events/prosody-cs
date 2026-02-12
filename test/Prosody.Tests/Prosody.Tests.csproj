@@ -25,6 +25,14 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
   </ItemGroup>
 
+  <!-- DI and Configuration for unit tests -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+  </ItemGroup>
+
   <!-- Project reference for local development; package reference for CI package validation -->
   <ItemGroup Condition="'$(TestPackage)' != 'true'">
     <ProjectReference Include="..\..\src\Prosody\Prosody.csproj" />
