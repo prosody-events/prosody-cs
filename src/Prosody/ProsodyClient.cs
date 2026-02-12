@@ -5,10 +5,9 @@ namespace Prosody;
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
 /// </summary>
-public sealed class ProsodyClient : IDisposable
+public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
-    private bool _disposed;
 
     /// <summary>
     /// Creates a new ProsodyClient with the given options.
@@ -83,8 +82,6 @@ public sealed class ProsodyClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var carrier = new Dictionary<string, string>();
         TracePropagation.Inject(carrier);
         using var signal = CancellationHelper.CreateSignal(cancellationToken);
@@ -98,8 +95,6 @@ public sealed class ProsodyClient : IDisposable
     /// <param name="handler">The event handler to process messages and timers.</param>
     public Task SubscribeAsync(IProsodyHandler handler)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
         var bridge = new EventHandlerBridge(handler);
         return _native.Subscribe(bridge);
     }
@@ -109,17 +104,28 @@ public sealed class ProsodyClient : IDisposable
     /// </summary>
     public Task UnsubscribeAsync()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         return _native.Unsubscribe();
     }
 
     /// <inheritdoc/>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        if (_disposed)
-            return;
+        try
+        {
+            await _native.Unsubscribe().ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Client)
+        {
+            // Ignore - consumer was not running or already unsubscribed
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore - already disposed
+        }
 
-        _disposed = true;
         _native.Dispose();
     }
+
+    /// <inheritdoc/>
+    public void Dispose() => _native.Dispose();
 }
