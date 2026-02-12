@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.1.0](https://github.com/cincpro/prosody-cs/compare/v2.0.0...v2.1.0) (2026-02-12)
+## [2.1.0](https://github.com/cincpro/prosody-cs/releases/tag/v2.1.0) (2026-02-12)
 
 
 ### Features
