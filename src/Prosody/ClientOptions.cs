@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Runtime.InteropServices;
+
 namespace Prosody;
 
 /// <summary>
@@ -54,13 +57,28 @@ public enum ConsumerState
 /// </summary>
 /// <remarks>
 /// <para>
-/// All optional fields default to <c>null</c>, which means "use the
-/// environment variable or library default". Use <c>with</c> expressions
-/// to override only the fields you need.
+/// <b>Prefer using <see cref="ProsodyClientBuilder"/> via <see cref="Prosody.CreateClient()"/>
+/// for a fluent configuration experience:</b>
 /// </para>
 /// <example>
 /// <code>
-/// var options = new ClientOptions() with
+/// await using var client = Prosody.CreateClient()
+///     .WithBootstrapServers("localhost:9092")
+///     .WithGroupId("my-app")
+///     .WithSubscribedTopics("my-topic")
+///     .WithMode(ClientMode.LowLatency)
+///     .WithFailureTopic("dead-letters")
+///     .Build();
+/// </code>
+/// </example>
+/// <para>
+/// Alternatively, you can use this record directly. All optional fields default to <c>null</c>,
+/// which means "use the environment variable or library default". Use an object initializer
+/// to set only the fields you need.
+/// </para>
+/// <example>
+/// <code>
+/// var options = new ClientOptions
 /// {
 ///     BootstrapServers = ["localhost:9092"],
 ///     GroupId = "my-app",
@@ -69,6 +87,7 @@ public enum ConsumerState
 ///     Mode = ClientMode.LowLatency,
 ///     FailureTopic = "dead-letters"
 /// };
+/// await using var client = new ProsodyClient(options);
 /// </code>
 /// </example>
 /// </remarks>
@@ -83,7 +102,7 @@ public record ClientOptions
     /// Falls back to <c>PROSODY_BOOTSTRAP_SERVERS</c> environment variable.
     /// </summary>
     /// <example><c>["localhost:9092"]</c> or <c>["broker1:9092", "broker2:9092"]</c></example>
-    public IReadOnlyList<string>? BootstrapServers { get; init; }
+    public ImmutableArray<string>? BootstrapServers { get; init; }
 
     /// <summary>
     /// Consumer group ID. Should be set to your application name.
@@ -96,7 +115,7 @@ public record ClientOptions
     /// Falls back to <c>PROSODY_SUBSCRIBED_TOPICS</c> environment variable.
     /// </summary>
     /// <example><c>["my-topic"]</c> or <c>["topic1", "topic2"]</c></example>
-    public IReadOnlyList<string>? SubscribedTopics { get; init; }
+    public ImmutableArray<string>? SubscribedTopics { get; init; }
 
     /// <summary>
     /// Client operating mode. Default: <see cref="ClientMode.Pipeline"/>.
@@ -107,7 +126,7 @@ public record ClientOptions
     /// Allowed event type prefixes. <c>null</c> = all events allowed.
     /// </summary>
     /// <example><c>["user.", "account."]</c> to only process events starting with those prefixes.</example>
-    public IReadOnlyList<string>? AllowedEvents { get; init; }
+    public ImmutableArray<string>? AllowedEvents { get; init; }
 
     /// <summary>
     /// Source system identifier for outgoing messages.
@@ -354,7 +373,7 @@ public record ClientOptions
     /// Cassandra contact nodes.
     /// </summary>
     /// <example><c>["localhost:9042"]</c> or <c>["cass1:9042", "cass2:9042"]</c></example>
-    public IReadOnlyList<string>? CassandraNodes { get; init; }
+    public ImmutableArray<string>? CassandraNodes { get; init; }
 
     /// <summary>
     /// Cassandra keyspace name.
@@ -393,9 +412,9 @@ public record ClientOptions
     /// </summary>
     internal Native.ClientOptions ToNative() =>
         new(
-            BootstrapServers: BootstrapServers?.ToArray(),
+            BootstrapServers: AsArray(BootstrapServers),
             GroupId: GroupId,
-            SubscribedTopics: SubscribedTopics?.ToArray(),
+            SubscribedTopics: AsArray(SubscribedTopics),
             Mode: Mode switch
             {
                 ClientMode.Pipeline => Native.ClientMode.Pipeline,
@@ -404,7 +423,7 @@ public record ClientOptions
                 null => null,
                 _ => throw new ArgumentOutOfRangeException(nameof(Mode)),
             },
-            AllowedEvents: AllowedEvents?.ToArray(),
+            AllowedEvents: AsArray(AllowedEvents),
             SourceSystem: SourceSystem,
             Mock: Mock,
             MaxConcurrency: MaxConcurrency,
@@ -439,7 +458,7 @@ public record ClientOptions
             SchedulerMaxWait: SchedulerMaxWait,
             SchedulerWaitWeight: SchedulerWaitWeight,
             SchedulerCacheSize: SchedulerCacheSize,
-            CassandraNodes: CassandraNodes?.ToArray(),
+            CassandraNodes: AsArray(CassandraNodes),
             CassandraKeyspace: CassandraKeyspace,
             CassandraDatacenter: CassandraDatacenter,
             CassandraRack: CassandraRack,
@@ -447,4 +466,10 @@ public record ClientOptions
             CassandraPassword: CassandraPassword,
             CassandraRetention: CassandraRetention
         );
+
+    /// <summary>
+    /// Gets the underlying array from an ImmutableArray without copying.
+    /// </summary>
+    private static string[]? AsArray(ImmutableArray<string>? array) =>
+        array is { } a ? ImmutableCollectionsMarshal.AsArray(a) : null;
 }
