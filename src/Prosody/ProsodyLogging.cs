@@ -20,6 +20,13 @@ namespace Prosody;
 /// </example>
 public static class ProsodyLogging
 {
+    // System.Threading.Lock (net9.0+) is a lightweight lock type purpose-built
+    // for the lock statement; on net8.0 we fall back to a plain object monitor.
+#if NET9_0_OR_GREATER
+    private static readonly Lock SyncLock = new();
+#else
+    private static readonly object SyncLock = new();
+#endif
     private static LogSinkBridge? _sink;
 
     /// <summary>
@@ -36,12 +43,16 @@ public static class ProsodyLogging
 
         var sink = new LogSinkBridge(loggerFactory);
 
-        if (Interlocked.CompareExchange(ref _sink, sink, null) is not null)
+        lock (SyncLock)
         {
-            throw new InvalidOperationException("Prosody logging has already been configured.");
-        }
+            if (_sink is not null)
+            {
+                throw new InvalidOperationException("Prosody logging has already been configured.");
+            }
 
-        ProsodyFfiMethods.ConfigureLogSink(sink);
+            _sink = sink;
+            ProsodyFfiMethods.ConfigureLogSink(sink);
+        }
     }
 
     /// <summary>
@@ -49,7 +60,10 @@ public static class ProsodyLogging
     /// </summary>
     internal static void Clear()
     {
-        Interlocked.Exchange(ref _sink, null);
-        ProsodyFfiMethods.ClearLogSink();
+        lock (SyncLock)
+        {
+            _sink = null;
+            ProsodyFfiMethods.ClearLogSink();
+        }
     }
 }

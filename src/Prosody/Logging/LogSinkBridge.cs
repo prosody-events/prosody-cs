@@ -37,14 +37,27 @@ internal sealed class LogSinkBridge : LogSink
             return;
         }
 
-        List<KeyValuePair<string, object?>> state = PopulateState(target, message, fields);
+        List<KeyValuePair<string, object?>> state = PopulateState(target, message, file, line, fields);
         _logger.Log(logLevel, NativeLogEvent, state: state, exception: null, formatter: Formatter);
     }
 
-    private static List<KeyValuePair<string, object?>> PopulateState(string target, string message, LogFields fields)
+    private static List<KeyValuePair<string, object?>> PopulateState(
+        string target,
+        string message,
+        string? file,
+        uint? line,
+        LogFields fields
+    )
     {
         int capacity =
-            3 + fields.Strings.Count + fields.I64s.Count + fields.U64s.Count + fields.F64s.Count + fields.Bools.Count;
+            3
+            + (file is not null ? 1 : 0)
+            + (line is not null ? 1 : 0)
+            + fields.Strings.Count
+            + fields.I64s.Count
+            + fields.U64s.Count
+            + fields.F64s.Count
+            + fields.Bools.Count;
 
         // Target and Message must remain at indices 0 and 1 (used by Formatter).
         var state = new List<KeyValuePair<string, object?>>(capacity)
@@ -52,6 +65,16 @@ internal sealed class LogSinkBridge : LogSink
             new("Target", target),
             new("Message", message),
         };
+
+        if (file is not null)
+        {
+            state.Add(new("SourceFile", file));
+        }
+
+        if (line is not null)
+        {
+            state.Add(new("SourceLine", line));
+        }
 
         foreach (var (key, value) in fields.Strings)
         {
