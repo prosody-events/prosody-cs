@@ -121,7 +121,7 @@ jobs:
              artifacts/${{ matrix.target.rid }}/
 
       - name: Upload native artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: native-${{ matrix.target.rid }}
           path: artifacts/${{ matrix.target.rid }}/
@@ -176,7 +176,7 @@ jobs:
         run: dotnet tool install -g csharpier
 
       - name: Download all native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: native-*
           path: artifacts/
@@ -215,7 +215,7 @@ jobs:
             -o ./packages
 
       - name: Upload NuGet package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: nuget-package
           path: packages/*.nupkg
@@ -240,7 +240,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download NuGet package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: nuget-package
           path: ./packages
@@ -339,7 +339,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download NuGet package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: nuget-package
           path: packages/
