@@ -14,9 +14,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
     public ProsodyClient(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
     }
 
