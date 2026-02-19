@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/scripts/">
+    <File Path="Makefile" />
+  </Folder>
+  <Project Path="src/Prosody/Prosody.csproj" />
+  <Project Path="test/Prosody.Tests/Prosody.Tests.csproj" />
+</Solution>
