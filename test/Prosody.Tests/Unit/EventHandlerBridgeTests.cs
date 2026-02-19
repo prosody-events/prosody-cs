@@ -235,6 +235,85 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public async Task HandleMessageCancelsTokenWhileHandlerIsRunning()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observedCancellation = false;
+
+        var handler = new LambdaHandler(
+            onMessage: async (_, _, ct) =>
+            {
+                // Signal that the handler is running
+                handlerStarted.TrySetResult();
+
+                // Wait for cancellation — the core scenario this bridge exists for
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    observedCancellation = true;
+                }
+            }
+        );
+        var bridge = new EventHandlerBridge(handler);
+
+        var handleTask = bridge.HandleMessageAsync(null!, null!, () => cancelTcs.Task, EmptyCarrier);
+
+        // Wait until the handler is actively running
+        await handlerStarted.Task;
+
+        // Fire the cancel signal while the handler is blocked
+        cancelTcs.TrySetResult();
+
+        var result = await handleTask;
+
+        Assert.Multiple(
+            () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
+            () => Assert.Equal(NativeResultCode.Success, result.Code)
+        );
+    }
+
+    [Fact]
+    public async Task HandleTimerCancelsTokenWhileHandlerIsRunning()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observedCancellation = false;
+
+        var handler = new LambdaHandler(
+            onTimer: async (_, _, ct) =>
+            {
+                handlerStarted.TrySetResult();
+
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    observedCancellation = true;
+                }
+            }
+        );
+        var bridge = new EventHandlerBridge(handler);
+
+        var handleTask = bridge.HandleTimerAsync(null!, null!, () => cancelTcs.Task, EmptyCarrier);
+
+        await handlerStarted.Task;
+        cancelTcs.TrySetResult();
+
+        var result = await handleTask;
+
+        Assert.Multiple(
+            () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
+            () => Assert.Equal(NativeResultCode.Success, result.Code)
+        );
+    }
+
+    [Fact]
     public async Task BridgeCancellationDoesNotCancelCtsWhenHandlerCompletesFirst()
     {
         using var cts = new CancellationTokenSource();
