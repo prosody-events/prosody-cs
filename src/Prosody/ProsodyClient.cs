@@ -88,7 +88,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var carrier = new Dictionary<string, string>(StringComparer.Ordinal);
+        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
 
         var linked = CancellationHelper.CreateSignal(cancellationToken);
