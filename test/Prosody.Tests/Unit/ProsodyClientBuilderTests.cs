@@ -283,9 +283,11 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void BuildSucceedsWithNullOptionalFields()
     {
-        var builder = ProsodyClientBuilder.Create()
+        var builder = ProsodyClientBuilder
+            .Create()
             .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithSourceSystem("test").WithMock(true);
+            .WithSourceSystem("test")
+            .WithMock(true);
         using var client = builder.Build();
         Assert.NotNull(client);
     }
