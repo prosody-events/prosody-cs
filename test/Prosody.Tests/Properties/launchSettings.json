@@ -5,7 +5,8 @@
       "environmentVariables": {
         "PROSODY_BOOTSTRAP_SERVERS": "localhost:9094",
         "PROSODY_CASSANDRA_NODES": "localhost:9042",
-        "PROSODY_CASSANDRA_KEYSPACE": "prosody_test"
+        "PROSODY_CASSANDRA_KEYSPACE": "prosody_test",
+        "DOTNET_DefaultStackSize": "200000"
       }
     }
   }

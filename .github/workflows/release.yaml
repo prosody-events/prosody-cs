@@ -317,6 +317,7 @@ jobs:
             -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
             -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
             -e DOTNET_NOLOGO=1 \
+            -e DOTNET_DefaultStackSize=200000 \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
