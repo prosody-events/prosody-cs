@@ -432,6 +432,23 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
+    public void BuildClonesOptionsSoSubsequentMutationsDoNotAffectClient()
+    {
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("original")
+            .WithMock(true);
+
+        using var client = builder.Build();
+
+        // Mutate builder after Build() — should not affect the already-built client
+        builder.WithSourceSystem("mutated");
+
+        Assert.Equal("original", client.SourceSystem);
+    }
+
+    [Fact]
     public void ConditionalConfiguration()
     {
         var isDevelopment = true;

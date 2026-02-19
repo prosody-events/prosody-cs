@@ -432,6 +432,11 @@ public sealed class ClientOptions
         };
 
     /// <summary>
+    /// Creates a shallow copy of this <see cref="ClientOptions"/> instance.
+    /// </summary>
+    internal ClientOptions Clone() => (ClientOptions)MemberwiseClone();
+
+    /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
     internal Native.ClientOptions ToNative() =>
