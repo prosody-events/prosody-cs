@@ -223,6 +223,20 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
+    public void WithSendTimeout()
+    {
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSendTimeout(TimeSpan.FromSeconds(5))
+            .WithSourceSystem("test")
+            .WithMock(true);
+
+        using var client = builder.Build();
+        Assert.NotNull(client);
+    }
+
+    [Fact]
     public void BuildThrowsWhenLowLatencyWithoutFailureTopic()
     {
         var builder = ProsodyClientBuilder
