@@ -60,10 +60,9 @@ public static class ProsodyLogging
     /// </summary>
     internal static void Clear()
     {
-        lock (SyncLock)
-        {
-            _sink = null;
-            ProsodyFfiMethods.ClearLogSink();
-        }
+        // No lock needed: the Rust side uses ArcSwapOption (lock-free atomic store),
+        // and this is only called during shutdown or in tests — never concurrently with Configure in practice.
+        _sink = null;
+        ProsodyFfiMethods.ClearLogSink();
     }
 }
