@@ -74,7 +74,7 @@ jobs:
             lib_ext: .dylib
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -133,7 +133,7 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -147,7 +147,7 @@ jobs:
           version: 1.0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: |
             8.0.x
@@ -237,7 +237,7 @@ jobs:
         dotnet: ["8.0", "9.0", "10.0"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download NuGet package
         uses: actions/download-artifact@v4

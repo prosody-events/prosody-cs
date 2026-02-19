@@ -9,7 +9,8 @@ public sealed class Timer
 
     internal Timer(Native.Timer native)
     {
-        _native = native ?? throw new ArgumentNullException(nameof(native));
+        ArgumentNullException.ThrowIfNull(native);
+        _native = native;
     }
 
     /// <summary>

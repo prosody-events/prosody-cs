@@ -91,10 +91,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
 
         await messageReceived.WaitAsync(TestContext.Current.CancellationToken);
 
-        var timer = await timerFired.ReceiveAsync(
-            TimeSpan.FromSeconds(10),
-            TestContext.Current.CancellationToken
-        );
+        var timer = await timerFired.ReceiveAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Multiple(
             () => Assert.Equal(1, timerCount),
@@ -142,10 +139,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
 
         await messageReceived.WaitAsync(TestContext.Current.CancellationToken);
 
-        var timer = await timerFired.ReceiveAsync(
-            TimeSpan.FromSeconds(10),
-            TestContext.Current.CancellationToken
-        );
+        var timer = await timerFired.ReceiveAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Multiple(
             () => Assert.Equal(1, timerCount),
@@ -285,10 +279,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             () => AssertTimerApproximatelyEqual(retrievedTimes[0], scheduledTime)
         );
 
-        _ = await timerFired.ReceiveAsync(
-            TimeSpan.FromSeconds(10),
-            TestContext.Current.CancellationToken
-        );
+        _ = await timerFired.ReceiveAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         Assert.Equal(1, timerCount);
     }

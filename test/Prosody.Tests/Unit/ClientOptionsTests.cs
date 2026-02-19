@@ -1,7 +1,9 @@
+using Prosody.Tests.TestHelpers;
+
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Tests for ClientOptions configuration record.
+/// Tests for ClientOptions configuration class.
 /// </summary>
 public sealed class ClientOptionsTests
 {
@@ -24,15 +26,15 @@ public sealed class ClientOptionsTests
     {
         var options = new ClientOptions
         {
-            BootstrapServers = ["localhost:9092"],
+            BootstrapServers = [TestDefaults.BootstrapServers],
             GroupId = "my-app",
             SubscribedTopics = ["my-topic"],
         };
 
         Assert.Multiple(
-            () => Assert.Equal(["localhost:9092"], options.BootstrapServers!),
+            () => Assert.Equal([TestDefaults.BootstrapServers], options.BootstrapServers),
             () => Assert.Equal("my-app", options.GroupId),
-            () => Assert.Equal(["my-topic"], options.SubscribedTopics!),
+            () => Assert.Equal(["my-topic"], options.SubscribedTopics),
             () => Assert.Null(options.Mode)
         );
     }
@@ -40,28 +42,22 @@ public sealed class ClientOptionsTests
     [Fact]
     public void CanSpecifyMultipleBootstrapServers()
     {
-        var options = new ClientOptions
-        {
-            BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"],
-        };
+        var options = new ClientOptions { BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"] };
 
         Assert.Multiple(
-            () => Assert.Equal(3, options.BootstrapServers!.Value.Length),
-            () => Assert.Contains("broker1:9092", options.BootstrapServers!.Value),
-            () => Assert.Contains("broker2:9092", options.BootstrapServers!.Value),
-            () => Assert.Contains("broker3:9092", options.BootstrapServers!.Value)
+            () => Assert.Equal(3, options.BootstrapServers!.Count),
+            () => Assert.Contains("broker1:9092", options.BootstrapServers),
+            () => Assert.Contains("broker2:9092", options.BootstrapServers),
+            () => Assert.Contains("broker3:9092", options.BootstrapServers)
         );
     }
 
     [Fact]
     public void CanSpecifyMultipleTopics()
     {
-        var options = new ClientOptions
-        {
-            SubscribedTopics = ["orders", "payments", "notifications"],
-        };
+        var options = new ClientOptions { SubscribedTopics = ["orders", "payments", "notifications"] };
 
-        Assert.Equal(3, options.SubscribedTopics!.Value.Length);
+        Assert.Equal(3, options.SubscribedTopics!.Count);
     }
 
     [Fact]
@@ -127,26 +123,6 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void RecordEqualityWorksForScalarFields()
-    {
-        // Note: Records with array fields use reference equality for arrays,
-        // so we test equality with scalar fields only
-        var options1 = new ClientOptions { GroupId = "test", SourceSystem = "my-app" };
-        var options2 = new ClientOptions { GroupId = "test", SourceSystem = "my-app" };
-
-        Assert.Equal(options1, options2);
-    }
-
-    [Fact]
-    public void RecordInequalityWhenFieldsDiffer()
-    {
-        var options1 = new ClientOptions { GroupId = "group-1" };
-        var options2 = new ClientOptions { GroupId = "group-2" };
-
-        Assert.NotEqual(options1, options2);
-    }
-
-    [Fact]
     public void LowLatencyModeWithFailureTopic()
     {
         var options = new ClientOptions
@@ -175,29 +151,10 @@ public sealed class ClientOptionsTests
         };
 
         Assert.Multiple(
-            () => Assert.Equal(2, options.CassandraNodes?.Length),
+            () => Assert.Equal(2, options.CassandraNodes?.Count),
             () => Assert.Equal("prosody", options.CassandraKeyspace),
             () => Assert.Equal("dc1", options.CassandraDatacenter),
             () => Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention)
-        );
-    }
-
-    [Fact]
-    public void WithExpressionCreatesModifiedCopy()
-    {
-        var original = new ClientOptions { GroupId = "original", Mode = ClientMode.Pipeline };
-
-        var modified = original with { Mode = ClientMode.LowLatency, FailureTopic = "dlq" };
-
-        Assert.Multiple(
-            // Original unchanged
-            () => Assert.Equal("original", original.GroupId),
-            () => Assert.Equal(ClientMode.Pipeline, original.Mode),
-            () => Assert.Null(original.FailureTopic),
-            // Modified has new values
-            () => Assert.Equal("original", modified.GroupId),
-            () => Assert.Equal(ClientMode.LowLatency, modified.Mode),
-            () => Assert.Equal("dlq", modified.FailureTopic)
         );
     }
 
@@ -206,7 +163,7 @@ public sealed class ClientOptionsTests
     {
         var options = new ClientOptions
         {
-            BootstrapServers = ["localhost:9092"],
+            BootstrapServers = [TestDefaults.BootstrapServers],
             GroupId = "test-app",
             Mode = ClientMode.LowLatency,
             StallThreshold = TimeSpan.FromMinutes(5),
@@ -215,7 +172,7 @@ public sealed class ClientOptionsTests
         var native = options.ToNative();
 
         Assert.Multiple(
-            () => Assert.Equal(["localhost:9092"], native.BootstrapServers!),
+            () => Assert.Equal([TestDefaults.BootstrapServers], native.BootstrapServers!),
             () => Assert.Equal("test-app", native.GroupId),
             () => Assert.Equal(Native.ClientMode.LowLatency, native.Mode),
             () => Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold)

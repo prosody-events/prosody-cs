@@ -20,30 +20,36 @@ namespace Prosody;
 /// </example>
 public static class ProsodyLogging
 {
-    private static readonly object Lock = new();
     private static LogSinkBridge? _sink;
 
     /// <summary>
-    /// Configures logging for all Prosody clients.
+    /// Configures logging for all Prosody clients. Must only be called once.
     /// </summary>
-    /// <param name="loggerFactory">The logger factory to use, or <c>null</c> to disable logging.</param>
+    /// <param name="loggerFactory">The logger factory to use.</param>
+    /// <exception cref="InvalidOperationException">Thrown if logging has already been configured.</exception>
     /// <remarks>
-    /// Thread-safe; each call replaces the previous configuration.
-    /// Logs use the <c>Prosody.Native</c> category.
+    /// Thread-safe. Logs use the <c>Prosody.Native</c> category.
     /// </remarks>
-    public static void Configure(ILoggerFactory? loggerFactory)
+    public static void Configure(ILoggerFactory loggerFactory)
     {
-        lock (Lock)
-        {
-            if (loggerFactory is null)
-            {
-                _sink = null;
-                ProsodyFfiMethods.ClearLogSink();
-                return;
-            }
+        ArgumentNullException.ThrowIfNull(loggerFactory);
 
-            _sink = new LogSinkBridge(loggerFactory);
-            ProsodyFfiMethods.ConfigureLogSink(_sink);
+        var sink = new LogSinkBridge(loggerFactory);
+
+        if (Interlocked.CompareExchange(ref _sink, sink, null) is not null)
+        {
+            throw new InvalidOperationException("Prosody logging has already been configured.");
         }
+
+        ProsodyFfiMethods.ConfigureLogSink(sink);
+    }
+
+    /// <summary>
+    /// Clears the current logging configuration. Intended for host shutdown.
+    /// </summary>
+    internal static void Clear()
+    {
+        Interlocked.Exchange(ref _sink, null);
+        ProsodyFfiMethods.ClearLogSink();
     }
 }

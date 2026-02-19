@@ -1,3 +1,5 @@
+using Prosody.Tests.TestHelpers;
+
 namespace Prosody.Tests.Unit;
 
 /// <summary>
@@ -8,8 +10,7 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void CreateClientReturnsBuilder()
     {
-        var builder = CreateClient();
-
+        var builder = ProsodyClientBuilder.Create();
         Assert.NotNull(builder);
         Assert.IsType<ProsodyClientBuilder>(builder);
     }
@@ -17,8 +18,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithBootstrapServersSingleServer()
     {
-        var builder = CreateClient()
-            .WithBootstrapServers("localhost:9092")
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSourceSystem("test")
             .WithMock(true);
 
@@ -29,7 +31,8 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithBootstrapServersMultipleServers()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
             .WithBootstrapServers("broker1:9092", "broker2:9092", "broker3:9092")
             .WithSourceSystem("test")
             .WithMock(true);
@@ -41,7 +44,12 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithGroupId()
     {
-        var builder = CreateClient().WithGroupId("my-app").WithSourceSystem("test").WithMock(true);
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithGroupId("my-app")
+            .WithSourceSystem("test")
+            .WithMock(true);
 
         using var client = builder.Build();
         Assert.NotNull(client);
@@ -50,7 +58,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithSubscribedTopicsSingleTopic()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSubscribedTopics("my-topic")
             .WithSourceSystem("test")
             .WithMock(true);
@@ -62,7 +72,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithSubscribedTopicsMultipleTopics()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSubscribedTopics("orders", "payments", "notifications")
             .WithSourceSystem("test")
             .WithMock(true);
@@ -74,17 +86,24 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithModeAllModes()
     {
-        using var pipeline = CreateClient()
+        using var pipeline = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithMode(ClientMode.Pipeline)
             .WithSourceSystem("test")
             .WithMock(true)
             .Build();
-        using var lowLatency = CreateClient()
+        using var lowLatency = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithMode(ClientMode.LowLatency)
+            .WithFailureTopic("dead-letters")
             .WithSourceSystem("test")
             .WithMock(true)
             .Build();
-        using var bestEffort = CreateClient()
+        using var bestEffort = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithMode(ClientMode.BestEffort)
             .WithSourceSystem("test")
             .WithMock(true)
@@ -100,7 +119,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithAllowedEvents()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithAllowedEvents("user.", "account.")
             .WithSourceSystem("test")
             .WithMock(true);
@@ -112,7 +133,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithSourceSystem()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("my-app")
             .WithSourceSystem("different-source")
             .WithMock(true);
@@ -124,7 +147,11 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithMockTrue()
     {
-        var builder = CreateClient().WithSourceSystem("test").WithMock(true);
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true);
 
         using var client = builder.Build();
         Assert.NotNull(client);
@@ -133,41 +160,10 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithMaxConcurrency()
     {
-        var builder = CreateClient().WithMaxConcurrency(64).WithSourceSystem("test").WithMock(true);
-
-        using var client = builder.Build();
-        Assert.NotNull(client);
-    }
-
-    [Fact]
-    public void WithMaxUncommitted()
-    {
-        var builder = CreateClient()
-            .WithMaxUncommitted(128)
-            .WithSourceSystem("test")
-            .WithMock(true);
-
-        using var client = builder.Build();
-        Assert.NotNull(client);
-    }
-
-    [Fact]
-    public void WithTimeout()
-    {
-        var builder = CreateClient()
-            .WithTimeout(TimeSpan.FromMinutes(2))
-            .WithSourceSystem("test")
-            .WithMock(true);
-
-        using var client = builder.Build();
-        Assert.NotNull(client);
-    }
-
-    [Fact]
-    public void WithStallThreshold()
-    {
-        var builder = CreateClient()
-            .WithStallThreshold(TimeSpan.FromMinutes(10))
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithMaxConcurrency(64)
             .WithSourceSystem("test")
             .WithMock(true);
 
@@ -178,27 +174,32 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithProbePort()
     {
-        var builderEnabled = CreateClient()
+        var builderEnabled = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithProbePort(8080)
             .WithSourceSystem("test")
             .WithMock(true);
-        var builderDisabled = CreateClient()
+        var builderDisabled = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithProbePort(0)
             .WithSourceSystem("test")
             .WithMock(true);
 
         using var clientEnabled = builderEnabled.Build();
         using var clientDisabled = builderDisabled.Build();
-        Assert.Multiple(() => Assert.NotNull(clientEnabled), () => Assert.NotNull(clientDisabled));
+        Assert.NotNull(clientEnabled);
+        Assert.NotNull(clientDisabled);
     }
 
     [Fact]
-    public void WithRetryOptions()
+    public void WithMaxRetries()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithMaxRetries(5)
-            .WithRetryBase(TimeSpan.FromMilliseconds(50))
-            .WithMaxRetryDelay(TimeSpan.FromMinutes(10))
             .WithSourceSystem("test")
             .WithMock(true);
 
@@ -209,7 +210,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void WithFailureTopic()
     {
-        var builder = CreateClient()
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithMode(ClientMode.LowLatency)
             .WithFailureTopic("dead-letters")
             .WithSourceSystem("test")
@@ -220,65 +223,160 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void WithDeferralOptions()
+    public void BuildThrowsWhenLowLatencyWithoutFailureTopic()
     {
-        var builder = CreateClient()
-            .WithDeferEnabled(true)
-            .WithDeferBase(TimeSpan.FromSeconds(2))
-            .WithDeferMaxDelay(TimeSpan.FromHours(12))
-            .WithDeferFailureThreshold(0.8)
-            .WithDeferFailureWindow(TimeSpan.FromMinutes(10))
-            .WithDeferCacheSize(2048)
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithMode(ClientMode.LowLatency)
             .WithSourceSystem("test")
             .WithMock(true);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        Assert.Contains("FailureTopic", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildThrowsWhenBootstrapServersEmpty()
+    {
+        var builder = ProsodyClientBuilder.Create().WithBootstrapServers().WithSourceSystem("test").WithMock(true);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        Assert.Contains("BootstrapServers", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildThrowsWhenSubscribedTopicsEmpty()
+    {
+        var builder = ProsodyClientBuilder.Create().WithSubscribedTopics().WithSourceSystem("test").WithMock(true);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        Assert.Contains("SubscribedTopics", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildThrowsWhenThresholdOutOfRange()
+    {
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .Configure(options => options.DeferFailureThreshold = 1.5);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
+        Assert.Contains("DeferFailureThreshold", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildSucceedsWithNullOptionalFields()
+    {
+        // All nullable fields left as null should pass validation
+        var builder = ProsodyClientBuilder.Create().WithSourceSystem("test").WithMock(true);
 
         using var client = builder.Build();
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithMonopolizationOptions()
+    public void ConfigureAdvancedOptions()
     {
-        var builder = CreateClient()
-            .WithMonopolizationEnabled(true)
-            .WithMonopolizationThreshold(0.8)
-            .WithMonopolizationWindow(TimeSpan.FromMinutes(10))
-            .WithMonopolizationCacheSize(4096)
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSourceSystem("test")
-            .WithMock(true);
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.MaxUncommitted = 128;
+                options.Timeout = TimeSpan.FromMinutes(2);
+                options.StallThreshold = TimeSpan.FromMinutes(10);
+                options.RetryBase = TimeSpan.FromMilliseconds(50);
+                options.MaxRetryDelay = TimeSpan.FromMinutes(10);
+            });
 
         using var client = builder.Build();
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithSchedulerOptions()
+    public void ConfigureDeferralOptions()
     {
-        var builder = CreateClient()
-            .WithSchedulerFailureWeight(0.4)
-            .WithSchedulerMaxWait(TimeSpan.FromMinutes(3))
-            .WithSchedulerWaitWeight(150.0)
-            .WithSchedulerCacheSize(4096)
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSourceSystem("test")
-            .WithMock(true);
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.DeferEnabled = true;
+                options.DeferBase = TimeSpan.FromSeconds(2);
+                options.DeferMaxDelay = TimeSpan.FromHours(12);
+                options.DeferFailureThreshold = 0.8;
+                options.DeferFailureWindow = TimeSpan.FromMinutes(10);
+                options.DeferCacheSize = 2048;
+            });
 
         using var client = builder.Build();
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithCassandraOptions()
+    public void ConfigureMonopolizationOptions()
     {
-        var builder = CreateClient()
-            .WithCassandraNodes("cass1:9042", "cass2:9042")
-            .WithCassandraKeyspace("my_keyspace")
-            .WithCassandraDatacenter("dc1")
-            .WithCassandraRack("rack1")
-            .WithCassandraUser("user")
-            .WithCassandraPassword("pass")
-            .WithCassandraRetention(TimeSpan.FromDays(180))
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSourceSystem("test")
-            .WithMock(true);
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.MonopolizationEnabled = true;
+                options.MonopolizationThreshold = 0.8;
+                options.MonopolizationWindow = TimeSpan.FromMinutes(10);
+                options.MonopolizationCacheSize = 4096;
+            });
+
+        using var client = builder.Build();
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ConfigureSchedulerOptions()
+    {
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.SchedulerFailureWeight = 0.4;
+                options.SchedulerMaxWait = TimeSpan.FromMinutes(3);
+                options.SchedulerWaitWeight = 150.0;
+                options.SchedulerCacheSize = 4096;
+            });
+
+        using var client = builder.Build();
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ConfigureCassandraOptions()
+    {
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.CassandraNodes = ["cass1:9042", "cass2:9042"];
+                options.CassandraKeyspace = "my_keyspace";
+                options.CassandraDatacenter = "dc1";
+                options.CassandraRack = "rack1";
+                options.CassandraUser = "user";
+                options.CassandraPassword = "pass";
+                options.CassandraRetention = TimeSpan.FromDays(180);
+            });
 
         using var client = builder.Build();
         Assert.NotNull(client);
@@ -287,7 +385,7 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void BuilderSupportsChainingReassignment()
     {
-        var builder1 = CreateClient().WithGroupId("group1");
+        var builder1 = ProsodyClientBuilder.Create().WithGroupId("group1");
         var builder2 = builder1.WithGroupId("group2");
 
         // builder1 and builder2 reference the same mutable builder
@@ -298,16 +396,20 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void FullFluentConfiguration()
     {
-        var builder = CreateClient()
-            .WithBootstrapServers("localhost:9092")
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("my-app")
             .WithSubscribedTopics("orders", "payments")
             .WithMode(ClientMode.Pipeline)
             .WithSourceSystem("my-source")
             .WithMaxConcurrency(64)
-            .WithStallThreshold(TimeSpan.FromMinutes(5))
             .WithProbePort(8080)
-            .WithMock(true);
+            .WithMock(true)
+            .Configure(options =>
+            {
+                options.StallThreshold = TimeSpan.FromMinutes(5);
+            });
 
         using var client = builder.Build();
         Assert.NotNull(client);
@@ -318,8 +420,9 @@ public sealed class ProsodyClientBuilderTests
     {
         var isDevelopment = true;
 
-        var builder = CreateClient()
-            .WithBootstrapServers("localhost:9092")
+        var builder = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("my-app")
             .WithSourceSystem("test");
 

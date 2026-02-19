@@ -57,13 +57,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="key">The message key.</param>
     /// <param name="payload">The message payload (will be serialized to JSON).</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    public Task SendAsync<T>(
-        string topic,
-        string key,
-        T payload,
-        CancellationToken cancellationToken = default
-    )
+    public Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+
+        // Optimization opportunity: use pooled ArrayBufferWriter<byte> to reduce allocations
+        // once the FFI binding accepts ReadOnlyMemory<byte> instead of byte[].
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         return SendRawAsync(topic, key, jsonBytes, cancellationToken);
     }
@@ -82,11 +82,28 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var carrier = new Dictionary<string, string>();
-        TracePropagation.Inject(carrier);
-        using var signal = CancellationHelper.CreateSignal(cancellationToken);
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(jsonPayload);
 
-        await _native.Send(topic, key, jsonPayload, carrier, signal).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var carrier = new Dictionary<string, string>(StringComparer.Ordinal);
+        TracePropagation.Inject(carrier);
+
+        var linked = CancellationHelper.CreateSignal(cancellationToken);
+        try
+        {
+            await _native.Send(topic, key, jsonPayload, carrier, linked?.Signal).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (linked is { } l)
+            {
+                await l.Registration.DisposeAsync().ConfigureAwait(false);
+                l.Signal.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -102,10 +119,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Unsubscribes from receiving messages and shuts down the consumer.
     /// </summary>
-    public Task UnsubscribeAsync()
-    {
-        return _native.Unsubscribe();
-    }
+    public Task UnsubscribeAsync() => _native.Unsubscribe();
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()

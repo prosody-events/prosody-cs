@@ -68,21 +68,16 @@ public static class ProsodyServiceCollectionExtensions
     /// builder.Services.AddProsodyClient(builder.Configuration.GetSection("Prosody"));
     /// </code>
     /// </example>
-    public static IServiceCollection AddProsodyClient(
-        this IServiceCollection services,
-        IConfiguration configuration
-    )
-    {
-        return AddProsodyClient(services, configuration, configure: null);
-    }
+    public static IServiceCollection AddProsodyClient(this IServiceCollection services, IConfiguration configuration) =>
+        services.AddProsodyClient(configuration, configure: null);
 
     /// <summary>
     /// Adds a <see cref="ProsodyClient"/> to the service collection using configuration from an <see cref="IConfiguration"/> section
-    /// with additional builder customization.
+    /// with additional option customization.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
     /// <param name="configuration">The configuration section containing Prosody client options.</param>
-    /// <param name="configure">An optional action to further configure the client builder after binding configuration.</param>
+    /// <param name="configure">An optional action to further configure the client options after binding configuration.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// <para>
@@ -100,35 +95,34 @@ public static class ProsodyServiceCollectionExtensions
     /// var builder = WebApplication.CreateBuilder(args);
     /// builder.Services.AddProsodyClient(
     ///     builder.Configuration.GetSection("Prosody"),
-    ///     client => client.WithMock(builder.Environment.IsDevelopment()));
+    ///     options => options.Mock = builder.Environment.IsDevelopment());
     /// </code>
     /// </example>
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
         IConfiguration configuration,
-        Action<ProsodyClientBuilder>? configure
+        Action<ClientOptions>? configure
     )
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var options = configuration.Get<ClientOptions>() ?? new ClientOptions();
-
         services.AddSingleton(_ =>
         {
-            var builder = Prosody.CreateClient().WithOptions(options);
-            configure?.Invoke(builder);
-            return builder.Build();
+            var options = configuration.Get<ClientOptions>() ?? new ClientOptions();
+            configure?.Invoke(options);
+            options.Validate();
+            return new ProsodyClient(options);
         });
 
         return services;
     }
 
     /// <summary>
-    /// Adds a <see cref="ProsodyClient"/> to the service collection using builder configuration.
+    /// Adds a <see cref="ProsodyClient"/> to the service collection using option configuration.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="configure">An action to configure the client builder.</param>
+    /// <param name="configure">An action to configure the client options.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// <para>
@@ -139,39 +133,34 @@ public static class ProsodyServiceCollectionExtensions
     /// <example>
     /// <code>
     /// var builder = WebApplication.CreateBuilder(args);
-    /// builder.Services.AddProsodyClient(client => client
-    ///     .WithBootstrapServers("localhost:9092")
-    ///     .WithGroupId("my-app")
-    ///     .WithSubscribedTopics("orders")
-    ///     .WithMock(builder.Environment.IsDevelopment()));
+    /// builder.Services.AddProsodyClient(options =>
+    /// {
+    ///     options.BootstrapServers = ["localhost:9092"];
+    ///     options.GroupId = "my-app";
+    ///     options.SubscribedTopics = ["orders"];
+    ///     options.Mock = builder.Environment.IsDevelopment();
+    /// });
     /// </code>
     /// </example>
-    public static IServiceCollection AddProsodyClient(
-        this IServiceCollection services,
-        Action<ProsodyClientBuilder> configure
-    )
+    public static IServiceCollection AddProsodyClient(this IServiceCollection services, Action<ClientOptions> configure)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
         services.AddSingleton(_ =>
         {
-            var builder = Prosody.CreateClient();
-            configure(builder);
-            return builder.Build();
+            var options = new ClientOptions();
+            configure(options);
+            options.Validate();
+            return new ProsodyClient(options);
         });
 
         return services;
     }
 
-    private sealed class ProsodyLoggingHostedService : IHostedService
+    private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory) : IHostedService
     {
-        private readonly ILoggerFactory _loggerFactory;
-
-        public ProsodyLoggingHostedService(ILoggerFactory loggerFactory)
-        {
-            _loggerFactory = loggerFactory;
-        }
+        private readonly ILoggerFactory _loggerFactory = loggerFactory;
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
@@ -181,7 +170,7 @@ public static class ProsodyServiceCollectionExtensions
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            ProsodyLogging.Configure(null);
+            ProsodyLogging.Clear();
             return Task.CompletedTask;
         }
     }

@@ -59,7 +59,7 @@ jobs:
           --health-start-period 60s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -73,7 +73,7 @@ jobs:
           version: 1.0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -96,6 +96,14 @@ jobs:
       - name: Restore .NET tools
         run: dotnet tool restore
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Restore .NET dependencies
         run: dotnet restore
 
@@ -113,7 +121,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust (nightly)
         uses: dtolnay/rust-toolchain@nightly
@@ -129,7 +137,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -143,7 +151,7 @@ jobs:
     name: Unused Dependencies
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -174,7 +182,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -200,7 +208,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -228,7 +236,7 @@ jobs:
     name: .NET Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
@@ -242,7 +250,7 @@ jobs:
           version: 1.0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
@@ -264,6 +272,14 @@ jobs:
 
       - name: Restore .NET tools
         run: dotnet tool restore
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Restore .NET dependencies
         run: dotnet restore

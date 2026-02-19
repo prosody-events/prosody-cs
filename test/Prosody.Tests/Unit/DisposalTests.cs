@@ -1,3 +1,5 @@
+using Prosody.Tests.TestHelpers;
+
 namespace Prosody.Tests.Unit;
 
 /// <summary>
@@ -9,6 +11,7 @@ public sealed class DisposalTests
         new()
         {
             Mock = true,
+            BootstrapServers = [TestDefaults.BootstrapServers],
             GroupId = "test-group",
             SubscribedTopics = ["test-topic"],
         };
@@ -16,16 +19,13 @@ public sealed class DisposalTests
     private sealed class NoOpHandler : IProsodyHandler
     {
         public Task OnMessageAsync(
-            Context context,
+            ProsodyContext prosodyContext,
             Message message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
-        public Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        ) => Task.CompletedTask;
+        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     [Fact]

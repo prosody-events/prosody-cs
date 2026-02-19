@@ -24,10 +24,6 @@
 
     <!-- Generate XML documentation for IntelliSense -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-
-    <!-- Suppress CA1724: Type name conflicts with namespace -->
-    <!-- Deliberate design choice: Prosody.CreateClient() is the intended API -->
-    <NoWarn>$(NoWarn);CA1724</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,11 +32,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.3"/>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.3"/>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.3"/>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1"/>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3"/>
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.0"/>
-    <PackageReference Include="System.Text.Json" Version="9.0.3"/>
+  </ItemGroup>
+
+  <ItemGroup Label="Analyzers">
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.7" PrivateAssets="all" />
+    <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

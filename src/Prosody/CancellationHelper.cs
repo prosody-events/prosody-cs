@@ -10,19 +10,22 @@ internal static class CancellationHelper
     /// </summary>
     /// <param name="cancellationToken">The token to monitor for cancellation.</param>
     /// <returns>
-    /// A CancellationSignal that will be signaled when the token is cancelled,
-    /// or null if the token is default/none.
+    /// A linked signal and registration, or null if the token is default/none.
+    /// Both the signal and registration must be disposed by the caller.
     /// </returns>
-    internal static Native.CancellationSignal? CreateSignal(CancellationToken cancellationToken)
+    internal static (Native.CancellationSignal Signal, CancellationTokenRegistration Registration)? CreateSignal(
+        CancellationToken cancellationToken
+    )
     {
         if (cancellationToken == CancellationToken.None)
             return null;
 
         var signal = new Native.CancellationSignal();
+        CancellationTokenRegistration registration = cancellationToken.Register(
+            static state => ((Native.CancellationSignal)state!).Cancel(),
+            signal
+        );
 
-        // Register to cancel the signal when the token is cancelled
-        cancellationToken.Register(() => signal.Cancel());
-
-        return signal;
+        return (signal, registration);
     }
 }

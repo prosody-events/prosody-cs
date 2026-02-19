@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
@@ -16,7 +17,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = "localhost:9092",
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["SubscribedTopics:0"] = "orders",
                     ["SubscribedTopics:1"] = "payments",
@@ -47,7 +48,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = "localhost:9092",
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                 }
@@ -60,10 +61,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         // Act
         services.AddProsodyClient(
             configuration,
-            builder =>
+            options =>
             {
                 builderCalled = true;
-                builder.WithMaxConcurrency(128);
+                options.MaxConcurrency = 128;
             }
         );
 
@@ -83,7 +84,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = "localhost:9092",
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                 }
@@ -141,6 +142,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["Timeout"] = "00:02:00", // 2 minutes
@@ -171,6 +173,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["Mode"] = "Pipeline",
@@ -182,6 +185,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["Mode"] = "LowLatency",
@@ -194,6 +198,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["Mode"] = "BestEffort",
@@ -231,13 +236,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
 
         // Act
-        services.AddProsodyClient(builder =>
-            builder
-                .WithBootstrapServers("localhost:9092")
-                .WithGroupId("builder-only-group")
-                .WithSubscribedTopics("my-topic")
-                .WithMock(true)
-        );
+        services.AddProsodyClient(options =>
+        {
+            options.BootstrapServers = [TestDefaults.BootstrapServers];
+            options.GroupId = "builder-only-group";
+            options.SubscribedTopics = ["my-topic"];
+            options.Mock = true;
+        });
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -264,8 +269,8 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         var services = new ServiceCollection();
 
-        // Act - builder overrides MaxConcurrency
-        services.AddProsodyClient(configuration, builder => builder.WithMaxConcurrency(128));
+        // Act - options override MaxConcurrency
+        services.AddProsodyClient(configuration, options => options.MaxConcurrency = 128);
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -278,16 +283,19 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     public void AddProsodyClientEmptyConfigurationUsesDefaults()
     {
         // Arrange - empty configuration
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>())
-            .Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
 
         var services = new ServiceCollection();
 
-        // Act - use builder to set required mock mode
+        // Act - use options to set required mock mode
         services.AddProsodyClient(
             configuration,
-            builder => builder.WithMock(true).WithGroupId("test")
+            options =>
+            {
+                options.Mock = true;
+                options.BootstrapServers = [TestDefaults.BootstrapServers];
+                options.GroupId = "test";
+            }
         );
 
         // Assert
@@ -305,6 +313,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["CassandraNodes:0"] = "cass1:9042",
@@ -338,6 +347,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["MaxConcurrency"] = "128",
@@ -372,6 +382,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
+                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
                     ["GroupId"] = "test-group",
                     ["Mock"] = "true",
                     ["DeferFailureThreshold"] = "0.85",

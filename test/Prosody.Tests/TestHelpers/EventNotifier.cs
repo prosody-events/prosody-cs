@@ -6,9 +6,7 @@ namespace Prosody.Tests.TestHelpers;
 /// </summary>
 internal sealed class EventNotifier
 {
-    private readonly TaskCompletionSource _tcs = new(
-        TaskCreationOptions.RunContinuationsAsynchronously
-    );
+    private readonly TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>
     /// Signal that the event occurred. Multiple calls are safe; only the first is recorded.

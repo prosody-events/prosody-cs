@@ -13,12 +13,7 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
     public string GroupId { get; }
     public ProsodyClient Client { get; }
 
-    private IntegrationTestContext(
-        AdminClient sharedAdmin,
-        string topic,
-        string groupId,
-        ProsodyClient client
-    )
+    private IntegrationTestContext(AdminClient sharedAdmin, string topic, string groupId, ProsodyClient client)
     {
         _sharedAdmin = sharedAdmin;
         Topic = topic;
@@ -59,8 +54,7 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
                 );
                 break;
             }
-            catch (Exception ex)
-                when (ex.Message.Contains("topics not found", StringComparison.Ordinal))
+            catch (Exception ex) when (ex.Message.Contains("topics not found", StringComparison.Ordinal))
             {
                 lastException = ex;
                 await Task.Delay(100 * (attempt + 1));

@@ -10,17 +10,13 @@ public sealed class ProsodyHandlerTests
         public int MessageCount { get; private set; }
         public int TimerCount { get; private set; }
 
-        public Task OnMessageAsync(
-            Context context,
-            Message message,
-            CancellationToken cancellationToken
-        )
+        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
         {
             MessageCount++;
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
         {
             TimerCount++;
             return Task.CompletedTask;
@@ -39,7 +35,7 @@ public sealed class ProsodyHandlerTests
         public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
 
         public async Task OnMessageAsync(
-            Context context,
+            ProsodyContext prosodyContext,
             Message message,
             CancellationToken cancellationToken
         )
@@ -47,11 +43,7 @@ public sealed class ProsodyHandlerTests
             await Task.Delay(Delay, cancellationToken);
         }
 
-        public async Task OnTimerAsync(
-            Context context,
-            Timer timer,
-            CancellationToken cancellationToken
-        )
+        public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
         {
             await Task.Delay(Delay, cancellationToken);
         }
@@ -87,13 +79,10 @@ public sealed class ProsodyHandlerTests
         var inner = new InvalidOperationException("inner");
         var ex = new PermanentException("outer", inner);
 
-        Assert.Multiple(
-            () => Assert.Equal("outer", ex.Message),
-            () => Assert.Same(inner, ex.InnerException)
-        );
+        Assert.Multiple(() => Assert.Equal("outer", ex.Message), () => Assert.Same(inner, ex.InnerException));
     }
 
-    #endregion
+    #endregion PermanentException Tests
 
     #region PermanentErrorAttribute Tests
 
@@ -125,10 +114,7 @@ public sealed class ProsodyHandlerTests
     [Fact]
     public void PermanentErrorAttributeMatchesMultipleTypes()
     {
-        var attr = new PermanentErrorAttribute(
-            typeof(ArgumentException),
-            typeof(InvalidOperationException)
-        );
+        var attr = new PermanentErrorAttribute(typeof(ArgumentException), typeof(InvalidOperationException));
 
         Assert.Multiple(
             () => Assert.True(attr.IsMatch(new ArgumentException())),
@@ -161,23 +147,19 @@ public sealed class ProsodyHandlerTests
         Assert.Throws<ArgumentException>(() => new PermanentErrorAttribute(typeof(string)));
     }
 
-    #endregion
+    #endregion PermanentErrorAttribute Tests
 
     #region Handler with Attribute Tests
 
     private sealed class AttributeHandler : IProsodyHandler
     {
         [PermanentError(typeof(FormatException), typeof(ArgumentException))]
-        public Task OnMessageAsync(
-            Context context,
-            Message message,
-            CancellationToken cancellationToken
-        )
+        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -188,15 +170,13 @@ public sealed class ProsodyHandlerTests
     {
         var handler = new AttributeHandler();
         var method = handler.GetType().GetMethod(nameof(IProsodyHandler.OnMessageAsync));
-        var attr = method
-            ?.GetCustomAttributes(typeof(PermanentErrorAttribute), true)
-            .FirstOrDefault();
+        var attr = method?.GetCustomAttributes(typeof(PermanentErrorAttribute), true).FirstOrDefault();
 
         Assert.NotNull(attr);
         Assert.IsType<PermanentErrorAttribute>(attr);
     }
 
-    #endregion
+    #endregion Handler with Attribute Tests
 
     #region Custom Permanent Exception Tests
 
@@ -225,16 +205,12 @@ public sealed class ProsodyHandlerTests
 
     private sealed class CustomExceptionHandler : IProsodyHandler
     {
-        public Task OnMessageAsync(
-            Context context,
-            Message message,
-            CancellationToken cancellationToken
-        )
+        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
         {
             throw new OrderValidationException("Order is invalid");
         }
 
-        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -252,5 +228,5 @@ public sealed class ProsodyHandlerTests
         Assert.IsAssignableFrom<IPermanentError>(ex);
     }
 
-    #endregion
+    #endregion Custom Permanent Exception Tests
 }

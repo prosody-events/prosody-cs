@@ -22,7 +22,7 @@ namespace Prosody;
 /// </remarks>
 /// <example>
 /// <code>
-/// public async Task OnMessageAsync(Context context, Message message, CancellationToken ct)
+/// public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
 /// {
 ///     try
 ///     {
@@ -37,7 +37,7 @@ namespace Prosody;
 /// }
 /// </code>
 /// </example>
-public class PermanentException : Exception, IPermanentError
+public sealed class PermanentException : Exception, IPermanentError
 {
     /// <inheritdoc/>
     public PermanentException() { }

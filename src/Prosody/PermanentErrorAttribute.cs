@@ -23,7 +23,7 @@ namespace Prosody;
 /// public class OrderHandler : IProsodyHandler
 /// {
 ///     [PermanentError(typeof(JsonException), typeof(ValidationException))]
-///     public async Task OnMessageAsync(Context context, Message message, CancellationToken ct)
+///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
 ///     {
 ///         // JsonException → permanent (no retry)
 ///         // ValidationException → permanent (no retry)
@@ -33,7 +33,7 @@ namespace Prosody;
 ///         await ProcessOrder(order, ct);
 ///     }
 ///
-///     public Task OnTimerAsync(Context context, Timer timer, CancellationToken ct)
+///     public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
 /// }
 /// </code>

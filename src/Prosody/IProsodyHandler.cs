@@ -24,7 +24,7 @@ namespace Prosody;
 /// {
 ///     // Attribute declares JsonException as permanent for this method
 ///     [PermanentError(typeof(JsonException))]
-///     public async Task OnMessageAsync(Context context, Message message, CancellationToken ct)
+///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
 ///     {
 ///         var order = JsonSerializer.Deserialize&lt;Order&gt;(message.Payload);
 ///
@@ -39,7 +39,7 @@ namespace Prosody;
 ///         // Transient error: throw any other exception
 ///     }
 ///
-///     public Task OnTimerAsync(Context context, Timer timer, CancellationToken ct)
+///     public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
 /// }
 /// </code>
@@ -49,25 +49,25 @@ public interface IProsodyHandler
     /// <summary>
     /// Called when a Kafka message arrives.
     /// </summary>
-    /// <param name="context">Event context for scheduling timers and checking cancellation.</param>
+    /// <param name="prosodyContext">Event context for scheduling timers and checking cancellation.</param>
     /// <param name="message">The Kafka message data.</param>
     /// <param name="cancellationToken">
-    /// Token that is cancelled when Prosody requests the handler to stop processing.
-    /// Handlers should monitor this token and exit promptly when cancelled.
+    /// Token that is cancelled when Prosody requests the handler to stop processing
+    /// (e.g., during shutdown or rebalance). Handlers should monitor this token and
+    /// exit promptly when cancelled. Note: an <see cref="OperationCanceledException"/>
+    /// thrown in response to this token is treated as a transient error like any other
+    /// exception — Prosody does not distinguish cancellation from failure.
     /// </param>
     /// <exception cref="PermanentException">
     /// Throw to indicate a permanent error that should not be retried.
-    /// </exception>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when <paramref name="cancellationToken"/> is cancelled. Prosody will
-    /// handle this as a cancellation, not an error.
     /// </exception>
     /// <remarks>
     /// <para>
     /// <b>Success:</b> Return normally (no exception).
     /// </para>
     /// <para>
-    /// <b>Transient Error:</b> Throw any exception. Prosody will retry the message.
+    /// <b>Transient Error:</b> Throw any exception (including
+    /// <see cref="OperationCanceledException"/>). Prosody will retry the message.
     /// </para>
     /// <para>
     /// <b>Permanent Error:</b> Throw <see cref="PermanentException"/> or an exception
@@ -75,30 +75,30 @@ public interface IProsodyHandler
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
     /// </remarks>
-    Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken);
+    Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken);
 
     /// <summary>
     /// Called when a timer fires.
     /// </summary>
-    /// <param name="context">Event context for scheduling timers and checking cancellation.</param>
+    /// <param name="prosodyContext">Event context for scheduling timers and checking cancellation.</param>
     /// <param name="timer">The timer trigger data.</param>
     /// <param name="cancellationToken">
-    /// Token that is cancelled when Prosody requests the handler to stop processing.
-    /// Handlers should monitor this token and exit promptly when cancelled.
+    /// Token that is cancelled when Prosody requests the handler to stop processing
+    /// (e.g., during shutdown or rebalance). Handlers should monitor this token and
+    /// exit promptly when cancelled. Note: an <see cref="OperationCanceledException"/>
+    /// thrown in response to this token is treated as a transient error like any other
+    /// exception — Prosody does not distinguish cancellation from failure.
     /// </param>
     /// <exception cref="PermanentException">
     /// Throw to indicate a permanent error that should not be retried.
-    /// </exception>
-    /// <exception cref="OperationCanceledException">
-    /// Thrown when <paramref name="cancellationToken"/> is cancelled. Prosody will
-    /// handle this as a cancellation, not an error.
     /// </exception>
     /// <remarks>
     /// <para>
     /// <b>Success:</b> Return normally (no exception).
     /// </para>
     /// <para>
-    /// <b>Transient Error:</b> Throw any exception. Prosody will retry the timer.
+    /// <b>Transient Error:</b> Throw any exception (including
+    /// <see cref="OperationCanceledException"/>). Prosody will retry the timer.
     /// </para>
     /// <para>
     /// <b>Permanent Error:</b> Throw <see cref="PermanentException"/> or an exception
@@ -106,5 +106,5 @@ public interface IProsodyHandler
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
     /// </remarks>
-    Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken);
+    Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken);
 }

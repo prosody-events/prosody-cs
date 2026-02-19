@@ -11,7 +11,8 @@ public sealed class Message
 
     internal Message(Native.Message native)
     {
-        _native = native ?? throw new ArgumentNullException(nameof(native));
+        ArgumentNullException.ThrowIfNull(native);
+        _native = native;
     }
 
     /// <summary>
@@ -47,8 +48,7 @@ public sealed class Message
     /// <exception cref="JsonException">If deserialization fails.</exception>
     public T GetPayload<T>()
     {
-        var payload = _native.Payload();
-        return JsonSerializer.Deserialize<T>(payload)
-            ?? throw new JsonException("Deserialization returned null");
+        return JsonSerializer.Deserialize<T>(_native.Payload())
+            ?? throw new JsonException($"Failed to deserialize payload as {typeof(T).Name}");
     }
 }

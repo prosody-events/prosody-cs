@@ -13,10 +13,7 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
         await using var ctx = await CreateTestContextAsync();
         var state = await ctx.Client.ConsumerStateAsync();
 
-        Assert.Multiple(
-            () => Assert.NotNull(ctx.Client),
-            () => Assert.Equal(ConsumerState.Configured, state)
-        );
+        Assert.Multiple(() => Assert.NotNull(ctx.Client), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
     [Fact(Timeout = 30_000)]

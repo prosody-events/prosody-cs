@@ -201,8 +201,9 @@ lint-rust:
 	cargo clippy --workspace --all-targets -- -D warnings
 
 lint-csharp:
-	dotnet build --warnaserror
-	dotnet format --verify-no-changes --verbosity minimal
+	dotnet build --warnaserror --no-restore
+	dotnet format style --verify-no-changes --no-restore --exclude src/Prosody/Generated/ --verbosity minimal
+	dotnet format analyzers --verify-no-changes --no-restore --exclude src/Prosody/Generated/ --verbosity minimal
 
 lint: lint-rust lint-csharp
 	@echo "All lints passed!"

@@ -30,10 +30,10 @@ internal static class TracePropagation
     /// </summary>
     public static Activity? Extract(Dictionary<string, string> carrier)
     {
-        var context = Propagator.Extract(
+        PropagationContext context = Propagator.Extract(
             default,
             carrier,
-            static (c, k) => c.TryGetValue(k, out var v) ? [v] : []
+            static (c, k) => c.TryGetValue(k, out string? v) ? [v] : []
         );
 
         Baggage.Current = context.Baggage;
