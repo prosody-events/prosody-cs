@@ -283,9 +283,9 @@ public sealed class ProsodyClientBuilderTests
     [Fact]
     public void BuildSucceedsWithNullOptionalFields()
     {
-        // All nullable fields left as null should pass validation
-        var builder = ProsodyClientBuilder.Create().WithSourceSystem("test").WithMock(true);
-
+        var builder = ProsodyClientBuilder.Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test").WithMock(true);
         using var client = builder.Build();
         Assert.NotNull(client);
     }

@@ -111,13 +111,13 @@ public sealed class ClientOptions
     /// Maximum queued messages per key before pausing.
     /// Default: 8.
     /// </summary>
-    public uint? MaxEnqueuedPerKey { get; init; }
+    public uint? MaxEnqueuedPerKey { get; set; }
 
     /// <summary>
     /// Size of LRU cache for message deduplication. Set to 0 to disable.
     /// Default: 4096.
     /// </summary>
-    public uint? IdempotenceCacheSize { get; init; }
+    public uint? IdempotenceCacheSize { get; set; }
 
     /// <summary>
     /// Handler timeout. Handlers running longer than this are cancelled.
@@ -135,19 +135,19 @@ public sealed class ClientOptions
     /// Wait this long for in-flight work before force-quit on shutdown.
     /// Default: 30 seconds.
     /// </summary>
-    public TimeSpan? ShutdownTimeout { get; init; }
+    public TimeSpan? ShutdownTimeout { get; set; }
 
     /// <summary>
     /// How often to fetch new messages from Kafka.
     /// Default: 100ms.
     /// </summary>
-    public TimeSpan? PollInterval { get; init; }
+    public TimeSpan? PollInterval { get; set; }
 
     /// <summary>
     /// How often to save progress (commit offsets) to Kafka.
     /// Default: 1 second.
     /// </summary>
-    public TimeSpan? CommitInterval { get; init; }
+    public TimeSpan? CommitInterval { get; set; }
 
     /// <summary>
     /// HTTP port for health check probes (<c>/livez</c>, <c>/readyz</c>).
@@ -165,7 +165,7 @@ public sealed class ClientOptions
     /// Timer storage granularity. Rarely needs changing.
     /// Default: 1 hour.
     /// </summary>
-    public TimeSpan? SlabSize { get; init; }
+    public TimeSpan? SlabSize { get; set; }
 
     // ========================================================================
     // Producer options
@@ -249,13 +249,13 @@ public sealed class ClientOptions
     /// Timeout when loading deferred messages from Kafka.
     /// Default: 30 seconds.
     /// </summary>
-    public TimeSpan? DeferSeekTimeout { get; init; }
+    public TimeSpan? DeferSeekTimeout { get; set; }
 
     /// <summary>
     /// Read optimization threshold. Rarely needs changing.
     /// Default: 100.
     /// </summary>
-    public uint? DeferDiscardThreshold { get; init; }
+    public uint? DeferDiscardThreshold { get; set; }
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)
