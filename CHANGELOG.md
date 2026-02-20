@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/cincpro/prosody-cs/releases/tag/v2.2.0) (2026-02-20)
+
+
+### Features
+
+* restructure namespaces, Logging updates, builder API changes, DI integration changes and options validation ([#10](https://github.com/cincpro/prosody-cs/issues/10)) ([fe224ca](https://github.com/cincpro/prosody-cs/commit/fe224ca8f7120ff0535637f3612d0eca97b12e4b))
+
 ## [2.1.0](https://github.com/cincpro/prosody-cs/releases/tag/v2.1.0) (2026-02-12)
 
 
