@@ -236,18 +236,4 @@ public sealed class LoggingTests : IDisposable
                 && r.Message.Contains("disabling consumer", StringComparison.OrdinalIgnoreCase)
         );
     }
-
-    private sealed class FakeLoggerFactory(FakeLogCollector collector) : ILoggerFactory
-    {
-        public FakeLogCollector Collector { get; } = collector;
-
-        public FakeLoggerFactory()
-            : this(new FakeLogCollector()) { }
-
-        public ILogger CreateLogger(string categoryName) => new FakeLogger(Collector, categoryName);
-
-        public void AddProvider(ILoggerProvider provider) { }
-
-        public void Dispose() { }
-    }
 }
