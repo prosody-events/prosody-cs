@@ -68,10 +68,7 @@ public sealed class PermanentErrorAttribute : Attribute
 
         if (exceptionTypes.Length == 0)
         {
-            throw new ArgumentException(
-                "At least one exception type must be specified.",
-                nameof(exceptionTypes)
-            );
+            throw new ArgumentException("At least one exception type must be specified.", nameof(exceptionTypes));
         }
 
         foreach (var type in exceptionTypes)
