@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Options;
 
 namespace Prosody;
@@ -88,7 +87,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         }
     }
 
-    [SuppressMessage("Design", "MA0076:Do not use implicit culture-sensitive ToString in interpolated strings")]
     private static void CheckArrayEntries(string[]? list, string name, List<string> failures)
     {
         if (list is null)
