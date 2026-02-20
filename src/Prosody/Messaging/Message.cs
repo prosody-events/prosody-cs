@@ -13,17 +13,23 @@ public sealed class Message
     {
         ArgumentNullException.ThrowIfNull(native);
         _native = native;
+
+        // Cache string properties eagerly to avoid repeated FFI crossings.
+        // Each call to the native accessor clones a Rust String, allocates a
+        // RustBuffer, and UTF-8 decodes into a C# string.
+        Topic = native.Topic();
+        Key = native.Key();
     }
 
     /// <summary>
     /// Gets the topic name.
     /// </summary>
-    public string Topic => _native.Topic();
+    public string Topic { get; }
 
     /// <summary>
     /// Gets the message key.
     /// </summary>
-    public string Key => _native.Key();
+    public string Key { get; }
 
     /// <summary>
     /// Gets the partition number.

@@ -15,6 +15,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     private ProsodyClient(Native.ProsodyClient native)
     {
         _native = native;
+        SourceSystem = native.SourceSystem();
     }
 
     /// <summary>
@@ -28,6 +29,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
+        SourceSystem = _native.SourceSystem();
     }
 
     /// <summary>
@@ -42,7 +44,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the source system identifier configured for this client.
     /// </summary>
-    public string SourceSystem => _native.SourceSystem();
+    public string SourceSystem { get; }
 
     /// <summary>
     /// Gets the current consumer state.

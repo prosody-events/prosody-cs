@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.Logging;
 using Prosody.Native;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -38,135 +39,71 @@ internal sealed class LogSinkBridge : LogSink
     }
 
     /// <summary>
-    /// Structured log state that holds native log fields without boxing value types
-    /// until a consumer enumerates. The formatter reads <see cref="NativeLogState.Formatted"/>
-    /// directly, avoiding list indexing on every log call.
+    /// Array-backed log state. The formatter reads <see cref="NativeLogState.Formatted"/>
+    /// directly (no indexing into the array). The array provides O(1) positional access
+    /// for sinks that index or enumerate the state. Boxing of value-type fields happens
+    /// once at construction when populating the array.
     /// </summary>
     private readonly struct NativeLogState : IReadOnlyList<KeyValuePair<string, object?>>
     {
-        private const string OriginalFormat = "[{Target}] {Message}";
-
-        private readonly string _target;
-        private readonly string _message;
-        private readonly string? _file;
-        private readonly uint? _line;
-        private readonly LogFields _fields;
+        private readonly KeyValuePair<string, object?>[] _entries;
 
         internal NativeLogState(string target, string message, string? file, uint? line, LogFields fields)
         {
-            _target = target;
-            _message = message;
-            _file = file;
-            _line = line;
-            _fields = fields;
             Formatted = $"[{target}] {message}";
+
+            int capacity =
+                3
+                + (file is not null ? 1 : 0)
+                + (line is not null ? 1 : 0)
+                + fields.Strings.Count
+                + fields.I64s.Count
+                + fields.U64s.Count
+                + fields.F64s.Count
+                + fields.Bools.Count;
+
+            var entries = new KeyValuePair<string, object?>[capacity];
+            int i = 0;
+
+            entries[i++] = new("Target", target);
+            entries[i++] = new("Message", message);
+
+            if (file is not null)
+                entries[i++] = new("SourceFile", file);
+
+            if (line is not null)
+                entries[i++] = new("SourceLine", line);
+
+            foreach ((string key, string value) in fields.Strings)
+                entries[i++] = new(key, value);
+
+            foreach ((string key, long value) in fields.I64s)
+                entries[i++] = new(key, value);
+
+            foreach ((string key, ulong value) in fields.U64s)
+                entries[i++] = new(key, value);
+
+            foreach ((string key, double value) in fields.F64s)
+                entries[i++] = new(key, value);
+
+            foreach ((string key, bool value) in fields.Bools)
+                entries[i++] = new(key, value);
+
+            // {OriginalFormat} last, per MEL convention.
+            entries[i] = new("{OriginalFormat}", "[{Target}] {Message}");
+
+            _entries = entries;
         }
 
         internal string Formatted { get; }
 
-        public int Count =>
-            3
-            + (_file is not null ? 1 : 0)
-            + (_line is not null ? 1 : 0)
-            + _fields.Strings.Count
-            + _fields.I64s.Count
-            + _fields.U64s.Count
-            + _fields.F64s.Count
-            + _fields.Bools.Count;
+        public int Count => _entries.Length;
 
-        public KeyValuePair<string, object?> this[int index]
-        {
-            get
-            {
-                // Fixed entries: Target, Message, optional SourceFile/SourceLine,
-                // then typed field dictionaries, then {OriginalFormat} last per MEL convention.
-                if (index == 0)
-                    return new("Target", _target);
-                if (index == 1)
-                    return new("Message", _message);
+        public KeyValuePair<string, object?> this[int index] => _entries[index];
 
-                var pos = 2;
+        public IEnumerator<KeyValuePair<string, object?>> GetEnumerator() =>
+            ((IEnumerable<KeyValuePair<string, object?>>)_entries).GetEnumerator();
 
-                if (_file is not null)
-                {
-                    if (index == pos)
-                        return new("SourceFile", _file);
-                    pos++;
-                }
-
-                if (_line is not null)
-                {
-                    if (index == pos)
-                        return new("SourceLine", _line);
-                    pos++;
-                }
-
-                var offset = index - pos;
-                if (offset < _fields.Strings.Count)
-                    return BoxedEntry(_fields.Strings, offset);
-                offset -= _fields.Strings.Count;
-
-                if (offset < _fields.I64s.Count)
-                    return BoxedEntry(_fields.I64s, offset);
-                offset -= _fields.I64s.Count;
-
-                if (offset < _fields.U64s.Count)
-                    return BoxedEntry(_fields.U64s, offset);
-                offset -= _fields.U64s.Count;
-
-                if (offset < _fields.F64s.Count)
-                    return BoxedEntry(_fields.F64s, offset);
-                offset -= _fields.F64s.Count;
-
-                if (offset < _fields.Bools.Count)
-                    return BoxedEntry(_fields.Bools, offset);
-                offset -= _fields.Bools.Count;
-
-                if (offset == 0)
-                    return new("{OriginalFormat}", OriginalFormat);
-
-                throw new ArgumentOutOfRangeException(nameof(index));
-            }
-        }
-
-        public IEnumerator<KeyValuePair<string, object?>> GetEnumerator()
-        {
-            yield return new("Target", _target);
-            yield return new("Message", _message);
-
-            if (_file is not null)
-                yield return new("SourceFile", _file);
-
-            if (_line is not null)
-                yield return new("SourceLine", _line);
-
-            foreach ((string key, string value) in _fields.Strings)
-                yield return new(key, value);
-
-            foreach ((string key, long value) in _fields.I64s)
-                yield return new(key, value);
-
-            foreach ((string key, ulong value) in _fields.U64s)
-                yield return new(key, value);
-
-            foreach ((string key, double value) in _fields.F64s)
-                yield return new(key, value);
-
-            foreach ((string key, bool value) in _fields.Bools)
-                yield return new(key, value);
-
-            yield return new("{OriginalFormat}", OriginalFormat);
-        }
-
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
-        private static KeyValuePair<string, object?> BoxedEntry<T>(Dictionary<string, T> dict, int offset)
-        {
-            using var enumerator = dict.GetEnumerator();
-            for (var i = 0; i <= offset; i++)
-                enumerator.MoveNext();
-            var entry = enumerator.Current;
-            return new(entry.Key, entry.Value);
-        }
+        IEnumerator IEnumerable.GetEnumerator() => _entries.GetEnumerator();
     }
 }
