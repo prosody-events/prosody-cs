@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Errors;
 
 /// <summary>
 /// Exception that indicates a permanent error which should not be retried.

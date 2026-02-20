@@ -1,8 +1,9 @@
 using Microsoft.Extensions.Logging;
-using Prosody.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Prosody.Extensions;
 using Prosody.Native;
 
-namespace Prosody;
+namespace Prosody.Logging;
 
 /// <summary>
 /// Global logging configuration for Prosody. Configure once at startup before creating clients.
@@ -27,7 +28,9 @@ public static class ProsodyLogging
 #else
     private static readonly object SyncLock = new();
 #endif
+
     private static LogSinkBridge? _sink;
+    private static ILoggerFactory? _loggerFactory;
 
     /// <summary>
     /// Configures logging for all Prosody clients. Must only be called once.
@@ -50,7 +53,20 @@ public static class ProsodyLogging
             }
 
             _sink = sink;
+            _loggerFactory = loggerFactory;
             ProsodyFfiMethods.ConfigureLogSink(sink);
+        }
+    }
+
+    /// <summary>
+    /// Creates a logger with the specified category name using the configured factory.
+    /// Returns <see cref="NullLogger.Instance"/> if logging has not been configured.
+    /// </summary>
+    internal static ILogger CreateLogger(string categoryName)
+    {
+        lock (SyncLock)
+        {
+            return _loggerFactory?.CreateLogger(categoryName) ?? NullLogger.Instance;
         }
     }
 
@@ -66,6 +82,7 @@ public static class ProsodyLogging
         lock (SyncLock)
         {
             _sink = null;
+            _loggerFactory = null;
         }
         ProsodyFfiMethods.ClearLogSink();
     }

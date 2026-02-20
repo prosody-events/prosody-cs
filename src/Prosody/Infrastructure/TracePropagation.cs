@@ -2,7 +2,7 @@ using System.Diagnostics;
 using OpenTelemetry;
 using OpenTelemetry.Context.Propagation;
 
-namespace Prosody;
+namespace Prosody.Infrastructure;
 
 /// <summary>
 /// Provides OpenTelemetry context propagation for distributed tracing.

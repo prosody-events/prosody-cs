@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Prosody.Configuration;
+using Prosody.Logging;
 
-namespace Prosody;
+namespace Prosody.Extensions;
 
 /// <summary>
 /// Extension methods for configuring Prosody with dependency injection.

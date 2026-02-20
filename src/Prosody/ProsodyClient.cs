@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Prosody.Configuration;
+using Prosody.Infrastructure;
+using Prosody.Messaging;
 
 namespace Prosody;
 
@@ -44,9 +47,10 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
-    public async Task<ConsumerState> ConsumerStateAsync()
+    public async Task<ConsumerState> GetConsumerStateAsync()
     {
-        return await _native.ConsumerState() switch
+        Native.ConsumerState state = await _native.ConsumerState();
+        return state switch
         {
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
@@ -107,7 +111,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
 
-        var linked = CancellationHelper.CreateSignal(cancellationToken);
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         try
         {
             await _native.Send(topic, key, jsonPayload, carrier, linked?.Signal).ConfigureAwait(false);

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Prosody.Configuration;
 
 namespace Prosody.Tests.Unit;
 

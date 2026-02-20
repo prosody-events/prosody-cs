@@ -1,19 +1,17 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Prosody.Configuration;
+using Prosody.Extensions;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
-/// <summary>
-/// Tests for <see cref="ProsodyServiceCollectionExtensions"/>.
-/// </summary>
 public sealed class ProsodyServiceCollectionExtensionsTests
 {
     [Fact]
     public void AddProsodyClientBindsFromDefaultSection()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -32,20 +30,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientBindsFromExplicitSectionPath()
+    public void AddProsodyClient_Binds_From_Explicit_SectionPath()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -60,20 +54,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient("MyApp:Kafka");
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientPostConfigureIsApplied()
+    public void AddProsodyClient_ConfigureAction_IsApplied()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -88,20 +78,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - PostConfigure overrides Mock to true
         services.AddProsodyClient(options => options.Mock = true);
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
     public void AddProsodyClientRegistersSingleton()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -117,19 +103,15 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         services.AddSingleton<IConfiguration>(configuration);
         services.AddProsodyClient();
 
-        // Act
         using var provider = services.BuildServiceProvider();
         var client1 = provider.GetRequiredService<ProsodyClient>();
         var client2 = provider.GetRequiredService<ProsodyClient>();
-
-        // Assert - singleton means same instance
         Assert.Same(client1, client2);
     }
 
     [Fact]
     public void AddProsodyClientSupportsNestedConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -148,20 +130,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
     public void AddProsodyClientSupportsTimeSpanConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -180,13 +158,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
@@ -262,13 +237,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     [Fact]
     public void AddProsodyClientWithConfigureOnly()
     {
-        // Arrange
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
-
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient(options =>
         {
             options.BootstrapServers = [TestDefaults.BootstrapServers];
@@ -277,17 +249,14 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.Mock = true;
         });
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
     public void AddProsodyClientPostConfigureOverridesConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -303,26 +272,20 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - PostConfigure overrides MaxConcurrency
         services.AddProsodyClient(options => options.MaxConcurrency = 128);
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientEmptyConfigurationWithPostConfigure()
+    public void AddProsodyClient_EmptyConfiguration_WithPostConfigure()
     {
-        // Arrange - empty configuration
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
-
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - use PostConfigure to set required mock mode
         services.AddProsodyClient(options =>
         {
             options.Mock = true;
@@ -330,17 +293,14 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.GroupId = "test";
         });
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
     public void AddProsodyClientSupportsCassandraConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -362,20 +322,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
     public void AddProsodyClientSupportsNumericConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -398,13 +354,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
@@ -438,7 +391,6 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     [Fact]
     public void AddProsodyClientSupportsDoubleConfiguration()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -457,20 +409,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
 
-        // Act
         services.AddProsodyClient();
 
-        // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
-
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientOptionsAreBoundViaIOptions()
+    public void AddProsodyClient_Options_AreBoundViaIOptions()
     {
-        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -482,16 +430,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
                 }
             )
             .Build();
-
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);
         services.AddProsodyClient();
 
-        // Act
-        using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
+        using ServiceProvider provider = services.BuildServiceProvider();
+        ClientOptions options = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
 
-        // Assert - verify options were bound from configuration
         Assert.Multiple(
             () => Assert.Equal([TestDefaults.BootstrapServers], options.BootstrapServers!),
             () => Assert.Equal("options-group", options.GroupId),
@@ -521,7 +466,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         services.AddProsodyClient();
 
         // Act & Assert - validation runs eagerly when resolving IOptions<ClientOptions>
-        using var provider = services.BuildServiceProvider();
+        using ServiceProvider provider = services.BuildServiceProvider();
         var ex = Assert.Throws<OptionsValidationException>(
             () => provider.GetRequiredService<IOptions<ClientOptions>>().Value
         );

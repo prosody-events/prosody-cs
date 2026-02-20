@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Errors;
 
 /// <summary>
 /// Specifies exception types that should be treated as permanent errors for a handler method.
@@ -33,7 +33,7 @@ namespace Prosody;
 ///         await ProcessOrder(order, ct);
 ///     }
 ///
-///     public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken ct)
+///     public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
 /// }
 /// </code>
@@ -60,11 +60,19 @@ public sealed class PermanentErrorAttribute : Attribute
     /// <paramref name="exceptionTypes"/> is <c>null</c>.
     /// </exception>
     /// <exception cref="ArgumentException">
-    /// One or more types in <paramref name="exceptionTypes"/> do not derive from <see cref="Exception"/>.
+    /// <paramref name="exceptionTypes"/> is empty, or one or more types do not derive from <see cref="Exception"/>.
     /// </exception>
     public PermanentErrorAttribute(params Type[] exceptionTypes)
     {
         ArgumentNullException.ThrowIfNull(exceptionTypes);
+
+        if (exceptionTypes.Length == 0)
+        {
+            throw new ArgumentException(
+                "At least one exception type must be specified.",
+                nameof(exceptionTypes)
+            );
+        }
 
         foreach (var type in exceptionTypes)
         {

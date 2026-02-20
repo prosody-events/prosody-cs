@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Prosody;
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Kafka message data.

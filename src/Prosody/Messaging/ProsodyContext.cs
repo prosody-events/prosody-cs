@@ -1,4 +1,6 @@
-namespace Prosody;
+using Prosody.Infrastructure;
+
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Event context for scheduling timers and checking cancellation. All times are in UTC.

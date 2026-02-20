@@ -1,3 +1,4 @@
+using Prosody.Configuration;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -464,5 +465,81 @@ public sealed class ProsodyClientBuilderTests
 
         using var client = builder.Build();
         Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ForPipelinePreset()
+    {
+        using var client = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .ForPipeline()
+            .Build();
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ForLowLatencyPreset()
+    {
+        using var client = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .ForLowLatency("dead-letters")
+            .Build();
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ForBestEffortPreset()
+    {
+        using var client = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .ForBestEffort()
+            .Build();
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void ForLowLatencyThrowsWhenFailureTopicNull()
+    {
+        Assert.Throws<ArgumentNullException>(() => ProsodyClientBuilder.Create().ForLowLatency(null!));
+    }
+
+    [Fact]
+    public void PresetCanBeOverriddenBySubsequentCalls()
+    {
+        using var client = ProsodyClientBuilder
+            .Create()
+            .WithBootstrapServers(TestDefaults.BootstrapServers)
+            .WithSourceSystem("test")
+            .WithMock(true)
+            .ForPipeline()
+            .WithMaxConcurrency(128)
+            .Configure(options => options.DeferEnabled = false)
+            .Build();
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void PresetReturnsSameBuilderForChaining()
+    {
+        var builder = ProsodyClientBuilder.Create();
+
+        Assert.Multiple(
+            () => Assert.Same(builder, builder.ForPipeline()),
+            () => Assert.Same(builder, builder.ForBestEffort()),
+            () => Assert.Same(builder, builder.ForLowLatency("dlq"))
+        );
     }
 }

@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Configuration;
 
 /// <summary>
 /// Configuration options for the Prosody client.

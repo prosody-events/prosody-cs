@@ -1,3 +1,4 @@
+using Prosody.Configuration;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;

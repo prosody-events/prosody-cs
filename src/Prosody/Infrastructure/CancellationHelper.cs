@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Infrastructure;
 
 /// <summary>
 /// Helper methods for bridging .NET CancellationToken to native CancellationSignal.
@@ -13,9 +13,8 @@ internal static class CancellationHelper
     /// A linked signal and registration, or null if the token is default/none.
     /// Both the signal and registration must be disposed by the caller.
     /// </returns>
-    internal static (Native.CancellationSignal Signal, CancellationTokenRegistration Registration)? CreateSignal(
-        CancellationToken cancellationToken
-    )
+#pragma warning disable CA2000 // Ownership of signal is transferred to the caller via the returned struct
+    internal static LinkedCancellationSignal? CreateSignal(CancellationToken cancellationToken)
     {
         if (!cancellationToken.CanBeCanceled)
             return null;
@@ -26,6 +25,7 @@ internal static class CancellationHelper
             signal
         );
 
-        return (signal, registration);
+        return new LinkedCancellationSignal(signal, registration);
     }
+#pragma warning restore CA2000
 }

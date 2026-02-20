@@ -148,11 +148,11 @@ indent_size = 2
 # Suppress analyzers for specific files or directories
 
 # ClientOptions.cs analyzer suppressions
-[src/Prosody/ClientOptions.cs]
+[src/Prosody/Configuration/ClientOptions.cs]
 # CA1819: ClientOptions uses string[] properties for IConfiguration.Bind() compatibility
 dotnet_diagnostic.CA1819.severity = none
 
-[src/Prosody/ClientOptionsValidator.cs]
+[src/Prosody/Configuration/ClientOptionsValidator.cs]
 # MA0076: Suppress culture-sensitive analyzer for ClientOptionsValidator
 dotnet_diagnostic.MA0076.severity = none
 

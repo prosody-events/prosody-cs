@@ -1,3 +1,5 @@
+using Prosody.Configuration;
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -24,15 +26,17 @@ public sealed class DisposalTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     [Fact]
     public async Task DisposeAsyncSafeWhenNotSubscribed()
     {
         var client = new ProsodyClient(MockOptions);
-
         // Should not throw when consumer was never subscribed
         await client.DisposeAsync();
     }
@@ -41,7 +45,6 @@ public sealed class DisposalTests
     public async Task DisposeAsyncIsIdempotent()
     {
         var client = new ProsodyClient(MockOptions);
-
         await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 

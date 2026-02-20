@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Consumer state.

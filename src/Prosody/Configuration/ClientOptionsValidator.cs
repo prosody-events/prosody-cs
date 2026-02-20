@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace Prosody;
+namespace Prosody.Configuration;
 
 internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 {

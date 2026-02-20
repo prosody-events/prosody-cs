@@ -1,3 +1,5 @@
+using Prosody.Errors;
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -112,7 +114,10 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 }

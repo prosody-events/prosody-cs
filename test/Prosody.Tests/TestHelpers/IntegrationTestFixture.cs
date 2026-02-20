@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
@@ -10,11 +8,6 @@ namespace Prosody.Tests.TestHelpers;
 /// PROSODY_BOOTSTRAP_SERVERS (required), PROSODY_CASSANDRA_NODES (required),
 /// PROSODY_CASSANDRA_KEYSPACE (default: prosody_test).
 /// </remarks>
-[SuppressMessage(
-    "Design",
-    "CA1515:Consider making public types internal",
-    Justification = "xUnit requires collection fixtures to be public"
-)]
 public sealed class IntegrationTestFixture : IAsyncLifetime
 {
     /// <summary>Kafka bootstrap servers (from PROSODY_BOOTSTRAP_SERVERS, default: localhost:9094).</summary>
@@ -55,9 +48,4 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
 /// <summary>Collection for tests that must run sequentially due to shared global state.</summary>
 [CollectionDefinition("Sequential", DisableParallelization = true)]
-[SuppressMessage(
-    "Design",
-    "CA1515:Consider making public types internal",
-    Justification = "xUnit requires collection definitions to be public"
-)]
 public sealed class SequentialTestGroup;

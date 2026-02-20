@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -131,7 +132,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         await processingAborted.WaitAsync(TestContext.Current.CancellationToken);
         await unsubscribeTask;
 
-        var state = await ctx.Client.ConsumerStateAsync();
+        var state = await ctx.Client.GetConsumerStateAsync();
         Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
     }
 }

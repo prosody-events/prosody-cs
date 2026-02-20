@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -13,7 +14,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         await using var ctx = await CreateTestContextAsync();
 
         var messageReceived = new EventNotifier();
-        var timerFired = new MessageChannel<(Timer Timer, DateTimeOffset ActualTime)>();
+        var timerFired = new MessageChannel<(ProsodyTimer Timer, DateTimeOffset ActualTime)>();
         DateTimeOffset scheduledTime = default;
 
         var handler = new TestProsodyHandler(
@@ -58,8 +59,8 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         await using var ctx = await CreateTestContextAsync();
 
         var messageReceived = new EventNotifier();
-        var timerFired = new MessageChannel<Timer>();
-        var timerCount = 0;
+        var timerFired = new MessageChannel<ProsodyTimer>();
+        int timerCount = 0;
         DateTimeOffset secondScheduledTime = default;
 
         var handler = new TestProsodyHandler(
@@ -105,7 +106,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         await using var ctx = await CreateTestContextAsync();
 
         var messageReceived = new EventNotifier();
-        var timerFired = new MessageChannel<Timer>();
+        var timerFired = new MessageChannel<ProsodyTimer>();
         var timerCount = 0;
         DateTimeOffset secondScheduledTime = default;
 
@@ -239,7 +240,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         await using var ctx = await CreateTestContextAsync();
 
         var messageReceived = new EventNotifier();
-        var timerFired = new MessageChannel<Timer>();
+        var timerFired = new MessageChannel<ProsodyTimer>();
         var timerCount = 0;
         DateTimeOffset scheduledTime = default;
         DateTimeOffset[] retrievedTimes = [];

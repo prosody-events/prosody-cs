@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 [assembly: AssemblyFixture(typeof(IntegrationTestFixture))]
@@ -35,28 +36,21 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     /// <summary>
     /// Configurable handler for tests. Pass lambdas for OnMessage/OnTimer callbacks.
     /// </summary>
-    protected sealed class TestProsodyHandler : IProsodyHandler
+    protected sealed class TestProsodyHandler(
+        Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
+        Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
+    ) : IProsodyHandler
     {
-        private readonly Func<ProsodyContext, Message, CancellationToken, Task>? _onMessage;
-        private readonly Func<ProsodyContext, Timer, CancellationToken, Task>? _onTimer;
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message message,
+            CancellationToken cancellationToken
+        ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
-        public TestProsodyHandler(
-            Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
-            Func<ProsodyContext, Timer, CancellationToken, Task>? onTimer = null
-        )
-        {
-            _onMessage = onMessage;
-            _onTimer = onTimer;
-        }
-
-        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
-        {
-            return _onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
-        }
-
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
-        {
-            return _onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;
-        }
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;
     }
 }

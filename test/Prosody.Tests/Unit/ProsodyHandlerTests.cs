@@ -1,3 +1,6 @@
+using Prosody.Errors;
+using Prosody.Messaging;
+
 namespace Prosody.Tests.Unit;
 
 /// <summary>
@@ -16,7 +19,7 @@ public sealed class ProsodyHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
         {
             TimerCount++;
             return Task.CompletedTask;
@@ -43,7 +46,11 @@ public sealed class ProsodyHandlerTests
             await Task.Delay(Delay, cancellationToken);
         }
 
-        public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+        public async Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        )
         {
             await Task.Delay(Delay, cancellationToken);
         }
@@ -125,14 +132,9 @@ public sealed class ProsodyHandlerTests
     }
 
     [Fact]
-    public void PermanentErrorAttributeWithEmptyTypesMatchesNothing()
+    public void PermanentErrorAttributeThrowsOnEmptyTypes()
     {
-        var attr = new PermanentErrorAttribute();
-
-        Assert.Multiple(
-            () => Assert.False(attr.IsMatch(new InvalidOperationException())),
-            () => Assert.False(attr.IsMatch(new ArgumentException()))
-        );
+        Assert.Throws<ArgumentException>(() => new PermanentErrorAttribute());
     }
 
     [Fact]
@@ -159,7 +161,7 @@ public sealed class ProsodyHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
@@ -210,7 +212,7 @@ public sealed class ProsodyHandlerTests
             throw new OrderValidationException("Order is invalid");
         }
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

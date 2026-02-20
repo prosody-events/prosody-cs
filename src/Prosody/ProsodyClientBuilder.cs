@@ -1,3 +1,5 @@
+using Prosody.Configuration;
+
 namespace Prosody;
 
 /// <summary>
@@ -120,6 +122,74 @@ public sealed class ProsodyClientBuilder
     public ProsodyClientBuilder WithMock(bool mock)
     {
         _options.Mock = mock;
+        return this;
+    }
+
+    // ========================================================================
+    // Presets
+    // ========================================================================
+
+    /// <summary>
+    /// Configures the client for <see cref="ClientMode.Pipeline"/> mode with sensible defaults.
+    /// </summary>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// Pipeline mode retries failed messages indefinitely with deferral and monopolization detection.
+    /// This is the recommended mode for production workloads where message loss is unacceptable.
+    /// </para>
+    /// <para>
+    /// Individual settings can be overridden after calling this method.
+    /// </para>
+    /// </remarks>
+    public ProsodyClientBuilder ForPipeline()
+    {
+        _options.Mode = ClientMode.Pipeline;
+        _options.DeferEnabled = true;
+        _options.MonopolizationEnabled = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures the client for <see cref="ClientMode.LowLatency"/> mode.
+    /// </summary>
+    /// <param name="failureTopic">
+    /// The dead letter topic for messages that exhaust retries. Required for this mode.
+    /// </param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// Low-latency mode retries a few times, then sends unprocessable messages to the failure topic.
+    /// Use this when you need to keep moving and can reprocess failures later.
+    /// </para>
+    /// <para>
+    /// Individual settings can be overridden after calling this method.
+    /// </para>
+    /// </remarks>
+    public ProsodyClientBuilder ForLowLatency(string failureTopic)
+    {
+        ArgumentNullException.ThrowIfNull(failureTopic);
+        _options.Mode = ClientMode.LowLatency;
+        _options.FailureTopic = failureTopic;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures the client for <see cref="ClientMode.BestEffort"/> mode.
+    /// </summary>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// Best-effort mode logs failures and moves on with no retries.
+    /// Use for development or when message loss is acceptable.
+    /// </para>
+    /// <para>
+    /// Individual settings can be overridden after calling this method.
+    /// </para>
+    /// </remarks>
+    public ProsodyClientBuilder ForBestEffort()
+    {
+        _options.Mode = ClientMode.BestEffort;
         return this;
     }
 

@@ -1,4 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Prosody.Errors;
+using Prosody.Infrastructure;
+using Prosody.Messaging;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
@@ -220,15 +223,18 @@ public sealed class EventHandlerBridgeTests
     public async Task BridgeCancellationCancelsCtsWhenOnCancelCompletes()
     {
         using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // onCancel completes immediately — simulates native cancellation signal
+        // onCancel completes immediately — cancelTask is already completed when WhenAny
+        // evaluates, so the cancellation branch wins deterministically without needing
+        // handlerDone to complete.
 #pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(() => Task.CompletedTask, cts, handlerDone.Task);
+        var monitor = EventHandlerBridge.BridgeCancellationAsync(
+            () => Task.CompletedTask,
+            cts,
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task
+        );
 #pragma warning restore CA2025
 
-        // Allow the monitor to process
-        handlerDone.TrySetResult();
         await monitor;
 
         Assert.True(cts.IsCancellationRequested);
@@ -311,6 +317,60 @@ public sealed class EventHandlerBridgeTests
             () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
             () => Assert.Equal(NativeResultCode.Success, result.Code)
         );
+    }
+
+    [Fact]
+    public async Task HandleMessageReturnsTransientErrorWhenHandlerPropagatesCancellation()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var handler = new LambdaHandler(
+            onMessage: async (_, _, ct) =>
+            {
+                handlerStarted.TrySetResult();
+
+                // Let the OperationCanceledException propagate — simulates a handler that does not
+                // catch cancellation. This is classified as transient because the work is incomplete
+                // and Prosody should redeliver the message.
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+            }
+        );
+        var bridge = new EventHandlerBridge(handler);
+
+        var handleTask = bridge.HandleMessageAsync(null!, null!, () => cancelTcs.Task, EmptyCarrier);
+
+        await handlerStarted.Task;
+        cancelTcs.TrySetResult();
+
+        var result = await handleTask;
+
+        Assert.Equal(NativeResultCode.TransientError, result.Code);
+    }
+
+    [Fact]
+    public async Task HandleTimerReturnsTransientErrorWhenHandlerPropagatesCancellation()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var handler = new LambdaHandler(
+            onTimer: async (_, _, ct) =>
+            {
+                handlerStarted.TrySetResult();
+                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+            }
+        );
+        var bridge = new EventHandlerBridge(handler);
+
+        var handleTask = bridge.HandleTimerAsync(null!, null!, () => cancelTcs.Task, EmptyCarrier);
+
+        await handlerStarted.Task;
+        cancelTcs.TrySetResult();
+
+        var result = await handleTask;
+
+        Assert.Equal(NativeResultCode.TransientError, result.Code);
     }
 
     [Fact]
@@ -486,7 +546,7 @@ public sealed class EventHandlerBridgeTests
     /// </summary>
     private sealed class LambdaHandler(
         Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
-        Func<ProsodyContext, Timer, CancellationToken, Task>? onTimer = null
+        Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
     ) : IProsodyHandler
     {
         public Task OnMessageAsync(
@@ -495,8 +555,11 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
-            onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;
     }
 
     /// <summary>
@@ -512,14 +575,17 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage(prosodyContext, message, cancellationToken);
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     /// <summary>
     /// Handler with <see cref="PermanentErrorAttribute"/> on <see cref="IProsodyHandler.OnTimerAsync"/>.
     /// </summary>
-    private sealed class AttributeOnTimerHandler(Func<ProsodyContext, Timer, CancellationToken, Task> onTimer)
+    private sealed class AttributeOnTimerHandler(Func<ProsodyContext, ProsodyTimer, CancellationToken, Task> onTimer)
         : IProsodyHandler
     {
         public Task OnMessageAsync(
@@ -529,14 +595,24 @@ public sealed class EventHandlerBridgeTests
         ) => Task.CompletedTask;
 
         [PermanentError(typeof(FormatException), typeof(ArgumentException))]
-        public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) =>
-            onTimer(prosodyContext, timer, cancellationToken);
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => onTimer(prosodyContext, timer, cancellationToken);
     }
 
     /// <summary>
     /// Handler using explicit interface implementation with <see cref="PermanentErrorAttribute"/>.
     /// Tests the <c>GetPermanentErrorAttribute</c> interface-map fallback path.
     /// </summary>
+    /// <remarks>
+    /// These methods are intentionally non-async. When the <see cref="Action"/> delegate throws,
+    /// the exception propagates synchronously out of the method — <c>return Task.CompletedTask</c>
+    /// is never reached. The caller (<see cref="EventHandlerBridge.InvokeHandlerAsync"/>) receives
+    /// the exception from <c>await handler(ct)</c> as a synchronous throw rather than a faulted
+    /// <see cref="Task"/>, which exercises the same catch blocks either way.
+    /// </remarks>
     private sealed class ExplicitInterfaceHandler(Action? onMessage = null, Action? onTimer = null) : IProsodyHandler
     {
         [PermanentError(typeof(FormatException))]
@@ -553,7 +629,7 @@ public sealed class EventHandlerBridgeTests
         [PermanentError(typeof(FormatException))]
         Task IProsodyHandler.OnTimerAsync(
             ProsodyContext prosodyContext,
-            Timer timer,
+            ProsodyTimer timer,
             CancellationToken cancellationToken
         )
         {

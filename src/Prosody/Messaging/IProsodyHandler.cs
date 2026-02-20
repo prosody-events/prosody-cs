@@ -1,4 +1,6 @@
-namespace Prosody;
+using Prosody.Errors;
+
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Event handler interface for processing Kafka messages and timer events.
@@ -39,7 +41,7 @@ namespace Prosody;
 ///         // Transient error: throw any other exception
 ///     }
 ///
-///     public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken ct)
+///     public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
 /// }
 /// </code>
@@ -106,5 +108,5 @@ public interface IProsodyHandler
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
     /// </remarks>
-    Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken);
+    Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }
