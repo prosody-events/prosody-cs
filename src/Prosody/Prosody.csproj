@@ -40,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Analyzers">
-    <PackageReference Include="Meziantou.Analyzer" Version="3.0.7" PrivateAssets="all" />
+    <PackageReference Include="Meziantou.Analyzer" Version="3.0.8" PrivateAssets="all" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.15.0" PrivateAssets="all" />
   </ItemGroup>
 
