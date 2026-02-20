@@ -67,8 +67,8 @@ DOTNET_NATIVE_RELEASE := $(DOTNET_NATIVE_BASE)/release
 BINDINGS_DIR := src/Prosody/Generated
 
 # uniffi-bindgen-cs configuration
-BINDGEN_REPO := https://github.com/hadronzoo/uniffi-bindgen-cs.git
-BINDGEN_BRANCH := fix/issue-152-pascalcase-record-properties
+BINDGEN_REPO := https://github.com/jmbryan4/uniffi-bindgen-cs.git
+BINDGEN_BRANCH := main
 
 # ==============================================================================
 # Help
