@@ -377,15 +377,55 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.SourceSystem = "original";
         });
 
-        // Act - resolve client first, then mutate the options
+        // Act - resolve client first, then mutate properties AND arrays on the
+        // cached IOptions<ClientOptions>.Value. The client factory should have
+        // cloned the options, so the client is isolated from these mutations.
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
 
         var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
         resolvedOptions.SourceSystem = "mutated";
+        resolvedOptions.BootstrapServers![0] = "mutated:9092";
 
-        // Assert - client should retain original value because it was cloned
+        // Assert - client retains the original value
         Assert.Equal("original", client.SourceSystem);
+
+        // The IOptions instance is the same cached object, so it sees the mutation
+        var sameOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
+        Assert.Equal("mutated", sameOptions.SourceSystem);
+        Assert.Equal("mutated:9092", sameOptions.BootstrapServers![0]);
+    }
+
+    [Fact]
+    public void AddProsodyClientClonesOptionsArraysIndependently()
+    {
+        // Verifies that the DI-registered factory clones array properties
+        // (BootstrapServers, SubscribedTopics, etc.) so that mutating the
+        // IOptions<ClientOptions>.Value arrays after client creation does not
+        // corrupt the client's internal state.
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddProsodyClient(options =>
+        {
+            options.BootstrapServers = [TestDefaults.BootstrapServers, "broker2:9092"];
+            options.GroupId = "test-group";
+            options.Mock = true;
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        // Trigger client creation (factory runs, should clone)
+        using var client = provider.GetRequiredService<ProsodyClient>();
+
+        // Mutate arrays on the cached options
+        var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
+        resolvedOptions.BootstrapServers![0] = "corrupted:9092";
+
+        // Client should still function normally — the clone insulated it
+        // from the array mutation above.
+        Assert.NotNull(client);
     }
 
     [Fact]

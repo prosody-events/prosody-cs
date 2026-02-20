@@ -73,6 +73,65 @@ public sealed class LoggingTests : IDisposable
     }
 
     [Fact]
+    public async Task ClearAndConfigureAreAtomicUnderConcurrency()
+    {
+        // Exercises the race window between Clear() and Configure().
+        // Before the fix, ClearLogSink() ran outside the lock, so a concurrent
+        // Configure() could succeed and then have its sink immediately cleared.
+        // With the fix, both operations are fully serialized under SyncLock.
+        const int iterations = 50;
+
+        for (int i = 0; i < iterations; i++)
+        {
+            var collector = new FakeLogCollector();
+            using var factory = new FakeLoggerFactory(collector);
+
+            // Configure a baseline so Clear() has something to clear
+            ProsodyLogging.Configure(factory);
+
+            using var barrier = new Barrier(2);
+
+            var clearTask = Task.Run(
+                () =>
+                {
+                    barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                    ProsodyLogging.Clear();
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            var configureTask = Task.Run(
+                () =>
+                {
+                    barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                    try
+                    {
+                        // May throw InvalidOperationException if Clear() hasn't run yet;
+                        // that's fine — we only care that no corruption occurs.
+                        ProsodyLogging.Configure(factory);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Expected: Configure() raced ahead of Clear()
+                    }
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            await Task.WhenAll(clearTask, configureTask);
+
+            // After both tasks complete, verify we can always do a clean
+            // Clear() -> Configure() cycle without corruption.
+            ProsodyLogging.Clear();
+            ProsodyLogging.Configure(factory);
+            CreateProducerOnlyClient();
+            AssertContainsDisablingConsumerLog(collector);
+
+            ProsodyLogging.Clear();
+        }
+    }
+
+    [Fact]
     public void AddProsodyLoggingRegistersHostedService()
     {
         (ServiceProvider provider, FakeLoggerFactory factory) = BuildServiceProvider();

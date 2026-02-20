@@ -140,7 +140,7 @@ public static class ProsodyServiceCollectionExtensions
         );
         services.TryAddSingleton(sp =>
         {
-            var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value;
+            var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value.Clone();
             return ProsodyClient.FromValidatedOptions(options);
         });
 

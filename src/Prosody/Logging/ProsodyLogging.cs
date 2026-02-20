@@ -83,7 +83,7 @@ public static class ProsodyLogging
         {
             _sink = null;
             _loggerFactory = null;
+            ProsodyFfiMethods.ClearLogSink();
         }
-        ProsodyFfiMethods.ClearLogSink();
     }
 }
