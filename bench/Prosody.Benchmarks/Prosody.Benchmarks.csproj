@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Suppress analyzer noise in benchmark code:
+         CA1002: Collection types in DTOs need setters for JSON
+         CA1032: Test exception constructors
+         CA1034: Nested types for benchmark DTOs
+         CA1515: BenchmarkDotNet requires public classes
+         CA1707: Underscore naming convention for benchmark methods
+         CA1812: Handler types used via typeof() for reflection
+         CA1822: BenchmarkDotNet requires instance methods
+         CA2000: Activity disposal handled by benchmark
+         CA2227: Collection properties need setters for JSON
+    -->
+    <NoWarn>CA1002;CA1032;CA1034;CA1050;CA1515;CA1707;CA1812;CA1822;CA2000;CA2227</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Prosody\Prosody.csproj" />
+  </ItemGroup>
+
+</Project>

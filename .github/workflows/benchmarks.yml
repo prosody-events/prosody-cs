@@ -1,0 +1,77 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build FFI
+        run: make build-ffi
+
+      - name: Generate bindings
+        run: |
+          cargo install uniffi-bindgen-cs \
+            --git https://github.com/hadronzoo/uniffi-bindgen-cs.git \
+            --branch fix/issue-152-pascalcase-record-properties \
+            --force
+          make bindgen
+
+      - name: Run benchmarks
+        run: >
+          dotnet run -c Release
+          --project bench/Prosody.Benchmarks
+          --framework net10.0
+          -- --filter '*' --exporters json --job short
+
+      - name: Find benchmark result file
+        id: find-result
+        run: |
+          result_file=$(find BenchmarkDotNet.Artifacts/results -name '*-report-full-compressed.json' | head -1)
+          echo "file=$result_file" >> "$GITHUB_OUTPUT"
+
+      - name: Download previous benchmark data
+        uses: actions/cache@v4
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: Prosody C# Benchmarks
+          tool: benchmarkdotnet
+          output-file-path: ${{ steps.find-result.outputs.file }}
+          external-data-json-path: ./cache/benchmark-data.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: true
+          alert-threshold: "150%"
+          fail-on-alert: true
+          summary-always: true

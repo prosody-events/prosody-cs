@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Prosody.Tests"/>
+    <InternalsVisibleTo Include="Prosody.Benchmarks"/>
   </ItemGroup>
 
   <!-- Native library configuration -->
