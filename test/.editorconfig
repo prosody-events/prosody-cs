@@ -4,3 +4,17 @@
 [*.cs]
 # CA1515: xUnit requires test classes to be public
 dotnet_diagnostic.CA1515.severity = none
+
+# CA1707: Test method names conventionally use underscores for readability
+dotnet_diagnostic.CA1707.severity = none
+
+# --- Test-specific Roslynator suppressions ---
+
+# RCS1118: Mark local variable as const - test data setup uses mutable locals for clarity
+dotnet_diagnostic.RCS1118.severity = suggestion
+
+# RCS1124: Inline local variable - test code uses descriptive locals for readability
+dotnet_diagnostic.RCS1124.severity = none
+
+# RCS1021: Convert lambda to method group - test lambdas are clearer inline
+dotnet_diagnostic.RCS1021.severity = none

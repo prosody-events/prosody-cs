@@ -1,148 +1,201 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
+using Prosody.Configuration;
+using Prosody.Extensions;
+using Prosody.Logging;
+using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
-/// <summary>
-/// Tests for logging integration. These tests must run sequentially
-/// because they contend over a shared global log writer.
-/// </summary>
-[Collection("Sequential")]
 public sealed class LoggingTests : IDisposable
 {
     public LoggingTests()
     {
         // Ensure clean state before each test
-        ProsodyLogging.Configure(null);
+        ProsodyLogging.Clear();
     }
 
-    public void Dispose()
-    {
-        // Clean up after each test
-        ProsodyLogging.Configure(null);
-    }
+    // Clean up after each test
+    public void Dispose() => ProsodyLogging.Clear();
 
     [Fact]
-    public void ConfigureWithNullDisablesLogging()
+    public void ClearDisablesLogging()
     {
-        // Arrange
-        var logger = new TestLogger();
-        using var factory = new TestLoggerFactory(logger);
+        var collector = new FakeLogCollector();
+        using var factory = new FakeLoggerFactory(collector);
         ProsodyLogging.Configure(factory);
 
-        // Act
-        ProsodyLogging.Configure(null);
+        // Verify the logging pipeline is working before we test Clear
         CreateProducerOnlyClient();
+        AssertContainsDisablingConsumerLog(collector);
 
-        // Assert - no logs captured since logging was disabled
-        Assert.Empty(logger.LogEntries);
+        // Clear logging and reset the collector
+        ProsodyLogging.Clear();
+        collector.Clear();
+
+        // A second client should produce no logs now that the sink is detached
+        CreateProducerOnlyClient();
+        Assert.Empty(collector.GetSnapshot());
     }
 
     [Fact]
-    public void ConfigureCanBeCalledMultipleTimes()
+    public void ConfigureThrowsWhenCalledTwice()
     {
-        // Arrange
-        var logger1 = new TestLogger();
-        var logger2 = new TestLogger();
-        using var factory1 = new TestLoggerFactory(logger1);
-        using var factory2 = new TestLoggerFactory(logger2);
+        var collector1 = new FakeLogCollector();
+        var collector2 = new FakeLogCollector();
+        using var factory1 = new FakeLoggerFactory(collector1);
+        using var factory2 = new FakeLoggerFactory(collector2);
 
-        // Act - configure to logger1, then switch to logger2
         ProsodyLogging.Configure(factory1);
+        Assert.Throws<InvalidOperationException>(() => ProsodyLogging.Configure(factory2));
+    }
+
+    [Fact]
+    public void ConfigureCanBeCalledAgainAfterClear()
+    {
+        var collector1 = new FakeLogCollector();
+        var collector2 = new FakeLogCollector();
+        using var factory1 = new FakeLoggerFactory(collector1);
+        using var factory2 = new FakeLoggerFactory(collector2);
+
+        // Act - configure, clear, then reconfigure
+        ProsodyLogging.Configure(factory1);
+        ProsodyLogging.Clear();
+        collector1.Clear(); // Discard any stale logs captured while the sink was active
         ProsodyLogging.Configure(factory2);
         CreateProducerOnlyClient();
 
-        // Assert - logs should go to logger2 (the current config), not logger1
-        Assert.Empty(logger1.LogEntries);
-        AssertContainsDisablingConsumerLog(logger2);
+        // Assert - logs should go to collector2
+        Assert.Empty(collector1.GetSnapshot());
+        AssertContainsDisablingConsumerLog(collector2);
+    }
+
+    [Fact]
+    public async Task ClearAndConfigureAreAtomicUnderConcurrency()
+    {
+        // Exercises the race window between Clear() and Configure().
+        // Before the fix, ClearLogSink() ran outside the lock, so a concurrent
+        // Configure() could succeed and then have its sink immediately cleared.
+        // With the fix, both operations are fully serialized under SyncLock.
+        const int iterations = 50;
+
+        for (int i = 0; i < iterations; i++)
+        {
+            var collector = new FakeLogCollector();
+            using var factory = new FakeLoggerFactory(collector);
+
+            // Configure a baseline so Clear() has something to clear
+            ProsodyLogging.Configure(factory);
+
+            using var barrier = new Barrier(2);
+
+            var clearTask = Task.Run(
+                () =>
+                {
+                    barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                    ProsodyLogging.Clear();
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            var configureTask = Task.Run(
+                () =>
+                {
+                    barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                    try
+                    {
+                        // May throw InvalidOperationException if Clear() hasn't run yet;
+                        // that's fine — we only care that no corruption occurs.
+                        ProsodyLogging.Configure(factory);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Expected: Configure() raced ahead of Clear()
+                    }
+                },
+                TestContext.Current.CancellationToken
+            );
+
+            await Task.WhenAll(clearTask, configureTask);
+
+            // After both tasks complete, verify we can always do a clean
+            // Clear() -> Configure() cycle without corruption.
+            ProsodyLogging.Clear();
+            ProsodyLogging.Configure(factory);
+            CreateProducerOnlyClient();
+            AssertContainsDisablingConsumerLog(collector);
+
+            ProsodyLogging.Clear();
+        }
     }
 
     [Fact]
     public void AddProsodyLoggingRegistersHostedService()
     {
-        // Arrange & Act
-        var (provider, factory) = BuildServiceProvider(new TestLogger());
-        using var _ = factory;
-
-        // Assert
-        var hostedServices = provider.GetServices<IHostedService>();
+        (ServiceProvider provider, FakeLoggerFactory factory) = BuildServiceProvider();
+        using FakeLoggerFactory _ = factory;
+        IEnumerable<IHostedService> hostedServices = provider.GetServices<IHostedService>();
         Assert.Contains(hostedServices, s => s.GetType().Name == "ProsodyLoggingHostedService");
     }
 
     [Fact]
     public async Task HostedServiceConfiguresLoggingOnStart()
     {
-        // Arrange
-        var logger = new TestLogger();
-        var (provider, factory) = BuildServiceProvider(logger);
-        using var _ = factory;
-        var hostedService = GetLoggingHostedService(provider);
+        (ServiceProvider provider, FakeLoggerFactory factory) = BuildServiceProvider();
+        using FakeLoggerFactory _ = factory;
+        IHostedService hostedService = GetLoggingHostedService(provider);
 
-        // Act
         await hostedService.StartAsync(CancellationToken.None);
         CreateProducerOnlyClient();
 
-        // Assert
-        AssertContainsDisablingConsumerLog(logger);
-
-        // Cleanup
+        AssertContainsDisablingConsumerLog(factory.Collector);
         await hostedService.StopAsync(CancellationToken.None);
     }
 
     [Fact]
     public async Task HostedServiceClearsLoggingOnStop()
     {
-        // Arrange
-        var logger = new TestLogger();
-        var (provider, factory) = BuildServiceProvider(logger);
-        using var _ = factory;
-        var hostedService = GetLoggingHostedService(provider);
+        var (provider, factory) = BuildServiceProvider();
+        using FakeLoggerFactory _ = factory;
+        IHostedService hostedService = GetLoggingHostedService(provider);
         await hostedService.StartAsync(CancellationToken.None);
 
-        // Act
         await hostedService.StopAsync(CancellationToken.None);
-        logger.LogEntries.Clear();
+        factory.Collector.Clear();
         CreateProducerOnlyClient();
 
         // Assert - logging was cleared, so no new logs captured
-        Assert.Empty(logger.LogEntries);
+        Assert.Empty(factory.Collector.GetSnapshot());
     }
 
     [Fact]
     public void LoggingCapturesNativeMessages()
     {
-        // Arrange
-        var logger = new TestLogger();
-        using var factory = new TestLoggerFactory(logger);
+        var collector = new FakeLogCollector();
+        using var factory = new FakeLoggerFactory(collector);
         ProsodyLogging.Configure(factory);
-
-        // Act
         CreateProducerOnlyClient();
-
-        // Assert
-        AssertContainsDisablingConsumerLog(logger);
+        AssertContainsDisablingConsumerLog(collector);
     }
 
     [Fact]
     public void LoggingCapturesStructuredFields()
     {
-        // Arrange
-        var logger = new TestLogger();
-        using var factory = new TestLoggerFactory(logger);
+        var collector = new FakeLogCollector();
+        using var factory = new FakeLoggerFactory(collector);
         ProsodyLogging.Configure(factory);
 
-        // Act
         CreateProducerOnlyClient();
 
         // Assert - verify structured fields are captured
-        var entry = logger.LogEntries.First(e =>
-            e.Message.Contains("disabling consumer", StringComparison.Ordinal)
-        );
+        FakeLogRecord record = collector
+            .GetSnapshot()
+            .First(r => r.Message.Contains("disabling consumer", StringComparison.Ordinal));
 
-        Assert.NotNull(entry.Fields);
-        Assert.True(entry.Fields.ContainsKey("Target"), "Should have Target field");
-        Assert.True(entry.Fields.ContainsKey("Message"), "Should have Message field");
+        Assert.True(record.GetStructuredStateValue("Target") is not null, "Should have Target field");
+        Assert.True(record.GetStructuredStateValue("Message") is not null, "Should have Message field");
     }
 
     // Creates a producer-only client, which triggers a "disabling consumer" info log.
@@ -153,17 +206,15 @@ public sealed class LoggingTests : IDisposable
             {
                 Mock = true,
                 SourceSystem = "test",
-                BootstrapServers = ["localhost:9092"],
+                BootstrapServers = [TestDefaults.BootstrapServers],
             }
         );
     }
 
-    private static (ServiceProvider Provider, TestLoggerFactory Factory) BuildServiceProvider(
-        TestLogger logger
-    )
+    private static (ServiceProvider Provider, FakeLoggerFactory Factory) BuildServiceProvider()
     {
         var services = new ServiceCollection();
-        var factory = new TestLoggerFactory(logger);
+        var factory = new FakeLoggerFactory();
         services.AddSingleton<ILoggerFactory>(factory);
         services.AddProsodyLogging();
         return (services.BuildServiceProvider(), factory);
@@ -171,63 +222,18 @@ public sealed class LoggingTests : IDisposable
 
     private static IHostedService GetLoggingHostedService(ServiceProvider provider)
     {
-        return provider
-            .GetServices<IHostedService>()
-            .First(s => s.GetType().Name == "ProsodyLoggingHostedService");
+        return provider.GetServices<IHostedService>().First(s => s.GetType().Name == "ProsodyLoggingHostedService");
     }
 
-    private static void AssertContainsDisablingConsumerLog(TestLogger logger)
+    private static void AssertContainsDisablingConsumerLog(FakeLogCollector collector)
     {
-        Assert.NotEmpty(logger.LogEntries);
+        var snapshot = collector.GetSnapshot();
+        Assert.NotEmpty(snapshot);
         Assert.Contains(
-            logger.LogEntries,
-            e =>
-                e.Level == LogLevel.Information
-                && e.Message.Contains("disabling consumer", StringComparison.Ordinal)
+            snapshot,
+            r =>
+                r.Level == LogLevel.Information
+                && r.Message.Contains("disabling consumer", StringComparison.OrdinalIgnoreCase)
         );
-    }
-
-    private sealed class TestLogger : ILogger
-    {
-        public List<LogEntry> LogEntries { get; } = [];
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull => null;
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter
-        )
-        {
-            // Capture structured fields if state is enumerable
-            Dictionary<string, object?>? fields = null;
-            if (state is IEnumerable<KeyValuePair<string, object?>> kvps)
-            {
-                fields = kvps.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-            }
-
-            LogEntries.Add(new LogEntry(logLevel, formatter(state, exception), exception, fields));
-        }
-
-        public sealed record LogEntry(
-            LogLevel Level,
-            string Message,
-            Exception? Exception,
-            Dictionary<string, object?>? Fields
-        );
-    }
-
-    private sealed class TestLoggerFactory(TestLogger logger) : ILoggerFactory
-    {
-        public void AddProvider(ILoggerProvider provider) { }
-
-        public ILogger CreateLogger(string categoryName) => logger;
-
-        public void Dispose() { }
     }
 }

@@ -1,3 +1,7 @@
+using Prosody.Configuration;
+using Prosody.Messaging;
+using Prosody.Tests.TestHelpers;
+
 namespace Prosody.Tests.Unit;
 
 /// <summary>
@@ -9,6 +13,7 @@ public sealed class DisposalTests
         new()
         {
             Mock = true,
+            BootstrapServers = [TestDefaults.BootstrapServers],
             GroupId = "test-group",
             SubscribedTopics = ["test-topic"],
         };
@@ -16,14 +21,14 @@ public sealed class DisposalTests
     private sealed class NoOpHandler : IProsodyHandler
     {
         public Task OnMessageAsync(
-            Context context,
+            ProsodyContext prosodyContext,
             Message message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
         public Task OnTimerAsync(
-            Context context,
-            Timer timer,
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
     }
@@ -32,7 +37,6 @@ public sealed class DisposalTests
     public async Task DisposeAsyncSafeWhenNotSubscribed()
     {
         var client = new ProsodyClient(MockOptions);
-
         // Should not throw when consumer was never subscribed
         await client.DisposeAsync();
     }
@@ -41,7 +45,6 @@ public sealed class DisposalTests
     public async Task DisposeAsyncIsIdempotent()
     {
         var client = new ProsodyClient(MockOptions);
-
         await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 

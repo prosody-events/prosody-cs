@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Prosody;
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Kafka message data.
@@ -11,18 +11,25 @@ public sealed class Message
 
     internal Message(Native.Message native)
     {
-        _native = native ?? throw new ArgumentNullException(nameof(native));
+        ArgumentNullException.ThrowIfNull(native);
+        _native = native;
+
+        // Cache string properties eagerly to avoid repeated FFI crossings.
+        // Each call to the native accessor clones a Rust String, allocates a
+        // RustBuffer, and UTF-8 decodes into a C# string.
+        Topic = native.Topic();
+        Key = native.Key();
     }
 
     /// <summary>
     /// Gets the topic name.
     /// </summary>
-    public string Topic => _native.Topic();
+    public string Topic { get; }
 
     /// <summary>
     /// Gets the message key.
     /// </summary>
-    public string Key => _native.Key();
+    public string Key { get; }
 
     /// <summary>
     /// Gets the partition number.
@@ -47,8 +54,7 @@ public sealed class Message
     /// <exception cref="JsonException">If deserialization fails.</exception>
     public T GetPayload<T>()
     {
-        var payload = _native.Payload();
-        return JsonSerializer.Deserialize<T>(payload)
-            ?? throw new JsonException("Deserialization returned null");
+        return JsonSerializer.Deserialize<T>(_native.Payload())
+            ?? throw new JsonException($"Failed to deserialize payload as {typeof(T).Name}");
     }
 }

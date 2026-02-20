@@ -1,4 +1,4 @@
-namespace Prosody;
+namespace Prosody.Errors;
 
 /// <summary>
 /// Marker interface for exceptions that represent permanent errors.

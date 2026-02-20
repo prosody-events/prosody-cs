@@ -1,22 +1,18 @@
-using System.Diagnostics.CodeAnalysis;
+using Prosody.Infrastructure;
 
-namespace Prosody;
+namespace Prosody.Messaging;
 
 /// <summary>
 /// Event context for scheduling timers and checking cancellation. All times are in UTC.
 /// </summary>
-[SuppressMessage(
-    "Naming",
-    "CA1724:Type names should not match namespaces",
-    Justification = "Context is a clear, simple name; conflict with OpenTelemetry.Context is unlikely to cause confusion"
-)]
-public sealed class Context
+public sealed class ProsodyContext
 {
     private readonly Native.Context _native;
 
-    internal Context(Native.Context native)
+    internal ProsodyContext(Native.Context native)
     {
-        _native = native ?? throw new ArgumentNullException(nameof(native));
+        ArgumentNullException.ThrowIfNull(native);
+        _native = native;
     }
 
     /// <summary>
@@ -35,7 +31,7 @@ public sealed class Context
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ScheduleAsync(DateTimeOffset time)
     {
-        var carrier = CreateCarrier();
+        Dictionary<string, string> carrier = CreateCarrier();
         return _native.Schedule(time.UtcDateTime, carrier);
     }
 
@@ -45,7 +41,7 @@ public sealed class Context
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
-        var carrier = CreateCarrier();
+        Dictionary<string, string> carrier = CreateCarrier();
         return _native.ClearAndSchedule(time.UtcDateTime, carrier);
     }
 
@@ -55,7 +51,7 @@ public sealed class Context
     /// <param name="time">The time of the timer to unschedule (UTC).</param>
     public Task UnscheduleAsync(DateTimeOffset time)
     {
-        var carrier = CreateCarrier();
+        Dictionary<string, string> carrier = CreateCarrier();
         return _native.Unschedule(time.UtcDateTime, carrier);
     }
 
@@ -64,7 +60,7 @@ public sealed class Context
     /// </summary>
     public Task ClearScheduledAsync()
     {
-        var carrier = CreateCarrier();
+        Dictionary<string, string> carrier = CreateCarrier();
         return _native.ClearScheduled(carrier);
     }
 
@@ -74,14 +70,14 @@ public sealed class Context
     /// <returns>An array of scheduled times (UTC).</returns>
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
-        var carrier = CreateCarrier();
-        var times = await _native.Scheduled(carrier).ConfigureAwait(false);
+        Dictionary<string, string> carrier = CreateCarrier();
+        DateTime[] times = await _native.Scheduled(carrier).ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
 
     private static Dictionary<string, string> CreateCarrier()
     {
-        var carrier = new Dictionary<string, string>();
+        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         return carrier;
     }

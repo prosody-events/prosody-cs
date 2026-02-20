@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 [assembly: AssemblyFixture(typeof(IntegrationTestFixture))]
@@ -16,20 +17,14 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     private protected Task<IntegrationTestContext> CreateTestContextAsync() =>
         IntegrationTestContext.CreateAsync(Fixture.Admin);
 
-    protected static void AssertTimerApproximatelyEqual(
-        DateTimeOffset actual,
-        DateTimeOffset expected
-    )
+    protected static void AssertTimerApproximatelyEqual(DateTimeOffset actual, DateTimeOffset expected)
     {
         // Round both times to seconds for comparison (timer precision)
         var actualSeconds = (long)Math.Floor(actual.ToUnixTimeMilliseconds() / 1000.0);
         var expectedSeconds = (long)Math.Floor(expected.ToUnixTimeMilliseconds() / 1000.0);
         var diff = Math.Abs(actualSeconds - expectedSeconds);
 
-        Assert.True(
-            diff <= 1,
-            $"Timer times differ by {diff} seconds. Expected ~{expected:O}, got {actual:O}"
-        );
+        Assert.True(diff <= 1, $"Timer times differ by {diff} seconds. Expected ~{expected:O}, got {actual:O}");
     }
 
     protected sealed record TestPayload
@@ -41,32 +36,21 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     /// <summary>
     /// Configurable handler for tests. Pass lambdas for OnMessage/OnTimer callbacks.
     /// </summary>
-    protected sealed class TestProsodyHandler : IProsodyHandler
+    protected sealed class TestProsodyHandler(
+        Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
+        Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
+    ) : IProsodyHandler
     {
-        private readonly Func<Context, Message, CancellationToken, Task>? _onMessage;
-        private readonly Func<Context, Timer, CancellationToken, Task>? _onTimer;
-
-        public TestProsodyHandler(
-            Func<Context, Message, CancellationToken, Task>? onMessage = null,
-            Func<Context, Timer, CancellationToken, Task>? onTimer = null
-        )
-        {
-            _onMessage = onMessage;
-            _onTimer = onTimer;
-        }
-
         public Task OnMessageAsync(
-            Context context,
+            ProsodyContext prosodyContext,
             Message message,
             CancellationToken cancellationToken
-        )
-        {
-            return _onMessage?.Invoke(context, message, cancellationToken) ?? Task.CompletedTask;
-        }
+        ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
-        public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
-        {
-            return _onTimer?.Invoke(context, timer, cancellationToken) ?? Task.CompletedTask;
-        }
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;
     }
 }

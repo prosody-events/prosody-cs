@@ -29,7 +29,7 @@ dotnet add package Witco.Prosody
 using Prosody;
 
 // Initialize the client with the builder pattern
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     // Bootstrap servers should normally be set using the PROSODY_BOOTSTRAP_SERVERS environment variable
     .WithBootstrapServers("localhost:9092")
     // To allow loopbacks, the SourceSystem must be different from the GroupId.
@@ -56,7 +56,7 @@ await client.UnsubscribeAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler
 {
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
         // Process the received message
         var payload = message.GetPayload<MyPayload>();
@@ -66,11 +66,11 @@ public class MyHandler : IProsodyHandler
         if (payload.ScheduleFollowup)
         {
             var futureTime = DateTimeOffset.UtcNow.AddSeconds(30);
-            await context.ScheduleAsync(futureTime);
+            await prosodyContext.ScheduleAsync(futureTime);
         }
     }
 
-    public async Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
+    public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
     {
         // Handle timer firing
         Console.WriteLine($"Timer fired for key: {timer.Key} at {timer.Time}");
@@ -116,13 +116,16 @@ When the timer fires, reload the message from Kafka and retry.
 
 ```csharp
 // Configure defer behavior
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .WithDeferEnabled(true)                        // Enable deferral (default: true)
-    .WithDeferBase(TimeSpan.FromSeconds(1))        // Wait 1s before first retry
-    .WithDeferMaxDelay(TimeSpan.FromHours(24))     // Cap at 24 hours
-    .WithDeferFailureThreshold(0.9)                // Disable when >90% failing
+    .Configure(options =>
+    {
+        options.DeferEnabled = true;                              // Enable deferral (default: true)
+        options.DeferBase = TimeSpan.FromSeconds(1);              // Wait 1s before first retry
+        options.DeferMaxDelay = TimeSpan.FromHours(24);           // Cap at 24 hours
+        options.DeferFailureThreshold = 0.9;                      // Disable when >90% failing
+    })
     .Build();
 ```
 
@@ -138,12 +141,15 @@ with a transient error, routing them through defer.
 
 ```csharp
 // Configure monopolization detection
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .WithMonopolizationEnabled(true)               // Enable detection (default: true)
-    .WithMonopolizationThreshold(0.9)              // Reject keys using >90% of window
-    .WithMonopolizationWindow(TimeSpan.FromMinutes(5))  // 5-minute window
+    .Configure(options =>
+    {
+        options.MonopolizationEnabled = true;                     // Enable detection (default: true)
+        options.MonopolizationThreshold = 0.9;                    // Reject keys using >90% of window
+        options.MonopolizationWindow = TimeSpan.FromMinutes(5);   // 5-minute window
+    })
     .Build();
 ```
 
@@ -152,109 +158,133 @@ await using var client = Prosody.CreateClient()
 Handlers are automatically cancelled if they exceed a deadline:
 
 ```csharp
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .WithTimeout(TimeSpan.FromSeconds(30))         // Cancel after 30 seconds
-    .WithStallThreshold(TimeSpan.FromSeconds(60)) // Report unhealthy after 60 seconds
+    .Configure(options =>
+    {
+        options.Timeout = TimeSpan.FromSeconds(30);               // Cancel after 30 seconds
+        options.StallThreshold = TimeSpan.FromSeconds(60);        // Report unhealthy after 60 seconds
+    })
     .Build();
 ```
 
-When a handler times out, `context.ShouldCancel` becomes `true` and the `CancellationToken` is cancelled. The handler
+When a handler times out, `prosodyContext.ShouldCancel` becomes `true` and the `CancellationToken` is cancelled. The handler
 should exit promptly. If not specified, timeout defaults to 80% of `StallThreshold`.
 
 ## Configuration
 
-Configure via builder methods or environment variables. Builder methods take precedence; unset options fall back to environment variables.
+Configure via `ClientOptions` properties or environment variables. Properties take precedence; unset options (`null`) fall back to environment variables.
+
+Common options have dedicated builder methods (e.g., `WithBootstrapServers()`). All other options are set via `Configure()` or directly on `ClientOptions`. See the [API Reference](#api-reference) for the full builder API.
+
+### Dependency Injection
+
+For ASP.NET Core or Generic Host applications, you can bind configuration using the options pipeline:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Binds from the "Prosody" configuration section.
+builder.Services.AddProsodyClient();
+
+// Or bind from a custom section path:
+builder.Services.AddProsodyClient("MySection:ProsodyConfig");
+
+// Or apply programmatic overrides after binding:
+builder.Services.AddProsodyClient(options => options.Mock = true);
+```
+
+The client is validated at startup via `ValidateOnStart()`. Invalid configuration throws `OptionsValidationException`.
 
 ### Core
 
-| Option / Environment Variable           | Description                                       | Default      |
-|-----------------------------------------|---------------------------------------------------|--------------|
-| `WithBootstrapServers()` / `PROSODY_BOOTSTRAP_SERVERS` | Kafka servers to connect to              | -            |
-| `WithGroupId()` / `PROSODY_GROUP_ID`          | Consumer group name                               | -            |
-| `WithSubscribedTopics()` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from                      | -            |
-| `WithAllowedEvents()` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes    | (all)        |
-| `WithSourceSystem()` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing)| `<GroupId>`  |
-| `WithMock()` / `PROSODY_MOCK`                 | Use in-memory Kafka for testing                   | false        |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `BootstrapServers` / `PROSODY_BOOTSTRAP_SERVERS` | Kafka servers to connect to | - |
+| `GroupId` / `PROSODY_GROUP_ID` | Consumer group name | - |
+| `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from | - |
+| `AllowedEvents` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes | (all) |
+| `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
+| `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |
 
 ### Consumer
 
-| Option / Environment Variable           | Description                                          | Default                |
-|-----------------------------------------|------------------------------------------------------|------------------------|
-| `WithMaxConcurrency()` / `PROSODY_MAX_CONCURRENCY` | Max messages being processed simultaneously     | 32                     |
-| `WithMaxUncommitted()` / `PROSODY_MAX_UNCOMMITTED` | Max queued messages before pausing consumption  | 64                     |
-| `WithMaxEnqueuedPerKey()` / `PROSODY_MAX_ENQUEUED_PER_KEY` | Max queued messages per key before pausing | 8                   |
-| `WithTimeout()` / `PROSODY_TIMEOUT`           | Cancel handler if it runs longer than this           | 80% of stall threshold |
-| `WithCommitInterval()` / `PROSODY_COMMIT_INTERVAL` | How often to save progress to Kafka            | 1s                     |
-| `WithPollInterval()` / `PROSODY_POLL_INTERVAL` | How often to fetch new messages from Kafka          | 100ms                  |
-| `WithShutdownTimeout()` / `PROSODY_SHUTDOWN_TIMEOUT` | Wait this long for in-flight work before force-quit | 30s              |
-| `WithStallThreshold()` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long  | 5m                     |
-| `WithProbePort()` / `PROSODY_PROBE_PORT`      | HTTP port for health checks (null=8000, 0=disabled)  | 8000                   |
-| `WithFailureTopic()` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | -                     |
-| `WithIdempotenceCacheSize()` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Track this many message IDs to skip duplicates | 4096           |
-| `WithSlabSize()` / `PROSODY_SLAB_SIZE`        | Timer storage granularity (rarely needs changing)    | 1h                     |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `MaxConcurrency` / `PROSODY_MAX_CONCURRENCY` | Max messages being processed simultaneously | 32 |
+| `MaxUncommitted` / `PROSODY_MAX_UNCOMMITTED` | Max queued messages before pausing consumption | 64 |
+| `MaxEnqueuedPerKey` / `PROSODY_MAX_ENQUEUED_PER_KEY` | Max queued messages per key before pausing | 8 |
+| `Timeout` / `PROSODY_TIMEOUT` | Cancel handler if it runs longer than this | 80% of stall threshold |
+| `CommitInterval` / `PROSODY_COMMIT_INTERVAL` | How often to save progress to Kafka | 1s |
+| `PollInterval` / `PROSODY_POLL_INTERVAL` | How often to fetch new messages from Kafka | 100ms |
+| `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Wait this long for in-flight work before force-quit | 30s |
+| `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
+| `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
+| `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Track this many message IDs to skip duplicates | 4096 |
+| `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
 
 ### Producer
 
-| Option / Environment Variable           | Description                     | Default |
-|-----------------------------------------|---------------------------------|---------|
-| `WithSendTimeout()` / `PROSODY_SEND_TIMEOUT`  | Give up sending after this long | 1s      |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `SendTimeout` / `PROSODY_SEND_TIMEOUT` | Give up sending after this long | 1s |
 
 ### Retry
 
 When a handler fails, retry with exponential backoff:
 
-| Option / Environment Variable           | Description                       | Default |
-|-----------------------------------------|-----------------------------------|---------|
-| `WithMaxRetries()` / `PROSODY_MAX_RETRIES`    | Give up after this many attempts  | 3       |
-| `WithRetryBase()` / `PROSODY_RETRY_BASE`      | Wait this long before first retry | 20ms    |
-| `WithMaxRetryDelay()` / `PROSODY_RETRY_MAX_DELAY` | Never wait longer than this   | 5m      |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `MaxRetries` / `PROSODY_MAX_RETRIES` | Give up after this many attempts | 3 |
+| `RetryBase` / `PROSODY_RETRY_BASE` | Wait this long before first retry | 20ms |
+| `MaxRetryDelay` / `PROSODY_RETRY_MAX_DELAY` | Never wait longer than this | 5m |
 
 ### Deferral (Pipeline Mode)
 
-| Option / Environment Variable           | Description                                       | Default |
-|-----------------------------------------|---------------------------------------------------|---------|
-| `WithDeferEnabled()` / `PROSODY_DEFER_ENABLED` | Enable deferral for new messages                 | true    |
-| `WithDeferBase()` / `PROSODY_DEFER_BASE`      | Wait this long before first deferred retry        | 1s      |
-| `WithDeferMaxDelay()` / `PROSODY_DEFER_MAX_DELAY` | Never wait longer than this                    | 24h     |
-| `WithDeferFailureThreshold()` / `PROSODY_DEFER_FAILURE_THRESHOLD` | Disable deferral when failure rate exceeds this | 0.9 |
-| `WithDeferFailureWindow()` / `PROSODY_DEFER_FAILURE_WINDOW` | Measure failure rate over this time window | 5m      |
-| `WithDeferCacheSize()` / `PROSODY_DEFER_CACHE_SIZE` | Track this many deferred keys in memory      | 1024    |
-| `WithDeferSeekTimeout()` / `PROSODY_DEFER_SEEK_TIMEOUT` | Timeout when loading deferred messages     | 30s     |
-| `WithDeferDiscardThreshold()` / `PROSODY_DEFER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100   |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `DeferEnabled` / `PROSODY_DEFER_ENABLED` | Enable deferral for new messages | true |
+| `DeferBase` / `PROSODY_DEFER_BASE` | Wait this long before first deferred retry | 1s |
+| `DeferMaxDelay` / `PROSODY_DEFER_MAX_DELAY` | Never wait longer than this | 24h |
+| `DeferFailureThreshold` / `PROSODY_DEFER_FAILURE_THRESHOLD` | Disable deferral when failure rate exceeds this | 0.9 |
+| `DeferFailureWindow` / `PROSODY_DEFER_FAILURE_WINDOW` | Measure failure rate over this time window | 5m |
+| `DeferCacheSize` / `PROSODY_DEFER_CACHE_SIZE` | Track this many deferred keys in memory | 1024 |
+| `DeferSeekTimeout` / `PROSODY_DEFER_SEEK_TIMEOUT` | Timeout when loading deferred messages | 30s |
+| `DeferDiscardThreshold` / `PROSODY_DEFER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100 |
 
 ### Monopolization Detection (Pipeline Mode)
 
-| Option / Environment Variable           | Description                             | Default |
-|-----------------------------------------|-----------------------------------------|---------|
-| `WithMonopolizationEnabled()` / `PROSODY_MONOPOLIZATION_ENABLED` | Enable hot key protection    | true    |
-| `WithMonopolizationThreshold()` / `PROSODY_MONOPOLIZATION_THRESHOLD` | Max handler time as fraction of window | 0.9 |
-| `WithMonopolizationWindow()` / `PROSODY_MONOPOLIZATION_WINDOW` | Measurement window             | 5m      |
-| `WithMonopolizationCacheSize()` / `PROSODY_MONOPOLIZATION_CACHE_SIZE` | Max distinct keys to track   | 8192    |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `MonopolizationEnabled` / `PROSODY_MONOPOLIZATION_ENABLED` | Enable hot key protection | true |
+| `MonopolizationThreshold` / `PROSODY_MONOPOLIZATION_THRESHOLD` | Max handler time as fraction of window | 0.9 |
+| `MonopolizationWindow` / `PROSODY_MONOPOLIZATION_WINDOW` | Measurement window | 5m |
+| `MonopolizationCacheSize` / `PROSODY_MONOPOLIZATION_CACHE_SIZE` | Max distinct keys to track | 8192 |
 
 ### Fair Scheduling (All Modes)
 
-| Option / Environment Variable           | Description                                                      | Default |
-|-----------------------------------------|------------------------------------------------------------------|---------|
-| `WithSchedulerFailureWeight()` / `PROSODY_SCHEDULER_FAILURE_WEIGHT` | Fraction of processing time reserved for retries | 0.3     |
-| `WithSchedulerMaxWait()` / `PROSODY_SCHEDULER_MAX_WAIT` | Messages waiting this long get maximum priority           | 2m      |
-| `WithSchedulerWaitWeight()` / `PROSODY_SCHEDULER_WAIT_WEIGHT` | Priority boost for waiting messages (higher = more aggressive) | 200.0 |
-| `WithSchedulerCacheSize()` / `PROSODY_SCHEDULER_CACHE_SIZE` | Max distinct keys to track                              | 8192    |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `SchedulerFailureWeight` / `PROSODY_SCHEDULER_FAILURE_WEIGHT` | Fraction of processing time reserved for retries | 0.3 |
+| `SchedulerMaxWait` / `PROSODY_SCHEDULER_MAX_WAIT` | Messages waiting this long get maximum priority | 2m |
+| `SchedulerWaitWeight` / `PROSODY_SCHEDULER_WAIT_WEIGHT` | Priority boost for waiting messages (higher = more aggressive) | 200.0 |
+| `SchedulerCacheSize` / `PROSODY_SCHEDULER_CACHE_SIZE` | Max distinct keys to track | 8192 |
 
 ### Cassandra
 
-Persistent storage for timers and deferred retries (not needed if `WithMock(true)`):
+Persistent storage for timers and deferred retries (not needed if `Mock = true`):
 
-| Option / Environment Variable           | Description                        | Default |
-|-----------------------------------------|------------------------------------|---------|
-| `WithCassandraNodes()` / `PROSODY_CASSANDRA_NODES` | Servers to connect to (host:port) | -      |
-| `WithCassandraKeyspace()` / `PROSODY_CASSANDRA_KEYSPACE` | Keyspace name                | prosody |
-| `WithCassandraUser()` / `PROSODY_CASSANDRA_USER` | Username                          | -       |
-| `WithCassandraPassword()` / `PROSODY_CASSANDRA_PASSWORD` | Password                    | -       |
-| `WithCassandraDatacenter()` / `PROSODY_CASSANDRA_DATACENTER` | Prefer this datacenter for queries | -  |
-| `WithCassandraRack()` / `PROSODY_CASSANDRA_RACK` | Prefer this rack for queries      | -       |
-| `WithCassandraRetention()` / `PROSODY_CASSANDRA_RETENTION` | Delete data older than this | 1y     |
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `CassandraNodes` / `PROSODY_CASSANDRA_NODES` | Servers to connect to (host:port) | - |
+| `CassandraKeyspace` / `PROSODY_CASSANDRA_KEYSPACE` | Keyspace name | prosody |
+| `CassandraUser` / `PROSODY_CASSANDRA_USER` | Username | - |
+| `CassandraPassword` / `PROSODY_CASSANDRA_PASSWORD` | Password | - |
+| `CassandraDatacenter` / `PROSODY_CASSANDRA_DATACENTER` | Prefer this datacenter for queries | - |
+| `CassandraRack` / `PROSODY_CASSANDRA_RACK` | Prefer this rack for queries | - |
+| `CassandraRetention` / `PROSODY_CASSANDRA_RETENTION` | Delete data older than this | 1y |
 
 ## Liveness and Readiness Probes
 
@@ -270,18 +300,21 @@ server is tied to the consumer's lifecycle and offers two main endpoints:
 Configure the probe server using the builder:
 
 ```csharp
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .WithProbePort(8000)                           // Set to 0 to disable
-    .WithStallThreshold(TimeSpan.FromSeconds(15)) // 15 seconds before considering a partition stalled
+    .WithProbePort(8000)                                          // Set to 0 to disable
+    .Configure(options =>
+    {
+        options.StallThreshold = TimeSpan.FromSeconds(15);        // 15 seconds before considering a partition stalled
+    })
     .Build();
 ```
 
 Or via environment variables:
 
 ```bash
-PROSODY_PROBE_PORT=8000  # Set to 'none' to disable
+PROSODY_PROBE_PORT=8000  # Set to 0 to disable
 PROSODY_STALL_THRESHOLD=15s  # Default stall detection threshold
 ```
 
@@ -316,7 +349,7 @@ Pipeline mode is the default mode. Ensures ordered processing, retrying failed o
 
 ```csharp
 // Initialize client in pipeline mode
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithMode(ClientMode.Pipeline)  // Explicitly set pipeline mode (this is the default)
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
@@ -329,7 +362,7 @@ Prioritizes quick processing, sending persistently failing messages to a failure
 
 ```csharp
 // Initialize client in low-latency mode
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithMode(ClientMode.LowLatency)  // Set low-latency mode
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
@@ -343,7 +376,7 @@ Optimized for development environments or services where message processing fail
 
 ```csharp
 // Initialize client in best-effort mode
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithMode(ClientMode.BestEffort)  // Set best-effort mode
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
@@ -357,7 +390,7 @@ of events:
 
 ```csharp
 // Process only events with types starting with "user." or "account."
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .WithAllowedEvents("user.", "account.")
@@ -393,7 +426,7 @@ Prosody prevents processing loops in distributed systems by tracking the source 
 
 ```csharp
 // Consumer and producer in one application
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-service")
     .WithSourceSystem("my-service-producer")  // Must differ from GroupId to allow loopbacks; defaults to GroupId
     .WithSubscribedTopics("my-topic")
@@ -443,10 +476,10 @@ await client.SendAsync("my-topic", "key2", new
 Deduplication can be disabled by setting:
 
 ```csharp
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .WithIdempotenceCacheSize(0)  // Disable deduplication
+    .Configure(options => options.IdempotenceCacheSize = 0)       // Disable deduplication
     .Build();
 ```
 
@@ -466,24 +499,24 @@ Prosody supports timer-based delayed execution within message handlers. When a t
 ```csharp
 public class MyHandler : IProsodyHandler
 {
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
         // Schedule a timer to fire in 30 seconds
         var futureTime = DateTimeOffset.UtcNow.AddSeconds(30);
-        await context.ScheduleAsync(futureTime);
+        await prosodyContext.ScheduleAsync(futureTime);
 
         // Schedule multiple timers
         var oneMinute = DateTimeOffset.UtcNow.AddMinutes(1);
         var twoMinutes = DateTimeOffset.UtcNow.AddMinutes(2);
-        await context.ScheduleAsync(oneMinute);
-        await context.ScheduleAsync(twoMinutes);
+        await prosodyContext.ScheduleAsync(oneMinute);
+        await prosodyContext.ScheduleAsync(twoMinutes);
 
         // Check what's scheduled
-        var scheduledTimes = await context.ScheduledAsync();
+        var scheduledTimes = await prosodyContext.ScheduledAsync();
         Console.WriteLine($"Scheduled timers: {scheduledTimes.Length}");
     }
 
-    public async Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken)
+    public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
     {
         Console.WriteLine("Timer fired!");
         Console.WriteLine($"Key: {timer.Key}");
@@ -522,11 +555,11 @@ PROSODY_CASSANDRA_NODES=localhost:9042  # Required for timer persistence
 Or programmatically when creating the client:
 
 ```csharp
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithBootstrapServers("localhost:9092")
     .WithGroupId("my-application")
     .WithSubscribedTopics("my-topic")
-    .WithCassandraNodes("localhost:9042")  // Required unless WithMock(true)
+    .Configure(options => options.CassandraNodes = ["localhost:9042"])  // Required unless Mock = true
     .Build();
 ```
 
@@ -534,7 +567,7 @@ For testing, you can use mock mode to avoid Cassandra dependency:
 
 ```csharp
 // Mock mode for testing (timers work but aren't persisted)
-await using var client = Prosody.CreateClient()
+await using var client = ProsodyClientBuilder.Create()
     .WithBootstrapServers("localhost:9092")
     .WithGroupId("my-application")
     .WithSubscribedTopics("my-topic")
@@ -606,7 +639,7 @@ public class MyHandler : IProsodyHandler
 {
     private static readonly ActivitySource ActivitySource = new("my-service-name");
 
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("process-message");
 
@@ -617,7 +650,7 @@ public class MyHandler : IProsodyHandler
         Console.WriteLine($"Received message: {payload}");
     }
 
-    public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -695,7 +728,7 @@ public class ProsodyWorker : BackgroundService
 
     public ProsodyWorker()
     {
-        _client = Prosody.CreateClient()
+        _client = ProsodyClientBuilder.Create()
             .WithBootstrapServers("localhost:9092")
             .WithGroupId("my-consumer-group")
             .WithSubscribedTopics("my-topic")
@@ -736,14 +769,14 @@ using System.Text.Json;
 public class MyHandler : IProsodyHandler
 {
     [PermanentError(typeof(JsonException), typeof(ArgumentException))]
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
         // Your message handling logic here
         // JsonException and ArgumentException will be treated as permanent
         // All other exceptions will be treated as transient (default behavior)
     }
 
-    public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -756,7 +789,7 @@ using Prosody;
 
 public class MyHandler : IProsodyHandler
 {
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
         var payload = message.GetPayload<MyPayload>();
 
@@ -768,7 +801,7 @@ public class MyHandler : IProsodyHandler
         // Process message...
     }
 
-    public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -796,18 +829,29 @@ public class ValidationException : Exception, IPermanentError
 
 Prosody cancels tasks during partition rebalancing, timeout, or shutdown. How you handle cancellation is critical:
 
-- Prosody interprets task success based on exception propagation.
-- A task that exits without an exception is considered successful.
-- Any exception signals task failure.
+- A handler that returns normally (no exception) is considered **successful** — Prosody treats the message as processed.
+- Any exception — including `OperationCanceledException` — signals **failure**. Prosody does not distinguish
+  cancellation from other errors; all exceptions are classified as transient (or permanent if marked).
+- **Never silently return on cancellation.** If the handler returns without an exception, Prosody assumes the message was
+  fully processed. Swallowing cancellation (e.g., `if (cancellationToken.IsCancellationRequested) return;`) tells Prosody
+  the message succeeded when it didn't, which can cause data loss.
+
+The correct pattern is to let `OperationCanceledException` propagate. When Prosody initiates the cancellation (rebalance,
+timeout, shutdown), it already knows the handler didn't complete — the transient error result simply confirms this. Prosody
+will not naively retry a message it just cancelled during shutdown; the retry behavior depends on the operating mode and
+the reason for cancellation.
 
 The library provides a `CancellationToken` to your handler methods. Pass this token to any async operations that support
 it to ensure prompt cancellation.
 
 Best practices:
 
-1. Exit promptly when cancelled to avoid rebalancing delays.
-2. Use `try/finally` blocks for clean resource handling.
-3. Pass the `CancellationToken` to all async operations that support it.
+1. **Throw, don't swallow.** Use `ThrowIfCancellationRequested()` or pass the token to async APIs that throw on
+   cancellation. Never check `IsCancellationRequested` and silently return — this breaks the cancellation contract
+   and causes Prosody to treat incomplete work as successful.
+2. Exit promptly when cancelled to avoid rebalancing delays.
+3. Use `try/finally` blocks for clean resource handling.
+4. Pass the `CancellationToken` to all async operations that support it.
 
 Example of using CancellationToken in message processing:
 
@@ -818,9 +862,9 @@ public class MyHandler : IProsodyHandler
     private readonly MyDbContext _dbContext;
     private readonly ProsodyClient _client;
 
-    public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
     {
-        // Pass the token to HTTP calls
+        // Pass the token to HTTP calls — throws OperationCanceledException on cancellation
         var response = await _httpClient.GetAsync("https://api.example.com", cancellationToken);
         var data = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -832,20 +876,21 @@ public class MyHandler : IProsodyHandler
         await _client.SendAsync("topic", "key", new { Data = "value" }, cancellationToken);
     }
 
-    public Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
-For CPU-bound loops, check the cancellation token periodically:
+For CPU-bound loops, poll `ThrowIfCancellationRequested()` periodically. This throws `OperationCanceledException` when
+cancellation is requested, correctly signaling to Prosody that the handler did not complete:
 
 ```csharp
-public async Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken)
+public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
 {
     var items = message.GetPayload<List<Item>>();
 
     foreach (var item in items)
     {
-        // Check for cancellation in CPU-bound loops
+        // Correct: throws OperationCanceledException, signaling incomplete work
         cancellationToken.ThrowIfCancellationRequested();
 
         ProcessItem(item);
@@ -853,10 +898,23 @@ public async Task OnMessageAsync(Context context, Message message, CancellationT
 }
 ```
 
+**Anti-pattern** — do not silently return on cancellation:
+
+```csharp
+// WRONG: Prosody sees success and commits the offset, losing the unprocessed message
+foreach (var item in items)
+{
+    if (cancellationToken.IsCancellationRequested)
+        return; // Silent return = Prosody thinks the message was fully processed
+
+    ProcessItem(item);
+}
+```
+
 Failing to follow these practices can lead to:
 
+- **Data loss** from incomplete work being marked as successful when cancellation is silently swallowed.
 - Slower message processing due to delayed rebalancing.
-- Data loss from missed messages when cancellation errors are suppressed.
 - Resource leaks if long-running operations aren't properly cancelled.
 
 ## Logging Configuration
@@ -869,12 +927,9 @@ Prosody provides flexible logging integration with your application.
 using Microsoft.Extensions.Logging;
 using Prosody;
 
-// Configure logging globally for all Prosody clients
+// Configure logging globally for all Prosody clients (must be called once, before creating clients)
 var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 ProsodyLogging.Configure(loggerFactory);
-
-// Disable logging
-ProsodyLogging.Configure(null);
 ```
 
 ### Dependency Injection
@@ -946,7 +1001,7 @@ Prosody uses an automated release process managed by GitHub Actions. Here's an o
 3. **Build Process**: If a new release is created, the following build jobs are triggered:
     - Linux builds for x86_64 and aarch64 architectures.
     - Windows builds for x64 and arm64 architectures.
-    - macOS builds for x86_64 and arm64 architectures.
+    - macOS builds for arm64 architecture.
 
 4. **Artifact Upload**: Each build job uploads its artifacts (native libraries) to GitHub Actions.
 
@@ -975,15 +1030,13 @@ your changes before merging to `main`.
 
 ## API Reference
 
-### Prosody (Static Class)
-
-- `ProsodyClientBuilder CreateClient()`: Creates a new builder for configuring a ProsodyClient.
-
 ### ProsodyClientBuilder
 
 Fluent builder for configuring and creating a ProsodyClient. All `With*` methods return the builder for chaining.
 
-**Core Configuration:**
+- `static ProsodyClientBuilder Create()`: Creates a new builder instance.
+
+**Builder Methods:**
 - `WithBootstrapServers(params string[] servers)`: Set Kafka bootstrap servers
 - `WithGroupId(string groupId)`: Set consumer group ID
 - `WithSubscribedTopics(params string[] topics)`: Set topics to subscribe to
@@ -991,39 +1044,15 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithAllowedEvents(params string[] prefixes)`: Set event type prefixes to allow
 - `WithSourceSystem(string sourceSystem)`: Set source system identifier
 - `WithMock(bool mock)`: Enable/disable in-memory mock client
-
-**Consumer Configuration:**
-- `WithMaxConcurrency(uint)`, `WithMaxUncommitted(uint)`, `WithMaxEnqueuedPerKey(uint)`
-- `WithIdempotenceCacheSize(uint)`, `WithTimeout(TimeSpan)`, `WithStallThreshold(TimeSpan)`
-- `WithShutdownTimeout(TimeSpan)`, `WithPollInterval(TimeSpan)`, `WithCommitInterval(TimeSpan)`
-- `WithProbePort(ushort)`, `WithSlabSize(TimeSpan)`
-
-**Producer Configuration:**
-- `WithSendTimeout(TimeSpan)`
-
-**Retry Configuration:**
-- `WithMaxRetries(uint)`, `WithRetryBase(TimeSpan)`, `WithMaxRetryDelay(TimeSpan)`, `WithFailureTopic(string)`
-
-**Deferral Configuration:**
-- `WithDeferEnabled(bool)`, `WithDeferBase(TimeSpan)`, `WithDeferMaxDelay(TimeSpan)`
-- `WithDeferFailureThreshold(double)`, `WithDeferFailureWindow(TimeSpan)`, `WithDeferCacheSize(uint)`
-- `WithDeferSeekTimeout(TimeSpan)`, `WithDeferDiscardThreshold(uint)`
-
-**Monopolization Configuration:**
-- `WithMonopolizationEnabled(bool)`, `WithMonopolizationThreshold(double)`
-- `WithMonopolizationWindow(TimeSpan)`, `WithMonopolizationCacheSize(uint)`
-
-**Scheduler Configuration:**
-- `WithSchedulerFailureWeight(double)`, `WithSchedulerMaxWait(TimeSpan)`
-- `WithSchedulerWaitWeight(double)`, `WithSchedulerCacheSize(uint)`
-
-**Cassandra Configuration:**
-- `WithCassandraNodes(params string[])`, `WithCassandraKeyspace(string)`, `WithCassandraDatacenter(string)`
-- `WithCassandraRack(string)`, `WithCassandraUser(string)`, `WithCassandraPassword(string)`
-- `WithCassandraRetention(TimeSpan)`
+- `WithMaxConcurrency(uint maxConcurrency)`: Set max concurrent messages
+- `WithMaxRetries(uint maxRetries)`: Set max retry attempts
+- `WithFailureTopic(string topic)`: Set dead letter topic
+- `WithProbePort(ushort port)`: Set health check probe port
+- `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
+- `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
 
 **Build:**
-- `ProsodyClient Build()`: Creates a new ProsodyClient with the configured options.
+- `ProsodyClient Build()`: Validates configuration and creates a new ProsodyClient.
 
 ### ProsodyClient
 
@@ -1036,7 +1065,8 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendRawAsync(string topic, string key, byte[] jsonPayload, CancellationToken cancellationToken = default)`: Send raw JSON bytes to a specified topic.
 - `Task SubscribeAsync(IProsodyHandler handler)`: Subscribe to messages using the provided handler.
 - `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
-- `void Dispose()`: Dispose of client resources.
+- `void Dispose()`: Dispose of client resources synchronously.
+- `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
 
 ### AdminClient
 
@@ -1052,8 +1082,8 @@ Interface for handling messages and timers:
 ```csharp
 public interface IProsodyHandler
 {
-    Task OnMessageAsync(Context context, Message message, CancellationToken cancellationToken);
-    Task OnTimerAsync(Context context, Timer timer, CancellationToken cancellationToken);
+    Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken);
+    Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken);
 }
 ```
 
@@ -1068,7 +1098,7 @@ Represents a Kafka message with the following properties:
 - `Key` (string): The message key.
 - `T GetPayload<T>()`: Deserialize and return the message payload as type T.
 
-### Context
+### ProsodyContext
 
 Represents the context of message processing:
 

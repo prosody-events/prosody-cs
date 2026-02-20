@@ -1,3 +1,5 @@
+using Prosody.Errors;
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -5,8 +7,7 @@ namespace Prosody.Tests.Integration;
 /// <summary>
 /// Error handling and retry tests.
 /// </summary>
-public sealed class ErrorHandlingTests(IntegrationTestFixture fixture)
-    : IntegrationTestBase(fixture)
+public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact(Timeout = 60_000)]
     public async Task HandlesTransientErrorsWithRetry()
@@ -107,19 +108,15 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture)
     private sealed class AttributeBasedHandler(Action onMessage) : IProsodyHandler
     {
         [PermanentError(typeof(FormatException))]
-        public Task OnMessageAsync(
-            Context context,
-            Message message,
-            CancellationToken cancellationToken
-        )
+        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
         {
             onMessage();
             return Task.CompletedTask;
         }
 
         public Task OnTimerAsync(
-            Context context,
-            Timer timer,
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
     }

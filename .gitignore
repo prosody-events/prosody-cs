@@ -12,7 +12,7 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 .vs/
-.claude/
+.claude/*.local.*
 
 # Rust (workspace with ffi/ crate)
 target/

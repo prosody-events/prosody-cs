@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -10,34 +11,28 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
     [Fact(Timeout = 30_000)]
     public async Task InitializesCorrectly()
     {
-        await using var ctx = await CreateTestContextAsync();
-        var state = await ctx.Client.ConsumerStateAsync();
-
-        Assert.Multiple(
-            () => Assert.NotNull(ctx.Client),
-            () => Assert.Equal(ConsumerState.Configured, state)
-        );
+        await using IntegrationTestContext ctx = await CreateTestContextAsync();
+        ConsumerState state = await ctx.Client.GetConsumerStateAsync();
+        Assert.Multiple(() => Assert.NotNull(ctx.Client), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
     [Fact(Timeout = 30_000)]
     public async Task ExposesSourceSystemIdentifier()
     {
-        await using var ctx = await CreateTestContextAsync();
-
+        await using IntegrationTestContext ctx = await CreateTestContextAsync();
         Assert.Equal("test-source", ctx.Client.SourceSystem);
     }
 
     [Fact(Timeout = 30_000)]
     public async Task SubscribesAndUnsubscribes()
     {
-        await using var ctx = await CreateTestContextAsync();
-
+        await using IntegrationTestContext ctx = await CreateTestContextAsync();
         var handler = new TestProsodyHandler();
 
         await ctx.Client.SubscribeAsync(handler);
-        Assert.Equal(ConsumerState.Running, await ctx.Client.ConsumerStateAsync());
+        Assert.Equal(ConsumerState.Running, await ctx.Client.GetConsumerStateAsync());
 
         await ctx.Client.UnsubscribeAsync();
-        Assert.Equal(ConsumerState.Configured, await ctx.Client.ConsumerStateAsync());
+        Assert.Equal(ConsumerState.Configured, await ctx.Client.GetConsumerStateAsync());
     }
 }

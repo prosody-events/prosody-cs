@@ -17,10 +17,7 @@ internal sealed class MessageChannel<T>
 
     /// <summary>Receives a single item from the channel with timeout.</summary>
     /// <exception cref="TimeoutException">Thrown if no item is received within timeout.</exception>
-    public async Task<T> ReceiveAsync(
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    )
+    public async Task<T> ReceiveAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
@@ -37,11 +34,7 @@ internal sealed class MessageChannel<T>
 
     /// <summary>Receives multiple items from the channel with timeout.</summary>
     /// <exception cref="TimeoutException">Thrown if not all items are received within timeout.</exception>
-    public async Task<List<T>> ReceiveAsync(
-        int count,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    )
+    public async Task<List<T>> ReceiveAsync(int count, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
@@ -58,9 +51,7 @@ internal sealed class MessageChannel<T>
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                $"Timeout waiting for {count} items after {timeout}. Received {items.Count}."
-            );
+            throw new TimeoutException($"Timeout waiting for {count} items after {timeout}. Received {items.Count}.");
         }
     }
 

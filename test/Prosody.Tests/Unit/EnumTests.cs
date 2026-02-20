@@ -1,4 +1,6 @@
-using Prosody.Native;
+using Prosody.Configuration;
+using Prosody.Messaging;
+using HandlerResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
 

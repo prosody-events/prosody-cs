@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Prosody.Configuration;
+using Prosody.Infrastructure;
+using Prosody.Messaging;
 
 namespace Prosody;
 
@@ -9,28 +12,47 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
 
+    private ProsodyClient(Native.ProsodyClient native)
+    {
+        _native = native;
+        SourceSystem = native.SourceSystem();
+    }
+
     /// <summary>
     /// Creates a new ProsodyClient with the given options.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
     public ProsodyClient(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
+        SourceSystem = _native.SourceSystem();
+    }
+
+    /// <summary>
+    /// Creates a new ProsodyClient from pre-validated options, skipping redundant validation.
+    /// </summary>
+    internal static ProsodyClient FromValidatedOptions(ClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new ProsodyClient(new Native.ProsodyClient(options.ToNative()));
     }
 
     /// <summary>
     /// Gets the source system identifier configured for this client.
     /// </summary>
-    public string SourceSystem => _native.SourceSystem();
+    public string SourceSystem { get; }
 
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
-    public async Task<ConsumerState> ConsumerStateAsync()
+    public async Task<ConsumerState> GetConsumerStateAsync()
     {
-        return await _native.ConsumerState() switch
+        Native.ConsumerState state = await _native.ConsumerState();
+        return state switch
         {
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
@@ -57,13 +79,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="key">The message key.</param>
     /// <param name="payload">The message payload (will be serialized to JSON).</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    public Task SendAsync<T>(
-        string topic,
-        string key,
-        T payload,
-        CancellationToken cancellationToken = default
-    )
+    public Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+
+        // Optimization opportunity: use pooled ArrayBufferWriter<byte> to reduce allocations
+        // once the FFI binding accepts ReadOnlyMemory<byte> instead of byte[].
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
         return SendRawAsync(topic, key, jsonBytes, cancellationToken);
     }
@@ -82,11 +104,28 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var carrier = new Dictionary<string, string>();
-        TracePropagation.Inject(carrier);
-        using var signal = CancellationHelper.CreateSignal(cancellationToken);
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(jsonPayload);
 
-        await _native.Send(topic, key, jsonPayload, carrier, signal).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        try
+        {
+            await _native.Send(topic, key, jsonPayload, carrier, linked?.Signal).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (linked is { } l)
+            {
+                await l.Registration.DisposeAsync().ConfigureAwait(false);
+                l.Signal.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -102,10 +141,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Unsubscribes from receiving messages and shuts down the consumer.
     /// </summary>
-    public Task UnsubscribeAsync()
-    {
-        return _native.Unsubscribe();
-    }
+    public Task UnsubscribeAsync() => _native.Unsubscribe();
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()

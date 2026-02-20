@@ -1,3 +1,4 @@
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Integration;
@@ -24,12 +25,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         await ctx.Client.SubscribeAsync(handler);
 
         var testPayload = new TestPayload { Content = "Hello, Kafka!" };
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            "test-key",
-            testPayload,
-            TestContext.Current.CancellationToken
-        );
+        await ctx.Client.SendAsync(ctx.Topic, "test-key", testPayload, TestContext.Current.CancellationToken);
 
         var received = await messages.ReceiveAsync(
             IntegrationTestFixture.DefaultTimeout,
@@ -71,12 +67,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         foreach (var (key, payload) in messagesToSend)
         {
-            await ctx.Client.SendAsync(
-                ctx.Topic,
-                key,
-                payload,
-                TestContext.Current.CancellationToken
-            );
+            await ctx.Client.SendAsync(ctx.Topic, key, payload, TestContext.Current.CancellationToken);
         }
 
         var received = await messages.ReceiveAsync(
@@ -141,10 +132,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         await processingAborted.WaitAsync(TestContext.Current.CancellationToken);
         await unsubscribeTask;
 
-        var state = await ctx.Client.ConsumerStateAsync();
-        Assert.Multiple(
-            () => Assert.True(wasAborted),
-            () => Assert.Equal(ConsumerState.Configured, state)
-        );
+        var state = await ctx.Client.GetConsumerStateAsync();
+        Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
     }
 }

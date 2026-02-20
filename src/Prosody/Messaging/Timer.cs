@@ -9,13 +9,16 @@ public sealed class Timer
 
     internal Timer(Native.Timer native)
     {
-        _native = native ?? throw new ArgumentNullException(nameof(native));
+        ArgumentNullException.ThrowIfNull(native);
+        _native = native;
+
+        Key = native.Key();
     }
 
     /// <summary>
     /// Gets the timer key.
     /// </summary>
-    public string Key => _native.Key();
+    public string Key { get; }
 
     /// <summary>
     /// Gets the timer fire time (UTC).

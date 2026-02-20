@@ -1,3 +1,6 @@
+using Prosody.Configuration;
+using Prosody.Messaging;
+
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
@@ -13,12 +16,7 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
     public string GroupId { get; }
     public ProsodyClient Client { get; }
 
-    private IntegrationTestContext(
-        AdminClient sharedAdmin,
-        string topic,
-        string groupId,
-        ProsodyClient client
-    )
+    private IntegrationTestContext(AdminClient sharedAdmin, string topic, string groupId, ProsodyClient client)
     {
         _sharedAdmin = sharedAdmin;
         Topic = topic;
@@ -59,32 +57,28 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
                 );
                 break;
             }
-            catch (Exception ex)
-                when (ex.Message.Contains("topics not found", StringComparison.Ordinal))
+            catch (Exception ex) when (ex.Message.Contains("topics not found", StringComparison.OrdinalIgnoreCase))
             {
                 lastException = ex;
                 await Task.Delay(100 * (attempt + 1));
             }
         }
 
-        if (client is null)
-        {
-            throw new InvalidOperationException(
+        return client is null
+            ? throw new InvalidOperationException(
                 $"Failed to create client for topic {topic} after retries",
                 lastException
-            );
-        }
-
-        return new IntegrationTestContext(sharedAdmin, topic, groupId, client);
+            )
+            : new IntegrationTestContext(sharedAdmin, topic, groupId, client);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (await Client.ConsumerStateAsync() == ConsumerState.Running)
+        if (await Client.GetConsumerStateAsync() == ConsumerState.Running)
         {
             await Client.UnsubscribeAsync();
         }
-        Client.Dispose();
+        await Client.DisposeAsync();
 
         try
         {
