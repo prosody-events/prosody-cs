@@ -145,6 +145,13 @@ trim_trailing_whitespace = false
 [*.json]
 indent_size = 2
 
+# ClientOptions.cs analyzer suppressions
+[src/Prosody/ClientOptions.cs]
+# CA1819: ClientOptions uses string[] properties for IConfiguration.Bind() compatibility
+dotnet_diagnostic.CA1819.severity = none
+# MA0076: Suppress analyzer for ClientOptions
+dotnet_diagnostic.MA0076.severity = none
+
 # Exclude generated code from all analyzers
 [src/Prosody/Generated/**]
 generated_code = true

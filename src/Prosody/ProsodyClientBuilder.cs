@@ -188,10 +188,6 @@ public sealed class ProsodyClientBuilder
         return this;
     }
 
-    // ========================================================================
-    // Configuration
-    // ========================================================================
-
     /// <summary>
     /// Applies arbitrary configuration to the underlying <see cref="ClientOptions"/>.
     /// </summary>
@@ -222,10 +218,6 @@ public sealed class ProsodyClientBuilder
         return this;
     }
 
-    // ========================================================================
-    // Build
-    // ========================================================================
-
     /// <summary>
     /// Creates a new <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
@@ -237,6 +229,6 @@ public sealed class ProsodyClientBuilder
     public ProsodyClient Build()
     {
         _options.Validate();
-        return new ProsodyClient(_options.Clone());
+        return ProsodyClient.FromValidatedOptions(_options.Clone());
     }
 }

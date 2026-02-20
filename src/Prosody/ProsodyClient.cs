@@ -9,6 +9,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
 
+    private ProsodyClient(Native.ProsodyClient native)
+    {
+        _native = native;
+    }
+
     /// <summary>
     /// Creates a new ProsodyClient with the given options.
     /// </summary>
@@ -20,6 +25,15 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
+    }
+
+    /// <summary>
+    /// Creates a new ProsodyClient from pre-validated options, skipping redundant validation.
+    /// </summary>
+    internal static ProsodyClient FromValidatedOptions(ClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new ProsodyClient(new Native.ProsodyClient(options.ToNative()));
     }
 
     /// <summary>

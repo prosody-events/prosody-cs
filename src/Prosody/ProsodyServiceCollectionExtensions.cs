@@ -1,7 +1,8 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Prosody;
 
@@ -38,14 +39,22 @@ public static class ProsodyServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds a <see cref="ProsodyClient"/> to the service collection using configuration from an <see cref="IConfiguration"/> section.
+    /// Adds a <see cref="ProsodyClient"/> to the service collection using configuration
+    /// bound from the <c>Prosody</c> section of the application's <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="configuration">The configuration section containing Prosody client options.</param>
+    /// <param name="configure">An optional action to further configure the client options after binding configuration.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// <para>
-    /// The configuration section should contain properties that match <see cref="ClientOptions"/>.
+    /// Options are bound from the <c>Prosody</c> configuration section using the standard
+    /// <see cref="IOptions{TOptions}"/> pipeline. The <paramref name="configure"/> action
+    /// is applied via <see cref="OptionsServiceCollectionExtensions.PostConfigure{TOptions}(IServiceCollection, Action{TOptions})"/>
+    /// after configuration binding.
+    /// </para>
+    /// <para>
+    /// Validation runs at startup via <see cref="OptionsBuilderExtensions.ValidateOnStart{TOptions}(OptionsBuilder{TOptions})"/>.
+    /// Invalid configuration throws <see cref="OptionsValidationException"/>.
     /// </para>
     /// <para>
     /// The client is registered as a singleton because it manages Kafka connections and internal state
@@ -65,66 +74,36 @@ public static class ProsodyServiceCollectionExtensions
     /// // }
     ///
     /// var builder = WebApplication.CreateBuilder(args);
-    /// builder.Services.AddProsodyClient(builder.Configuration.GetSection("Prosody"));
-    /// </code>
-    /// </example>
-    public static IServiceCollection AddProsodyClient(this IServiceCollection services, IConfiguration configuration) =>
-        services.AddProsodyClient(configuration, configure: null);
-
-    /// <summary>
-    /// Adds a <see cref="ProsodyClient"/> to the service collection using configuration from an <see cref="IConfiguration"/> section
-    /// with additional option customization.
-    /// </summary>
-    /// <param name="services">The service collection to configure.</param>
-    /// <param name="configuration">The configuration section containing Prosody client options.</param>
-    /// <param name="configure">An optional action to further configure the client options after binding configuration.</param>
-    /// <returns>The service collection for chaining.</returns>
-    /// <remarks>
-    /// <para>
-    /// The configuration section should contain properties that match <see cref="ClientOptions"/>.
-    /// The <paramref name="configure"/> action is called after configuration is bound, allowing
-    /// programmatic overrides or additions.
-    /// </para>
-    /// <para>
-    /// The client is registered as a singleton because it manages Kafka connections and internal state
-    /// that should be shared across the application.
-    /// </para>
-    /// </remarks>
-    /// <example>
-    /// <code>
-    /// var builder = WebApplication.CreateBuilder(args);
-    /// builder.Services.AddProsodyClient(
-    ///     builder.Configuration.GetSection("Prosody"),
-    ///     options => options.Mock = builder.Environment.IsDevelopment());
+    /// builder.Services.AddProsodyClient();
+    ///
+    /// // Or with programmatic overrides:
+    /// builder.Services.AddProsodyClient(options =&gt; options.Mock = true);
     /// </code>
     /// </example>
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
-        IConfiguration configuration,
-        Action<ClientOptions>? configure
-    )
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        services.AddSingleton(_ =>
-        {
-            var options = configuration.Get<ClientOptions>() ?? new ClientOptions();
-            configure?.Invoke(options);
-            options.Validate();
-            return new ProsodyClient(options);
-        });
-
-        return services;
-    }
+        Action<ClientOptions>? configure = null
+    ) => services.AddProsodyClient("Prosody", configure);
 
     /// <summary>
-    /// Adds a <see cref="ProsodyClient"/> to the service collection using option configuration.
+    /// Adds a <see cref="ProsodyClient"/> to the service collection using configuration
+    /// bound from the specified configuration section path.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="configure">An action to configure the client options.</param>
+    /// <param name="configSectionPath">The configuration section path to bind from (e.g. <c>"MyApp:Kafka"</c>).</param>
+    /// <param name="configure">An optional action to further configure the client options after binding configuration.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
+    /// <para>
+    /// Options are bound from the specified configuration section using the standard
+    /// <see cref="IOptions{TOptions}"/> pipeline. The <paramref name="configure"/> action
+    /// is applied via <see cref="OptionsServiceCollectionExtensions.PostConfigure{TOptions}(IServiceCollection, Action{TOptions})"/>
+    /// after configuration binding.
+    /// </para>
+    /// <para>
+    /// Validation runs at startup via <see cref="OptionsBuilderExtensions.ValidateOnStart{TOptions}(OptionsBuilder{TOptions})"/>.
+    /// Invalid configuration throws <see cref="OptionsValidationException"/>.
+    /// </para>
     /// <para>
     /// The client is registered as a singleton because it manages Kafka connections and internal state
     /// that should be shared across the application.
@@ -133,26 +112,34 @@ public static class ProsodyServiceCollectionExtensions
     /// <example>
     /// <code>
     /// var builder = WebApplication.CreateBuilder(args);
-    /// builder.Services.AddProsodyClient(options =>
-    /// {
-    ///     options.BootstrapServers = ["localhost:9092"];
-    ///     options.GroupId = "my-app";
-    ///     options.SubscribedTopics = ["orders"];
-    ///     options.Mock = builder.Environment.IsDevelopment();
-    /// });
+    /// builder.Services.AddProsodyClient("MyApp:Kafka", options =&gt; options.Mock = true);
     /// </code>
     /// </example>
-    public static IServiceCollection AddProsodyClient(this IServiceCollection services, Action<ClientOptions> configure)
+    public static IServiceCollection AddProsodyClient(
+        this IServiceCollection services,
+        string configSectionPath,
+        Action<ClientOptions>? configure = null
+    )
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configure);
+        ArgumentNullException.ThrowIfNull(configSectionPath);
 
-        services.AddSingleton(_ =>
+        var builder = services.AddOptions<ClientOptions>().BindConfiguration(configSectionPath);
+
+        if (configure is not null)
         {
-            var options = new ClientOptions();
-            configure(options);
-            options.Validate();
-            return new ProsodyClient(options);
+            builder.PostConfigure(configure);
+        }
+
+        builder.ValidateOnStart();
+
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<ClientOptions>, ClientOptionsValidator>()
+        );
+        services.TryAddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value;
+            return ProsodyClient.FromValidatedOptions(options);
         });
 
         return services;

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -10,28 +11,29 @@ namespace Prosody.Tests.Unit;
 public sealed class ProsodyServiceCollectionExtensionsTests
 {
     [Fact]
-    public void AddProsodyClientBindsFromConfiguration()
+    public void AddProsodyClientBindsFromDefaultSection()
     {
         // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["SubscribedTopics:0"] = "orders",
-                    ["SubscribedTopics:1"] = "payments",
-                    ["Mode"] = "Pipeline",
-                    ["MaxConcurrency"] = "64",
-                    ["Mock"] = "true",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:SubscribedTopics:0"] = "orders",
+                    ["Prosody:SubscribedTopics:1"] = "payments",
+                    ["Prosody:Mode"] = "Pipeline",
+                    ["Prosody:MaxConcurrency"] = "64",
+                    ["Prosody:Mock"] = "true",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(configuration);
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -41,38 +43,58 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientWithBuilderCustomization()
+    public void AddProsodyClientBindsFromExplicitSectionPath()
     {
         // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
+                    ["MyApp:Kafka:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["MyApp:Kafka:GroupId"] = "test-group",
+                    ["MyApp:Kafka:Mock"] = "true",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
-        var builderCalled = false;
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(
-            configuration,
-            options =>
-            {
-                builderCalled = true;
-                options.MaxConcurrency = 128;
-            }
-        );
+        services.AddProsodyClient("MyApp:Kafka");
 
         // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
 
-        Assert.True(builderCalled);
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void AddProsodyClientPostConfigureIsApplied()
+    {
+        // Arrange
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "false",
+                }
+            )
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+
+        // Act - PostConfigure overrides Mock to true
+        services.AddProsodyClient(options => options.Mock = true);
+
+        // Assert
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<ProsodyClient>();
+
         Assert.NotNull(client);
     }
 
@@ -84,15 +106,16 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
-        services.AddProsodyClient(configuration);
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddProsodyClient();
 
         // Act
         using var provider = services.BuildServiceProvider();
@@ -106,7 +129,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     [Fact]
     public void AddProsodyClientSupportsNestedConfiguration()
     {
-        // Arrange - simulates nested config like "Prosody:BootstrapServers"
+        // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
@@ -123,9 +146,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - use GetSection to get the nested section
-        services.AddProsodyClient(configuration.GetSection("Prosody"));
+        // Act
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -142,21 +166,22 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["Timeout"] = "00:02:00", // 2 minutes
-                    ["StallThreshold"] = "00:10:00", // 10 minutes
-                    ["ShutdownTimeout"] = "00:00:30", // 30 seconds
-                    ["PollInterval"] = "00:00:00.200", // 200ms
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:Timeout"] = "00:02:00",
+                    ["Prosody:StallThreshold"] = "00:10:00",
+                    ["Prosody:ShutdownTimeout"] = "00:00:30",
+                    ["Prosody:PollInterval"] = "00:00:00.200",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(configuration);
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -173,10 +198,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["Mode"] = "Pipeline",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:Mode"] = "Pipeline",
                 }
             )
             .Build();
@@ -185,11 +210,11 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["Mode"] = "LowLatency",
-                    ["FailureTopic"] = "dead-letters",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:Mode"] = "LowLatency",
+                    ["Prosody:FailureTopic"] = "dead-letters",
                 }
             )
             .Build();
@@ -198,22 +223,27 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["Mode"] = "BestEffort",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:Mode"] = "BestEffort",
                 }
             )
             .Build();
 
         var pipelineServices = new ServiceCollection();
+        pipelineServices.AddSingleton<IConfiguration>(pipelineConfig);
+
         var lowLatencyServices = new ServiceCollection();
+        lowLatencyServices.AddSingleton<IConfiguration>(lowLatencyConfig);
+
         var bestEffortServices = new ServiceCollection();
+        bestEffortServices.AddSingleton<IConfiguration>(bestEffortConfig);
 
         // Act
-        pipelineServices.AddProsodyClient(pipelineConfig);
-        lowLatencyServices.AddProsodyClient(lowLatencyConfig);
-        bestEffortServices.AddProsodyClient(bestEffortConfig);
+        pipelineServices.AddProsodyClient();
+        lowLatencyServices.AddProsodyClient();
+        bestEffortServices.AddProsodyClient();
 
         // Assert
         using var pipelineProvider = pipelineServices.BuildServiceProvider();
@@ -230,10 +260,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientWithBuilderOnly()
+    public void AddProsodyClientWithConfigureOnly()
     {
         // Arrange
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
         services.AddProsodyClient(options =>
@@ -252,25 +285,26 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientBuilderOverridesConfiguration()
+    public void AddProsodyClientPostConfigureOverridesConfiguration()
     {
         // Arrange
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = "config-server:9092",
-                    ["GroupId"] = "config-group",
-                    ["MaxConcurrency"] = "32",
-                    ["Mock"] = "true",
+                    ["Prosody:BootstrapServers:0"] = "config-server:9092",
+                    ["Prosody:GroupId"] = "config-group",
+                    ["Prosody:MaxConcurrency"] = "32",
+                    ["Prosody:Mock"] = "true",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - options override MaxConcurrency
-        services.AddProsodyClient(configuration, options => options.MaxConcurrency = 128);
+        // Act - PostConfigure overrides MaxConcurrency
+        services.AddProsodyClient(options => options.MaxConcurrency = 128);
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -280,23 +314,21 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientEmptyConfigurationUsesDefaults()
+    public void AddProsodyClientEmptyConfigurationWithPostConfigure()
     {
         // Arrange - empty configuration
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
-        // Act - use options to set required mock mode
-        services.AddProsodyClient(
-            configuration,
-            options =>
-            {
-                options.Mock = true;
-                options.BootstrapServers = [TestDefaults.BootstrapServers];
-                options.GroupId = "test";
-            }
-        );
+        // Act - use PostConfigure to set required mock mode
+        services.AddProsodyClient(options =>
+        {
+            options.Mock = true;
+            options.BootstrapServers = [TestDefaults.BootstrapServers];
+            options.GroupId = "test";
+        });
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -313,24 +345,25 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["CassandraNodes:0"] = "cass1:9042",
-                    ["CassandraNodes:1"] = "cass2:9042",
-                    ["CassandraKeyspace"] = "prosody_test",
-                    ["CassandraDatacenter"] = "dc1",
-                    ["CassandraUser"] = "testuser",
-                    ["CassandraPassword"] = "testpass",
-                    ["CassandraRetention"] = "180.00:00:00", // 180 days
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:CassandraNodes:0"] = "cass1:9042",
+                    ["Prosody:CassandraNodes:1"] = "cass2:9042",
+                    ["Prosody:CassandraKeyspace"] = "prosody_test",
+                    ["Prosody:CassandraDatacenter"] = "dc1",
+                    ["Prosody:CassandraUser"] = "testuser",
+                    ["Prosody:CassandraPassword"] = "testpass",
+                    ["Prosody:CassandraRetention"] = "180.00:00:00",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(configuration);
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
@@ -347,31 +380,59 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["MaxConcurrency"] = "128",
-                    ["MaxUncommitted"] = "256",
-                    ["MaxEnqueuedPerKey"] = "16",
-                    ["IdempotenceCacheSize"] = "8192",
-                    ["MaxRetries"] = "5",
-                    ["ProbePort"] = "8080",
-                    ["DeferCacheSize"] = "2048",
-                    ["SchedulerCacheSize"] = "16384",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:MaxConcurrency"] = "128",
+                    ["Prosody:MaxUncommitted"] = "256",
+                    ["Prosody:MaxEnqueuedPerKey"] = "16",
+                    ["Prosody:IdempotenceCacheSize"] = "8192",
+                    ["Prosody:MaxRetries"] = "5",
+                    ["Prosody:ProbePort"] = "8080",
+                    ["Prosody:DeferCacheSize"] = "2048",
+                    ["Prosody:SchedulerCacheSize"] = "16384",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(configuration);
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
 
         Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void AddProsodyClientClonesOptionsToPreventMutation()
+    {
+        // Arrange
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddProsodyClient(options =>
+        {
+            options.BootstrapServers = [TestDefaults.BootstrapServers];
+            options.GroupId = "test-group";
+            options.Mock = true;
+            options.SourceSystem = "original";
+        });
+
+        // Act - resolve client first, then mutate the options
+        using var provider = services.BuildServiceProvider();
+        using var client = provider.GetRequiredService<ProsodyClient>();
+
+        var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
+        resolvedOptions.SourceSystem = "mutated";
+
+        // Assert - client should retain original value because it was cloned
+        Assert.Equal("original", client.SourceSystem);
     }
 
     [Fact]
@@ -382,26 +443,89 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             .AddInMemoryCollection(
                 new Dictionary<string, string?>
                 {
-                    ["BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["GroupId"] = "test-group",
-                    ["Mock"] = "true",
-                    ["DeferFailureThreshold"] = "0.85",
-                    ["MonopolizationThreshold"] = "0.75",
-                    ["SchedulerFailureWeight"] = "0.4",
-                    ["SchedulerWaitWeight"] = "150.5",
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:DeferFailureThreshold"] = "0.85",
+                    ["Prosody:MonopolizationThreshold"] = "0.75",
+                    ["Prosody:SchedulerFailureWeight"] = "0.4",
+                    ["Prosody:SchedulerWaitWeight"] = "150.5",
                 }
             )
             .Build();
 
         var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
 
         // Act
-        services.AddProsodyClient(configuration);
+        services.AddProsodyClient();
 
         // Assert
         using var provider = services.BuildServiceProvider();
         using var client = provider.GetRequiredService<ProsodyClient>();
 
         Assert.NotNull(client);
+    }
+
+    [Fact]
+    public void AddProsodyClientOptionsAreBoundViaIOptions()
+    {
+        // Arrange
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "options-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:MaxConcurrency"] = "64",
+                }
+            )
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddProsodyClient();
+
+        // Act
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
+
+        // Assert - verify options were bound from configuration
+        Assert.Multiple(
+            () => Assert.Equal([TestDefaults.BootstrapServers], options.BootstrapServers!),
+            () => Assert.Equal("options-group", options.GroupId),
+            () => Assert.True(options.Mock),
+            () => Assert.Equal(64u, options.MaxConcurrency)
+        );
+    }
+
+    [Fact]
+    public void AddProsodyClientValidateOnStartThrowsForInvalidConfig()
+    {
+        // Arrange - LowLatency without FailureTopic
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
+                    ["Prosody:GroupId"] = "test-group",
+                    ["Prosody:Mock"] = "true",
+                    ["Prosody:Mode"] = "LowLatency",
+                }
+            )
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddProsodyClient();
+
+        // Act & Assert - validation runs eagerly when resolving IOptions<ClientOptions>
+        using var provider = services.BuildServiceProvider();
+        var ex = Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<ClientOptions>>().Value
+        );
+
+        Assert.Contains("FailureTopic is required when Mode is LowLatency", ex.Message, StringComparison.Ordinal);
     }
 }

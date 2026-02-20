@@ -50,7 +50,7 @@ public sealed class ClientOptions
     /// Falls back to <c>PROSODY_BOOTSTRAP_SERVERS</c> environment variable.
     /// </summary>
     /// <example><c>["localhost:9092"]</c> or <c>["broker1:9092", "broker2:9092"]</c></example>
-    public IReadOnlyList<string>? BootstrapServers { get; set; }
+    public string[]? BootstrapServers { get; set; }
 
     /// <summary>
     /// Consumer group ID. Should be set to your application name.
@@ -63,7 +63,7 @@ public sealed class ClientOptions
     /// Falls back to <c>PROSODY_SUBSCRIBED_TOPICS</c> environment variable.
     /// </summary>
     /// <example><c>["my-topic"]</c> or <c>["topic1", "topic2"]</c></example>
-    public IReadOnlyList<string>? SubscribedTopics { get; set; }
+    public string[]? SubscribedTopics { get; set; }
 
     /// <summary>
     /// Client operating mode. Default: <see cref="ClientMode.Pipeline"/>.
@@ -74,7 +74,7 @@ public sealed class ClientOptions
     /// Allowed event type prefixes. <c>null</c> = all events allowed.
     /// </summary>
     /// <example><c>["user.", "account."]</c> to only process events starting with those prefixes.</example>
-    public IReadOnlyList<string>? AllowedEvents { get; set; }
+    public string[]? AllowedEvents { get; set; }
 
     /// <summary>
     /// Source system identifier for outgoing messages.
@@ -321,7 +321,7 @@ public sealed class ClientOptions
     /// Cassandra contact nodes.
     /// </summary>
     /// <example><c>["localhost:9042"]</c> or <c>["cass1:9042", "cass2:9042"]</c></example>
-    public IReadOnlyList<string>? CassandraNodes { get; set; }
+    public string[]? CassandraNodes { get; set; }
 
     /// <summary>
     /// Cassandra keyspace name.
@@ -361,89 +361,40 @@ public sealed class ClientOptions
     /// <exception cref="InvalidOperationException">Thrown when the configuration is invalid.</exception>
     internal void Validate()
     {
-        if (BootstrapServers is { Count: 0 })
-        {
-            throw new InvalidOperationException("BootstrapServers must not be empty.");
-        }
+        var result = Validator.Validate(name: null, this);
 
-        if (SubscribedTopics is { Count: 0 })
+        if (result.Failed)
         {
-            throw new InvalidOperationException("SubscribedTopics must not be empty.");
-        }
-
-        if (Mode is ClientMode.LowLatency && string.IsNullOrWhiteSpace(FailureTopic))
-        {
-            throw new InvalidOperationException("FailureTopic is required when Mode is LowLatency.");
-        }
-
-        if (DeferFailureThreshold is < 0.0 or > 1.0)
-        {
-            throw new InvalidOperationException("DeferFailureThreshold must be between 0.0 and 1.0.");
-        }
-
-        if (MonopolizationThreshold is < 0.0 or > 1.0)
-        {
-            throw new InvalidOperationException("MonopolizationThreshold must be between 0.0 and 1.0.");
-        }
-
-        if (SchedulerFailureWeight is < 0.0 or > 1.0)
-        {
-            throw new InvalidOperationException("SchedulerFailureWeight must be between 0.0 and 1.0.");
-        }
-
-        if (Timeout is { Ticks: < 0 })
-        {
-            throw new InvalidOperationException("Timeout must not be negative.");
-        }
-
-        if (StallThreshold is { Ticks: < 0 })
-        {
-            throw new InvalidOperationException("StallThreshold must not be negative.");
-        }
-
-        HasNoDuplicates(BootstrapServers, nameof(BootstrapServers));
-        HasNoDuplicates(SubscribedTopics, nameof(SubscribedTopics));
-        HasNoDuplicates(AllowedEvents, nameof(AllowedEvents));
-        HasNoDuplicates(CassandraNodes, nameof(CassandraNodes));
-    }
-
-    private static void HasNoDuplicates(IReadOnlyList<string>? list, string name)
-    {
-        if (list is null)
-        {
-            return;
-        }
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in list)
-        {
-            if (!seen.Add(item))
-            {
-                throw new InvalidOperationException($"{name} must not contain duplicates. Found duplicate: '{item}'.");
-            }
+            throw new InvalidOperationException(result.FailureMessage);
         }
     }
 
-    private static string[]? ToArray(IReadOnlyList<string>? list) =>
-        list switch
-        {
-            null => null,
-            string[] array => array,
-            _ => [.. list],
-        };
+    private static ClientOptionsValidator Validator { get; } = new();
 
     /// <summary>
-    /// Creates a shallow copy of this <see cref="ClientOptions"/> instance.
+    /// Creates an independent copy of this <see cref="ClientOptions"/> instance,
+    /// deep-copying all array properties so mutations to the original do not affect the clone.
     /// </summary>
-    internal ClientOptions Clone() => (ClientOptions)MemberwiseClone();
+    internal ClientOptions Clone()
+    {
+        var clone = (ClientOptions)MemberwiseClone();
+        clone.BootstrapServers = CloneArray(clone.BootstrapServers);
+        clone.SubscribedTopics = CloneArray(clone.SubscribedTopics);
+        clone.AllowedEvents = CloneArray(clone.AllowedEvents);
+        clone.CassandraNodes = CloneArray(clone.CassandraNodes);
+        return clone;
+    }
+
+    private static T[]? CloneArray<T>(T[]? source) => source is not null ? [.. source] : null;
 
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
     internal Native.ClientOptions ToNative() =>
         new(
-            BootstrapServers: ToArray(BootstrapServers),
+            BootstrapServers: BootstrapServers,
             GroupId: GroupId,
-            SubscribedTopics: ToArray(SubscribedTopics),
+            SubscribedTopics: SubscribedTopics,
             Mode: Mode switch
             {
                 ClientMode.Pipeline => Native.ClientMode.Pipeline,
@@ -452,7 +403,7 @@ public sealed class ClientOptions
                 null => null,
                 _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
             },
-            AllowedEvents: ToArray(AllowedEvents),
+            AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
             MaxConcurrency: MaxConcurrency,
@@ -487,7 +438,7 @@ public sealed class ClientOptions
             SchedulerMaxWait: SchedulerMaxWait,
             SchedulerWaitWeight: SchedulerWaitWeight,
             SchedulerCacheSize: SchedulerCacheSize,
-            CassandraNodes: ToArray(CassandraNodes),
+            CassandraNodes: CassandraNodes,
             CassandraKeyspace: CassandraKeyspace,
             CassandraDatacenter: CassandraDatacenter,
             CassandraRack: CassandraRack,

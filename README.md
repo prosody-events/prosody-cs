@@ -178,6 +178,25 @@ Configure via `ClientOptions` properties or environment variables. Properties ta
 
 Common options have dedicated builder methods (e.g., `WithBootstrapServers()`). All other options are set via `Configure()` or directly on `ClientOptions`. See the [API Reference](#api-reference) for the full builder API.
 
+### Dependency Injection
+
+For ASP.NET Core or Generic Host applications, you can bind configuration using the options pipeline:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Binds from the "Prosody" configuration section.
+builder.Services.AddProsodyClient();
+
+// Or bind from a custom section path:
+builder.Services.AddProsodyClient("MySection:ProsodyConfig");
+
+// Or apply programmatic overrides after binding:
+builder.Services.AddProsodyClient(options => options.Mock = true);
+```
+
+The client is validated at startup via `ValidateOnStart()`. Invalid configuration throws `OptionsValidationException`.
+
 ### Core
 
 | Property / Environment Variable | Description | Default |
@@ -295,7 +314,7 @@ await using var client = ProsodyClientBuilder.Create()
 Or via environment variables:
 
 ```bash
-PROSODY_PROBE_PORT=8000  # Set to 'none' to disable
+PROSODY_PROBE_PORT=8000  # Set to 0 to disable
 PROSODY_STALL_THRESHOLD=15s  # Default stall detection threshold
 ```
 
@@ -982,7 +1001,7 @@ Prosody uses an automated release process managed by GitHub Actions. Here's an o
 3. **Build Process**: If a new release is created, the following build jobs are triggered:
     - Linux builds for x86_64 and aarch64 architectures.
     - Windows builds for x64 and arm64 architectures.
-    - macOS builds for x86_64 and arm64 architectures.
+    - macOS builds for arm64 architecture.
 
 4. **Artifact Upload**: Each build job uploads its artifacts (native libraries) to GitHub Actions.
 
@@ -1029,6 +1048,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithMaxRetries(uint maxRetries)`: Set max retry attempts
 - `WithFailureTopic(string topic)`: Set dead letter topic
 - `WithProbePort(ushort port)`: Set health check probe port
+- `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
 - `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
 
 **Build:**
@@ -1045,7 +1065,8 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendRawAsync(string topic, string key, byte[] jsonPayload, CancellationToken cancellationToken = default)`: Send raw JSON bytes to a specified topic.
 - `Task SubscribeAsync(IProsodyHandler handler)`: Subscribe to messages using the provided handler.
 - `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
-- `void Dispose()`: Dispose of client resources.
+- `void Dispose()`: Dispose of client resources synchronously.
+- `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
 
 ### AdminClient
 

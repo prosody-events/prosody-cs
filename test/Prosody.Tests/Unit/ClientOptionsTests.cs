@@ -45,7 +45,7 @@ public sealed class ClientOptionsTests
         var options = new ClientOptions { BootstrapServers = ["broker1:9092", "broker2:9092", "broker3:9092"] };
 
         Assert.Multiple(
-            () => Assert.Equal(3, options.BootstrapServers!.Count),
+            () => Assert.Equal(3, options.BootstrapServers!.Length),
             () => Assert.Contains("broker1:9092", options.BootstrapServers),
             () => Assert.Contains("broker2:9092", options.BootstrapServers),
             () => Assert.Contains("broker3:9092", options.BootstrapServers)
@@ -57,7 +57,7 @@ public sealed class ClientOptionsTests
     {
         var options = new ClientOptions { SubscribedTopics = ["orders", "payments", "notifications"] };
 
-        Assert.Equal(3, options.SubscribedTopics!.Count);
+        Assert.Equal(3, options.SubscribedTopics!.Length);
     }
 
     [Fact]
@@ -151,10 +151,78 @@ public sealed class ClientOptionsTests
         };
 
         Assert.Multiple(
-            () => Assert.Equal(2, options.CassandraNodes?.Count),
+            () => Assert.Equal(2, options.CassandraNodes?.Length),
             () => Assert.Equal("prosody", options.CassandraKeyspace),
             () => Assert.Equal("dc1", options.CassandraDatacenter),
             () => Assert.Equal(TimeSpan.FromDays(365), options.CassandraRetention)
+        );
+    }
+
+    [Fact]
+    public void CloneDeepCopiesCollections()
+    {
+        var servers = new[] { "broker1:9092", "broker2:9092" };
+        var topics = new[] { "orders", "payments" };
+        var events = new[] { "user.", "account." };
+        var nodes = new[] { "cass1:9042", "cass2:9042" };
+
+        var original = new ClientOptions
+        {
+            BootstrapServers = servers,
+            SubscribedTopics = topics,
+            AllowedEvents = events,
+            CassandraNodes = nodes,
+            GroupId = "test-group",
+        };
+
+        var clone = original.Clone();
+
+        // Mutate the original arrays
+        servers[0] = "mutated:9092";
+        topics[0] = "mutated";
+        events[0] = "mutated.";
+        nodes[0] = "mutated:9042";
+
+        Assert.Multiple(
+            () => Assert.Equal("broker1:9092", clone.BootstrapServers![0]),
+            () => Assert.Equal("orders", clone.SubscribedTopics![0]),
+            () => Assert.Equal("user.", clone.AllowedEvents![0]),
+            () => Assert.Equal("cass1:9042", clone.CassandraNodes![0]),
+            () => Assert.Equal("test-group", clone.GroupId)
+        );
+    }
+
+    [Fact]
+    public void CloneDeepCopiesArrays()
+    {
+        var servers = new[] { "broker1:9092", "broker2:9092" };
+        var topics = new[] { "orders", "payments" };
+
+        var original = new ClientOptions { BootstrapServers = servers, SubscribedTopics = topics };
+
+        var clone = original.Clone();
+
+        Assert.Multiple(
+            () => Assert.NotSame(servers, clone.BootstrapServers),
+            () => Assert.NotSame(topics, clone.SubscribedTopics),
+            () => Assert.Equal(servers, clone.BootstrapServers),
+            () => Assert.Equal(topics, clone.SubscribedTopics)
+        );
+    }
+
+    [Fact]
+    public void ClonePreservesNullCollections()
+    {
+        var original = new ClientOptions { GroupId = "test-group" };
+
+        var clone = original.Clone();
+
+        Assert.Multiple(
+            () => Assert.Null(clone.BootstrapServers),
+            () => Assert.Null(clone.SubscribedTopics),
+            () => Assert.Null(clone.AllowedEvents),
+            () => Assert.Null(clone.CassandraNodes),
+            () => Assert.Equal("test-group", clone.GroupId)
         );
     }
 
