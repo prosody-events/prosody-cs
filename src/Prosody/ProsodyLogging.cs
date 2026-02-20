@@ -42,7 +42,6 @@ public static class ProsodyLogging
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
         var sink = new LogSinkBridge(loggerFactory);
-
         lock (SyncLock)
         {
             if (_sink is not null)
@@ -58,11 +57,16 @@ public static class ProsodyLogging
     /// <summary>
     /// Clears the current logging configuration. Intended for host shutdown.
     /// </summary>
+    /// <remarks>
+    /// Acquires <see cref="SyncLock"/> to avoid racing with <see cref="Configure"/> —
+    /// primarily relevant in parallel test scenarios where one hosted service may stop while another is starting.
+    /// </remarks>
     internal static void Clear()
     {
-        // No lock needed: the Rust side uses ArcSwapOption (lock-free atomic store),
-        // and this is only called during shutdown or in tests — never concurrently with Configure in practice.
-        _sink = null;
+        lock (SyncLock)
+        {
+            _sink = null;
+        }
         ProsodyFfiMethods.ClearLogSink();
     }
 }

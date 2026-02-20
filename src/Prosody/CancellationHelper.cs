@@ -17,7 +17,7 @@ internal static class CancellationHelper
         CancellationToken cancellationToken
     )
     {
-        if (cancellationToken == CancellationToken.None)
+        if (!cancellationToken.CanBeCanceled)
             return null;
 
         var signal = new Native.CancellationSignal();
