@@ -59,9 +59,42 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
     /// </summary>
-    internal async Task<NativeResult> HandleMessageAsync(
+    internal Task<NativeResult> HandleMessageAsync(
         ProsodyContext wrappedContext,
         Message wrappedMessage,
+        Func<Task> onCancel,
+        Dictionary<string, string> carrier
+    ) =>
+        InvokeHandlerAsync(
+            ct => _userHandler.OnMessageAsync(wrappedContext, wrappedMessage, ct),
+            _onMessageAttribute,
+            onCancel,
+            carrier
+        );
+
+    /// <summary>
+    /// Core timer handling logic, decoupled from native types for testability.
+    /// </summary>
+    internal Task<NativeResult> HandleTimerAsync(
+        ProsodyContext wrappedContext,
+        Timer wrappedTimer,
+        Func<Task> onCancel,
+        Dictionary<string, string> carrier
+    ) =>
+        InvokeHandlerAsync(
+            ct => _userHandler.OnTimerAsync(wrappedContext, wrappedTimer, ct),
+            _onTimerAttribute,
+            onCancel,
+            carrier
+        );
+
+    /// <summary>
+    /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
+    /// and classifies any exception as permanent or transient.
+    /// </summary>
+    private static async Task<NativeResult> InvokeHandlerAsync(
+        Func<CancellationToken, Task> handler,
+        PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
         Dictionary<string, string> carrier
     )
@@ -79,10 +112,10 @@ internal sealed class EventHandlerBridge : NativeHandler
 
         try
         {
-            await _userHandler.OnMessageAsync(wrappedContext, wrappedMessage, cts.Token).ConfigureAwait(false);
+            await handler(cts.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null);
         }
-        catch (Exception ex) when (IsPermanentError(ex, _onMessageAttribute))
+        catch (Exception ex) when (IsPermanentError(ex, permanentErrorAttribute))
         {
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
@@ -97,47 +130,6 @@ internal sealed class EventHandlerBridge : NativeHandler
             // Signal the monitor to stop waiting, then await it so no task leaks.
             // The using-scoped CTS is disposed after this finally block completes,
             // guaranteeing it outlives any CancelAsync() call inside the monitor.
-            handlerDone.TrySetResult();
-            await cancelMonitor.ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>
-    /// Core timer handling logic, decoupled from native types for testability.
-    /// </summary>
-    internal async Task<NativeResult> HandleTimerAsync(
-        ProsodyContext wrappedContext,
-        Timer wrappedTimer,
-        Func<Task> onCancel,
-        Dictionary<string, string> carrier
-    )
-    {
-        using var activity = TracePropagation.Extract(carrier);
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Bridge native cancellation to CTS (see HandleMessageAsync for detailed comments)
-#pragma warning disable CA2025 // CTS outlives the monitor: finally awaits the monitor before the using scope disposes the CTS
-        Task cancelMonitor = BridgeCancellationAsync(onCancel, cts, handlerDone.Task);
-#pragma warning restore CA2025
-
-        try
-        {
-            await _userHandler.OnTimerAsync(wrappedContext, wrappedTimer, cts.Token).ConfigureAwait(false);
-            return new NativeResult(NativeResultCode.Success, null);
-        }
-        catch (Exception ex) when (IsPermanentError(ex, _onTimerAttribute))
-        {
-            return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
-        }
-#pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
-        catch (Exception ex)
-        {
-            return new NativeResult(NativeResultCode.TransientError, ex.ToString());
-        }
-#pragma warning restore CA1031
-        finally
-        {
             handlerDone.TrySetResult();
             await cancelMonitor.ConfigureAwait(false);
         }
