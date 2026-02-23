@@ -60,6 +60,7 @@ ffi/                           # Rust FFI crate (prosody-ffi) - produces cdylib
 src/Prosody/                   # C# library
 src/Prosody/Generated/         # Generated C# bindings (uniffi-bindgen-cs output)
 test/Prosody.Tests/            # C# tests (unit, integration, helpers)
+bench/Prosody.Benchmarks/      # BenchmarkDotNet performance benchmarks
 ```
 
 ## Commands
@@ -71,6 +72,7 @@ Use the Makefile for all common tasks. Run `make help` for a quick reference.
 make setup      # Install all dependencies (run once after cloning)
 make build      # Build FFI crate (debug), generate bindings, build .NET
 make test       # Build and run all tests (requires docker-compose services)
+make bench      # Run all benchmarks (Release mode)
 make lint       # Run all linters (Rust clippy + C# analyzers/format check)
 make format     # Format all code (Rust + C#)
 make clean      # Clean all build artifacts

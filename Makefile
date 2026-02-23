@@ -8,7 +8,7 @@
 #   make format     - Format all code
 #   make clean      - Clean build artifacts
 
-.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
+.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test bench bench-short lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
 
 # ==============================================================================
 # Platform Detection
@@ -83,6 +83,8 @@ help:
 	@echo "  make test         - Run all tests"
 	@echo "  make lint         - Run all linters (Rust + C#)"
 	@echo "  make format       - Format all code (Rust + C#)"
+	@echo "  make bench        - Run all benchmarks (Release mode)"
+	@echo "  make bench-short  - Run benchmarks with short warmup (for CI)"
 	@echo "  make pack         - Build NuGet package locally (current platform only)"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
@@ -323,6 +325,18 @@ pack: build-ffi-release bindgen-release
 	@echo "For a full multi-platform package, use the release workflow."
 
 # ==============================================================================
+# Benchmark
+# ==============================================================================
+
+# Run all benchmarks in Release mode
+bench:
+	dotnet run -c Release --project bench/Prosody.Benchmarks --framework net10.0 -- --filter '*' --exporters json
+
+# Run benchmarks with short warmup (suitable for CI)
+bench-short:
+	dotnet run -c Release --project bench/Prosody.Benchmarks --framework net10.0 -- --filter '*' --exporters json --job short
+
+# ==============================================================================
 # Clean
 # ==============================================================================
 
@@ -331,6 +345,7 @@ clean:
 	rm -rf "$(BINDINGS_DIR)"/*.cs
 	rm -rf ffi/artifacts
 	rm -rf "$(PACK_OUTPUT)"
+	rm -rf BenchmarkDotNet.Artifacts
 	dotnet clean 2>/dev/null || true
 	find . -type d -name 'bin' -not -path './target/*' -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name 'obj' -not -path './target/*' -exec rm -rf {} + 2>/dev/null || true
