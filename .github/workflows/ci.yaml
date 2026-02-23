@@ -108,10 +108,10 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI and generate bindings
-        run: make build
+        run: make build-release
 
       - name: Run tests
-        run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
+        run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
         env:
           PROSODY_BOOTSTRAP_SERVERS: localhost:9094
           PROSODY_CASSANDRA_NODES: localhost:9042

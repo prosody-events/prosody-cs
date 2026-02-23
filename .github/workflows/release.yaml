@@ -328,7 +328,10 @@ jobs:
                 /p:TargetFramework=net${{ matrix.dotnet }}
 
               # Run tests using the NuGet package (not ProjectReference)
-              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore -p:TestPackage=true
+              # --no-launch-profile prevents launchSettings.json from overriding
+              # PROSODY_BOOTSTRAP_SERVERS with localhost:9094 (which is unreachable
+              # from inside this container; Kafka is at kafka:9092 on the Docker network).
+              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore --no-launch-profile -c Release -p:TestPackage=true
             "
 
   publish:

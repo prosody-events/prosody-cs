@@ -185,6 +185,7 @@ build: build-ffi bindgen
 build-release: build-ffi-release bindgen-release
 	@echo "Building .NET project (Release)..."
 	dotnet build -c Release
+	@$(MAKE) --no-print-directory copy-native-to-test-output CONFIG=Release
 	@echo "Release build complete!"
 
 # Ensure cdylib exists before bindgen (triggers build-ffi if needed)
@@ -238,13 +239,20 @@ format-check: format-check-rust format-check-toml format-check-csharp
 
 # Copy native library to test output directories for runtime loading
 # .NET's DllImport doesn't automatically probe runtimes/<rid>/native/ during tests
+# CONFIG defaults to Debug; pass CONFIG=Release for release builds
+CONFIG ?= Debug
 copy-native-to-test-output:
-	@echo "Copying native library to test output directories..."
+	@echo "Copying native library to test output directories ($(CONFIG))..."
 	@for tfm in net8.0 net9.0 net10.0; do \
-		dir="test/Prosody.Tests/bin/Debug/$$tfm"; \
+		dir="test/Prosody.Tests/bin/$(CONFIG)/$$tfm"; \
 		if [ -d "$$dir" ]; then \
-			cp "$(CDYLIB)" "$$dir/$(LIB_NAME)" && \
-			echo "  -> $$dir/$(LIB_NAME)"; \
+			if [ "$(CONFIG)" = "Release" ]; then \
+				cp "$(CDYLIB_RELEASE)" "$$dir/$(LIB_NAME)" && \
+				echo "  -> $$dir/$(LIB_NAME)"; \
+			else \
+				cp "$(CDYLIB)" "$$dir/$(LIB_NAME)" && \
+				echo "  -> $$dir/$(LIB_NAME)"; \
+			fi; \
 		fi; \
 	done
 
