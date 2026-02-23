@@ -88,7 +88,7 @@ jobs:
         with:
           crate: uniffi-bindgen-cs
           git: https://github.com/jmbryan4/uniffi-bindgen-cs.git
-          branch: main
+          commit: 39a3b160ef03c75e65a69ce2b870cc121b20e328
 
       - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
         run: dotnet tool install -g csharpier
