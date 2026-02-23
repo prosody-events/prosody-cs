@@ -110,15 +110,70 @@ jobs:
       - name: Build FFI and generate bindings
         run: make build-release
 
-      - name: Run C# lint
-        run: make lint-csharp
-
       - name: Run tests
         run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
         env:
           PROSODY_BOOTSTRAP_SERVERS: localhost:9094
           PROSODY_CASSANDRA_NODES: localhost:9042
           PROSODY_CASSANDRA_KEYSPACE: prosody_test
+
+  dotnet-lint:
+    name: .NET Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Git credentials
+        uses: de-vri-es/setup-git-credentials@v2
+        with:
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: uniffi-bindgen-cs
+          git: https://github.com/hadronzoo/uniffi-bindgen-cs.git
+          branch: fix/issue-152-pascalcase-record-properties
+
+      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
+        run: dotnet tool install -g csharpier
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI and generate bindings
+        run: make build-release
+
+      - name: Run C# lint
+        run: make lint-csharp
 
   fmt:
     name: Format
