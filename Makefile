@@ -67,8 +67,8 @@ DOTNET_NATIVE_RELEASE := $(DOTNET_NATIVE_BASE)/release
 BINDINGS_DIR := src/Prosody/Generated
 
 # uniffi-bindgen-cs configuration
-BINDGEN_REPO := https://github.com/hadronzoo/uniffi-bindgen-cs.git
-BINDGEN_BRANCH := fix/issue-152-pascalcase-record-properties
+BINDGEN_REPO := https://github.com/jmbryan4/uniffi-bindgen-cs.git
+BINDGEN_REV := 39a3b160ef03c75e65a69ce2b870cc121b20e328
 
 # ==============================================================================
 # Help
@@ -107,7 +107,7 @@ setup:
 	cargo fetch
 	@echo ""
 	@echo "==> Installing uniffi-bindgen-cs..."
-	cargo install uniffi-bindgen-cs --git $(BINDGEN_REPO) --branch $(BINDGEN_BRANCH) --force
+	cargo install uniffi-bindgen-cs --git $(BINDGEN_REPO) --rev $(BINDGEN_REV) --force
 	@echo ""
 	@echo "==> Installing taplo (TOML formatter)..."
 	cargo install taplo-cli
