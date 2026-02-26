@@ -341,7 +341,6 @@ public sealed class ProsodyServiceCollectionExtensionsTests
                     ["Prosody:Mock"] = "true",
                     ["Prosody:MaxConcurrency"] = "128",
                     ["Prosody:MaxUncommitted"] = "256",
-                    ["Prosody:MaxEnqueuedPerKey"] = "16",
                     ["Prosody:IdempotenceCacheSize"] = "8192",
                     ["Prosody:MaxRetries"] = "5",
                     ["Prosody:ProbePort"] = "8080",

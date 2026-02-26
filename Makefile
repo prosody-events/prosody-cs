@@ -8,7 +8,7 @@
 #   make format     - Format all code
 #   make clean      - Clean build artifacts
 
-.PHONY: setup build build-ffi build-ffi-release bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
+.PHONY: setup build build-ffi build-ffi-release build-ci bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
 
 # ==============================================================================
 # Platform Detection
@@ -188,6 +188,13 @@ build-release: build-ffi-release bindgen-release
 	@$(MAKE) --no-print-directory copy-native-to-test-output CONFIG=Release
 	@echo "Release build complete!"
 
+# CI build: dev Rust FFI (faster) + Release .NET (matches test binary expectations)
+build-ci: build-ffi bindgen
+	@echo "Building .NET project (Release)..."
+	dotnet build -c Release
+	@$(MAKE) --no-print-directory copy-native-to-test-output CONFIG=Release NATIVE_LIB=$(CDYLIB)
+	@echo "CI build complete!"
+
 # Ensure cdylib exists before bindgen (triggers build-ffi if needed)
 $(CDYLIB): build-ffi
 
@@ -241,18 +248,15 @@ format-check: format-check-rust format-check-toml format-check-csharp
 # .NET's DllImport doesn't automatically probe runtimes/<rid>/native/ during tests
 # CONFIG defaults to Debug; pass CONFIG=Release for release builds
 CONFIG ?= Debug
+NATIVE_LIB ?= $(if $(filter Release,$(CONFIG)),$(CDYLIB_RELEASE),$(CDYLIB))
+
 copy-native-to-test-output:
 	@echo "Copying native library to test output directories ($(CONFIG))..."
 	@for tfm in net8.0 net9.0 net10.0; do \
 		dir="test/Prosody.Tests/bin/$(CONFIG)/$$tfm"; \
 		if [ -d "$$dir" ]; then \
-			if [ "$(CONFIG)" = "Release" ]; then \
-				cp "$(CDYLIB_RELEASE)" "$$dir/$(LIB_NAME)" && \
-				echo "  -> $$dir/$(LIB_NAME)"; \
-			else \
-				cp "$(CDYLIB)" "$$dir/$(LIB_NAME)" && \
-				echo "  -> $$dir/$(LIB_NAME)"; \
-			fi; \
+			cp "$(NATIVE_LIB)" "$$dir/$(LIB_NAME)" && \
+			echo "  -> $$dir/$(LIB_NAME)"; \
 		fi; \
 	done
 
