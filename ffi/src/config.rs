@@ -97,10 +97,6 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
         builder.max_uncommitted(max_uncommitted as usize);
     }
 
-    if let Some(max_enqueued_per_key) = options.max_enqueued_per_key {
-        builder.max_enqueued_per_key(max_enqueued_per_key as usize);
-    }
-
     if let Some(stall_threshold) = options.stall_threshold {
         builder.stall_threshold(stall_threshold);
     }

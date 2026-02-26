@@ -108,12 +108,6 @@ public sealed class ClientOptions
     public uint? MaxUncommitted { get; set; }
 
     /// <summary>
-    /// Maximum queued messages per key before pausing.
-    /// Default: 8.
-    /// </summary>
-    public uint? MaxEnqueuedPerKey { get; set; }
-
-    /// <summary>
     /// Size of LRU cache for message deduplication. Set to 0 to disable.
     /// Default: 4096.
     /// </summary>
@@ -408,7 +402,6 @@ public sealed class ClientOptions
             Mock: Mock,
             MaxConcurrency: MaxConcurrency,
             MaxUncommitted: MaxUncommitted,
-            MaxEnqueuedPerKey: MaxEnqueuedPerKey,
             IdempotenceCacheSize: IdempotenceCacheSize,
             Timeout: Timeout,
             StallThreshold: StallThreshold,

@@ -169,14 +169,6 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
-    /// Maximum queued messages per partition key before pausing.
-    ///
-    /// Provides per-key backpressure to prevent hot keys from starving others.
-    ///
-    /// **Default:** `8`
-    #[uniffi(default = None)]
-    pub max_enqueued_per_key: Option<u32>,
-
     /// LRU cache size for message deduplication.
     ///
     /// Set to `0` to disable idempotence checking entirely.
