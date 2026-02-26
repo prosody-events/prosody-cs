@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.2](https://github.com/cincpro/prosody-cs/compare/v2.2.1...v2.2.2) (2026-02-26)
+
+
+### Bug Fixes
+
+* graceful slab_loader shutdown and remove timer backpressure gaps ([#16](https://github.com/cincpro/prosody-cs/issues/16)) ([649599b](https://github.com/cincpro/prosody-cs/commit/649599bac25fec56f555fde9120c8bc5571d4a58))
+
 ## [2.2.1](https://github.com/cincpro/prosody-cs/compare/v2.2.0...v2.2.1) (2026-02-23)
 
 
