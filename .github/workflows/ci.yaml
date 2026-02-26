@@ -108,7 +108,7 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI and generate bindings
-        run: make build
+        run: make build-ci
 
       - name: Run tests
         run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
@@ -170,7 +170,7 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI and generate bindings
-        run: make build
+        run: make build-ci
 
       - name: Run C# lint
         run: make lint-csharp
