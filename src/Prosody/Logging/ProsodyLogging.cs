@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Prosody.Extensions;
@@ -86,4 +87,16 @@ public static class ProsodyLogging
             ProsodyFfiMethods.ClearLogSink();
         }
     }
+
+    /// <summary>
+    /// Resets the logging configuration so that <see cref="Configure"/> can be called again.
+    /// Intended for test fixtures and test teardown — not for production use.
+    /// </summary>
+    /// <remarks>
+    /// After calling this method, log events from the native layer are silently discarded
+    /// until <see cref="Configure"/> is called again.
+    /// Thread-safe: acquires the same lock as <see cref="Configure"/> to prevent races.
+    /// </remarks>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public static void ResetForTesting() => Clear();
 }
