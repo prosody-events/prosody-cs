@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Prosody.Extensions;
@@ -96,5 +97,6 @@ public static class ProsodyLogging
     /// until <see cref="Configure"/> is called again.
     /// Thread-safe: acquires the same lock as <see cref="Configure"/> to prevent races.
     /// </remarks>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     public static void ResetForTesting() => Clear();
 }
