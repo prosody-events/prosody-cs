@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/cincpro/prosody-cs/compare/v2.2.2...v2.3.0) (2026-03-02)
+
+
+### Features
+
+* add ProsodyLogging.ResetForTesting() public method ([#18](https://github.com/cincpro/prosody-cs/issues/18)) ([2560481](https://github.com/cincpro/prosody-cs/commit/25604812cd188889844f948aeea606dafca158f2))
+
 ## [2.2.2](https://github.com/cincpro/prosody-cs/compare/v2.2.1...v2.2.2) (2026-02-26)
 
 
