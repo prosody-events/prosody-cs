@@ -932,6 +932,12 @@ var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 ProsodyLogging.Configure(loggerFactory);
 ```
 
+To reset logging in test fixtures (e.g., during teardown so `Configure` can be called again):
+
+```csharp
+ProsodyLogging.ResetForTesting();
+```
+
 ### Dependency Injection
 
 For ASP.NET Core or Generic Host applications:
