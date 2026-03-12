@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/cincpro/prosody-cs/compare/v2.3.1...v2.4.0) (2026-03-12)
+
+
+### Features
+
+* add telemetry emitter support ([#22](https://github.com/cincpro/prosody-cs/issues/22)) ([708a396](https://github.com/cincpro/prosody-cs/commit/708a3967d1465a7249b2bb5dc3c00af4b0a78b68))
+
 ## [2.3.1](https://github.com/cincpro/prosody-cs/compare/v2.3.0...v2.3.1) (2026-03-05)
 
 
