@@ -73,7 +73,7 @@ pub enum FfiError {
     /// Occurs when an environment variable contains an invalid value for its
     /// corresponding configuration field (e.g. `PROSODY_TELEMETRY_ENABLED`
     /// is not a valid boolean).
-    #[error("telemetry configuration build failed: {0}")]
+    #[error("telemetry configuration build failed: {0:#}")]
     TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
 
     /// Topic configuration is invalid or incomplete.
