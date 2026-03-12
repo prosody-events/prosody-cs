@@ -37,7 +37,7 @@ jobs:
         id: release
         with:
           token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
-          release-as: ${{ inputs.release_as }}
+          release-as: ${{ github.event.inputs.release_as }}
 
   build-native:
     name: Build Native (${{ matrix.target.rid }})
