@@ -349,6 +349,24 @@ public sealed class ClientOptions
     /// </summary>
     public TimeSpan? CassandraRetention { get; set; }
 
+    // ========================================================================
+    // Telemetry options
+    // ========================================================================
+
+    /// <summary>
+    /// Kafka topic to produce telemetry events to.
+    /// Falls back to <c>PROSODY_TELEMETRY_TOPIC</c> environment variable.
+    /// Default: <c>"prosody.telemetry-events"</c>.
+    /// </summary>
+    public string? TelemetryTopic { get; set; }
+
+    /// <summary>
+    /// Enables or disables the telemetry emitter.
+    /// Falls back to <c>PROSODY_TELEMETRY_ENABLED</c> environment variable.
+    /// Default: <c>true</c>.
+    /// </summary>
+    public bool? TelemetryEnabled { get; set; }
+
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
@@ -437,6 +455,8 @@ public sealed class ClientOptions
             CassandraRack: CassandraRack,
             CassandraUser: CassandraUser,
             CassandraPassword: CassandraPassword,
-            CassandraRetention: CassandraRetention
+            CassandraRetention: CassandraRetention,
+            TelemetryTopic: TelemetryTopic,
+            TelemetryEnabled: TelemetryEnabled
         );
 }

@@ -24,6 +24,10 @@ use prosody::consumer::middleware::topic::FailureTopicConfigurationBuilder;
 use prosody::high_level::ConsumerBuilders;
 use prosody::high_level::mode::Mode;
 use prosody::producer::ProducerConfigurationBuilder;
+use prosody::telemetry::emitter::{
+    TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
+    TelemetryEmitterConfigurationBuilderError,
+};
 
 use crate::types::{ClientMode, ClientOptions};
 
@@ -282,14 +286,42 @@ pub fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurationBuil
     builder
 }
 
+/// Creates a telemetry emitter configuration builder from client options.
+///
+/// Configures the background Kafka emitter that publishes message and timer
+/// lifecycle events to a dedicated telemetry topic.
+#[must_use]
+pub fn build_telemetry_emitter_config(
+    options: &ClientOptions,
+) -> TelemetryEmitterConfigurationBuilder {
+    let mut builder = TelemetryEmitterConfiguration::builder();
+
+    if let Some(topic) = &options.telemetry_topic {
+        builder.topic(topic.clone());
+    }
+
+    if let Some(enabled) = options.telemetry_enabled {
+        builder.enabled(enabled);
+    }
+
+    builder
+}
+
 /// Creates all consumer-related configuration builders from client options.
 ///
 /// Aggregates the individual builder functions into a single
 /// [`ConsumerBuilders`] struct, which is the format expected by
 /// [`prosody::high_level::HighLevelClient::new`].
-#[must_use]
-pub fn build_consumer_builders(options: &ClientOptions) -> ConsumerBuilders {
-    ConsumerBuilders {
+///
+/// # Errors
+///
+/// Returns [`TelemetryEmitterConfigurationBuilderError`] if the telemetry
+/// emitter configuration cannot be built, which occurs when an environment
+/// variable (e.g. `PROSODY_TELEMETRY_ENABLED`) contains an invalid value.
+pub fn build_consumer_builders(
+    options: &ClientOptions,
+) -> Result<ConsumerBuilders, TelemetryEmitterConfigurationBuilderError> {
+    Ok(ConsumerBuilders {
         consumer: build_consumer_config(options),
         retry: build_retry_config(options),
         failure_topic: build_failure_topic_config(options),
@@ -297,7 +329,8 @@ pub fn build_consumer_builders(options: &ClientOptions) -> ConsumerBuilders {
         monopolization: build_monopolization_config(options),
         defer: build_defer_config(options),
         timeout: build_timeout_config(options),
-    }
+        emitter: build_telemetry_emitter_config(options).build()?,
+    })
 }
 
 /// Creates a Cassandra configuration builder from client options.

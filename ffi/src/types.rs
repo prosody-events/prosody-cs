@@ -476,4 +476,23 @@ pub struct ClientOptions {
     /// **Default:** 1 year
     #[uniffi(default = None)]
     pub cassandra_retention: Option<Duration>,
+
+    // ========================================================================
+    // Telemetry options
+    // ========================================================================
+    /// Kafka topic to produce telemetry events to.
+    ///
+    /// Falls back to `PROSODY_TELEMETRY_TOPIC` environment variable if unset.
+    ///
+    /// **Default:** `"prosody.telemetry-events"`
+    #[uniffi(default = None)]
+    pub telemetry_topic: Option<String>,
+
+    /// Enables or disables the telemetry emitter.
+    ///
+    /// Falls back to `PROSODY_TELEMETRY_ENABLED` environment variable if unset.
+    ///
+    /// **Default:** `true`
+    #[uniffi(default = None)]
+    pub telemetry_enabled: Option<bool>,
 }

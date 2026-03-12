@@ -11,9 +11,9 @@ futures = "0.3"
 once_cell = "1.21"
 opentelemetry = "0.31"
 parking_lot = "0.12"
-prosody = { git = "https://github.com/cincpro/prosody", rev = "d21e645c8a644b28aa60178c7b8625201d93006f", features = [
-  "libz-static",
-] }
+prosody = { git = "https://github.com/cincpro/prosody.git", rev = "a304c2902dba38c011d56bf2b463df4e6af6e762", features = [
+    "libz-static",
+] } # replace once we have a package manager
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simd-json = "0.17"

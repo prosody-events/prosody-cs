@@ -26,11 +26,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use futures::executor::block_on;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use simd_json::serde::from_slice;
 use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+use uniffi::deps::async_compat::Compat;
 
 use crate::cancellation::CancellationSignal;
 use crate::config::{
@@ -255,17 +257,24 @@ impl ProsodyClient {
 
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
-        let consumer_builders = build_consumer_builders(&options);
+        let consumer_builders = build_consumer_builders(&options)?;
         let cassandra_config = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
-        // Create the high-level client
-        let client = HighLevelClient::new(
-            mode,
-            &mut producer_config,
-            &consumer_builders,
-            &cassandra_config,
-        )?;
+        // HighLevelClient::new calls spawn_telemetry_emitter which calls
+        // tokio::spawn internally. The uniffi constructor scaffolding is a
+        // plain extern "C" fn with no runtime context. Wrapping the call in
+        // Compat enters the same runtime that uniffi uses for async methods
+        // (async_compat's global TOKIO1), so tokio::spawn succeeds without
+        // creating a second runtime.
+        let client = block_on(Compat::new(async {
+            HighLevelClient::new(
+                mode,
+                &mut producer_config,
+                &consumer_builders,
+                &cassandra_config,
+            )
+        }))?;
 
         Ok(Self {
             client,

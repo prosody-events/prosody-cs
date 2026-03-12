@@ -286,6 +286,15 @@ Persistent storage for timers and deferred retries (not needed if `Mock = true`)
 | `CassandraRack` / `PROSODY_CASSANDRA_RACK` | Prefer this rack for queries | - |
 | `CassandraRetention` / `PROSODY_CASSANDRA_RETENTION` | Delete data older than this | 1y |
 
+### Telemetry
+
+Lifecycle event emission to a Kafka topic (message dispatched, succeeded, failed; timer scheduled, etc.):
+
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `TelemetryTopic` / `PROSODY_TELEMETRY_TOPIC` | Kafka topic for telemetry events | prosody.telemetry-events |
+| `TelemetryEnabled` / `PROSODY_TELEMETRY_ENABLED` | Enable telemetry event emission | true |
+
 ## Liveness and Readiness Probes
 
 Prosody includes a built-in probe server for consumer-based applications that provides health check endpoints. The probe
