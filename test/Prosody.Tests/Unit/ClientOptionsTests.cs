@@ -236,6 +236,8 @@ public sealed class ClientOptionsTests
             GroupId = "test-app",
             Mode = ClientMode.LowLatency,
             StallThreshold = TimeSpan.FromMinutes(5),
+            TelemetryTopic = "my-telemetry-topic",
+            TelemetryEnabled = false,
         };
 
         var native = options.ToNative();
@@ -244,7 +246,9 @@ public sealed class ClientOptionsTests
             () => Assert.Equal([TestDefaults.BootstrapServers], native.BootstrapServers!),
             () => Assert.Equal("test-app", native.GroupId),
             () => Assert.Equal(Native.ClientMode.LowLatency, native.Mode),
-            () => Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold)
+            () => Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold),
+            () => Assert.Equal("my-telemetry-topic", native.TelemetryTopic),
+            () => Assert.Equal(false, native.TelemetryEnabled)
         );
     }
 
@@ -259,7 +263,9 @@ public sealed class ClientOptionsTests
             () => Assert.Null(native.BootstrapServers),
             () => Assert.Equal("only-this", native.GroupId),
             () => Assert.Null(native.Mode),
-            () => Assert.Null(native.StallThreshold)
+            () => Assert.Null(native.StallThreshold),
+            () => Assert.Null(native.TelemetryTopic),
+            () => Assert.Null(native.TelemetryEnabled)
         );
     }
 }

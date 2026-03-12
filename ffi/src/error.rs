@@ -17,6 +17,7 @@ use prosody::consumer::event_context::BoxEventContextError;
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
 use prosody::producer::ProducerError;
+use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use tokio::task::JoinError;
 
@@ -66,6 +67,14 @@ pub enum FfiError {
     /// One or more configuration values did not pass validation rules.
     #[error("configuration validation failed: {0:#}")]
     Validation(#[from] ValidationErrors),
+
+    /// A telemetry emitter configuration builder could not be finalized.
+    ///
+    /// Occurs when an environment variable contains an invalid value for its
+    /// corresponding configuration field (e.g. `PROSODY_TELEMETRY_ENABLED`
+    /// is not a valid boolean).
+    #[error("telemetry configuration build failed: {0:#}")]
+    TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
 
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
