@@ -50,9 +50,14 @@ pub enum ClientMode {
 
 /// Represents the current lifecycle state of a consumer.
 ///
-/// The consumer progresses through states linearly:
+/// The normal lifecycle progresses linearly:
 /// [`Unconfigured`][Self::Unconfigured] -> [`Configured`][Self::Configured] ->
 /// [`Running`][Self::Running].
+///
+/// If the consumer configuration fails during build (e.g. invalid mode,
+/// missing required fields), the state transitions to
+/// [`ConfigurationFailed`][Self::ConfigurationFailed] instead of
+/// [`Configured`][Self::Configured].
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum ConsumerState {
     /// Initial state before configuration is applied.
