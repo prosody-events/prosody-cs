@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use futures::TryStreamExt;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -221,9 +220,10 @@ impl Context {
         Ok(self
             .inner
             .scheduled(TimerType::Application)
-            .map_ok(Into::<SystemTime>::into)
-            .try_collect()
             .instrument(span)
-            .await?)
+            .await?
+            .into_iter()
+            .map(Into::<SystemTime>::into)
+            .collect())
     }
 }
