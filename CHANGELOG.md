@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/cincpro/prosody-cs/compare/v2.4.1...v2.5.0) (2026-03-19)
+
+
+### Features
+
+* configuration error surfacing, per-type timer semaphores, timer read performance ([#27](https://github.com/cincpro/prosody-cs/issues/27)) ([7015c50](https://github.com/cincpro/prosody-cs/commit/7015c50457441a71e1dcd3eefc62dca8cd4ffb9a))
+
 ## [2.4.1](https://github.com/cincpro/prosody-cs/compare/v2.4.0...v2.4.1) (2026-03-13)
 
 
