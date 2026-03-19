@@ -50,10 +50,15 @@ pub enum ClientMode {
 
 /// Represents the current lifecycle state of a consumer.
 ///
-/// The consumer progresses through states linearly:
+/// The normal lifecycle progresses linearly:
 /// [`Unconfigured`][Self::Unconfigured] -> [`Configured`][Self::Configured] ->
 /// [`Running`][Self::Running].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+///
+/// If the consumer configuration fails during build (e.g. invalid mode,
+/// missing required fields), the state transitions to
+/// [`ConfigurationFailed`][Self::ConfigurationFailed] instead of
+/// [`Configured`][Self::Configured].
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum ConsumerState {
     /// Initial state before configuration is applied.
     #[default]
@@ -64,6 +69,12 @@ pub enum ConsumerState {
 
     /// Actively polling and processing messages.
     Running,
+
+    /// Configuration failed during build.
+    ConfigurationFailed {
+        /// The error message describing the configuration failure.
+        message: String,
+    },
 }
 
 /// Configuration options for the Prosody client.

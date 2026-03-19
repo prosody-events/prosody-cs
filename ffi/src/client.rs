@@ -387,6 +387,9 @@ impl ProsodyClient {
         let state_view = self.client.consumer_state().await;
         match &*state_view {
             ProsodyConsumerState::Unconfigured => ConsumerState::Unconfigured,
+            ProsodyConsumerState::ConfigurationFailed(err) => ConsumerState::ConfigurationFailed {
+                message: err.to_string(),
+            },
             ProsodyConsumerState::Configured(_) => ConsumerState::Configured,
             ProsodyConsumerState::Running { .. } => ConsumerState::Running,
         }

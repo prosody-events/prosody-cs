@@ -49,6 +49,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the consumer configuration failed during build, with the full error message.
+    /// </exception>
     public async Task<ConsumerState> GetConsumerStateAsync()
     {
         Native.ConsumerState state = await _native.ConsumerState();
@@ -57,6 +60,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
             Native.ConsumerState.Running => ConsumerState.Running,
+            Native.ConsumerState.ConfigurationFailed failed => throw new InvalidOperationException(
+                $"Consumer configuration failed: {failed.Message}"
+            ),
             _ => throw new InvalidOperationException("Unknown consumer state"),
         };
     }
