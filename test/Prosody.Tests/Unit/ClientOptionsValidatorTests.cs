@@ -399,6 +399,73 @@ public sealed class ClientOptionsValidatorTests
         );
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EmptyIdempotenceVersionFails(string value)
+    {
+        var options = new ClientOptions { IdempotenceVersion = value };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "IdempotenceVersion must not be empty or whitespace",
+            result.FailureMessage,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void NegativeIdempotenceTtlFails()
+    {
+        var options = new ClientOptions { IdempotenceTtl = TimeSpan.FromSeconds(-1) };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("IdempotenceTtl must not be negative", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NegativeIdempotenceTtlDoesNotProduceDuplicateErrors()
+    {
+        var options = new ClientOptions { IdempotenceTtl = TimeSpan.FromSeconds(-1) };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.DoesNotContain(
+            "IdempotenceTtl must be at least 1 minute",
+            result.FailureMessage,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(30)]
+    [InlineData(59)]
+    public void IdempotenceTtlBelowOneMinuteFails(int seconds)
+    {
+        var options = new ClientOptions { IdempotenceTtl = TimeSpan.FromSeconds(seconds) };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("IdempotenceTtl must be at least 1 minute", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IdempotenceTtlAtOneMinuteSucceeds()
+    {
+        var options = new ClientOptions { IdempotenceTtl = TimeSpan.FromMinutes(1) };
+
+        var result = _validator.Validate(null, options);
+
+        Assert.True(result.Succeeded);
+    }
+
     [Fact]
     public void CaseInsensitiveDuplicateDetection()
     {

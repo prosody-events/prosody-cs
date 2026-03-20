@@ -84,7 +84,7 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         CheckNonNegative(options.CassandraRetention, nameof(ClientOptions.CassandraRetention), failures);
         CheckNonNegative(options.IdempotenceTtl, nameof(ClientOptions.IdempotenceTtl), failures);
 
-        if (options.IdempotenceTtl is { } idempotenceTtl && idempotenceTtl < TimeSpan.FromMinutes(1))
+        if (options.IdempotenceTtl is { Ticks: >= 0 } idempotenceTtl && idempotenceTtl < TimeSpan.FromMinutes(1))
         {
             failures.Add("IdempotenceTtl must be at least 1 minute.");
         }
