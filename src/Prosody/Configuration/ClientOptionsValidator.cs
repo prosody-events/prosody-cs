@@ -43,11 +43,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         CheckTimeSpans(options, failures);
 
-        if (options.IdempotenceVersion is { } idempotenceVersion && string.IsNullOrWhiteSpace(idempotenceVersion))
-        {
-            failures.Add("IdempotenceVersion must not be empty or whitespace.");
-        }
-
         CheckArrayEntries(options.BootstrapServers, nameof(ClientOptions.BootstrapServers), failures);
         CheckArrayEntries(options.SubscribedTopics, nameof(ClientOptions.SubscribedTopics), failures);
         CheckArrayEntries(options.AllowedEvents, nameof(ClientOptions.AllowedEvents), failures);
@@ -82,12 +77,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         CheckNonNegative(options.MonopolizationWindow, nameof(ClientOptions.MonopolizationWindow), failures);
         CheckNonNegative(options.SchedulerMaxWait, nameof(ClientOptions.SchedulerMaxWait), failures);
         CheckNonNegative(options.CassandraRetention, nameof(ClientOptions.CassandraRetention), failures);
-        CheckNonNegative(options.IdempotenceTtl, nameof(ClientOptions.IdempotenceTtl), failures);
-
-        if (options.IdempotenceTtl is { Ticks: >= 0 } idempotenceTtl && idempotenceTtl < TimeSpan.FromMinutes(1))
-        {
-            failures.Add("IdempotenceTtl must be at least 1 minute.");
-        }
     }
 
     private static void CheckNonNegative(TimeSpan? value, string name, List<string> failures)
