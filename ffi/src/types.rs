@@ -180,13 +180,36 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
-    /// LRU cache size for message deduplication.
+    /// Global shared cache capacity across all partitions for deduplication.
     ///
-    /// Set to `0` to disable idempotence checking entirely.
+    /// Set to `0` to disable the deduplication middleware entirely.
     ///
-    /// **Default:** `4096`
+    /// Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE` environment variable if unset.
+    ///
+    /// **Default:** `8192`
     #[uniffi(default = None)]
     pub idempotence_cache_size: Option<u32>,
+
+    /// Version string for cache-busting deduplication hashes.
+    ///
+    /// Changing this value invalidates all previously recorded dedup entries,
+    /// causing messages to be reprocessed.
+    ///
+    /// Falls back to `PROSODY_IDEMPOTENCE_VERSION` environment variable if unset.
+    ///
+    /// **Default:** `"1"`
+    #[uniffi(default = None)]
+    pub idempotence_version: Option<String>,
+
+    /// TTL for deduplication records in Cassandra.
+    ///
+    /// Must be at least 1 minute. Records expire automatically after this duration.
+    ///
+    /// Falls back to `PROSODY_IDEMPOTENCE_TTL` environment variable if unset.
+    ///
+    /// **Default:** 7 days
+    #[uniffi(default = None)]
+    pub idempotence_ttl: Option<Duration>,
 
     /// Maximum handler execution time before cancellation.
     ///

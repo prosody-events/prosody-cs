@@ -222,7 +222,9 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
-| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Track this many message IDs to skip duplicates | 4096 |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for deduplication. Set to 0 to disable the entire deduplication middleware (both in-memory and persistent tiers) | 8192 |
+| `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
+| `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
 
 ### Producer
@@ -482,7 +484,11 @@ await client.SendAsync("my-topic", "key2", new
 });
 ```
 
-Deduplication can be disabled by setting:
+Deduplication uses a global in-memory cache shared across all partitions, which survives partition reassignments within
+the same process. For cross-restart deduplication, a Cassandra-backed persistent store is used when Cassandra is
+configured.
+
+The entire deduplication middleware (both in-memory and persistent tiers) can be disabled by setting `IdempotenceCacheSize = 0`:
 
 ```csharp
 await using var client = ProsodyClientBuilder.Create()
@@ -498,8 +504,20 @@ Or via environment variable:
 PROSODY_IDEMPOTENCE_CACHE_SIZE=0
 ```
 
-Note that this deduplication is best-effort and not guaranteed. Because identifiers are cached ephemerally in memory,
-duplicates can still occur when instances rebalance or restart.
+To invalidate all previously recorded dedup entries and force reprocessing, change the version string:
+
+```csharp
+.Configure(options => options.IdempotenceVersion = "2")          // Invalidate all prior dedup records
+```
+
+The Cassandra TTL for dedup records defaults to 7 days and can be adjusted:
+
+```csharp
+.Configure(options => options.IdempotenceTtl = TimeSpan.FromDays(14))  // Keep records for 14 days
+```
+
+Note that in-memory deduplication is best-effort and not guaranteed. Duplicates can still occur when instances restart
+if Cassandra is not configured.
 
 ## Timer Functionality
 
