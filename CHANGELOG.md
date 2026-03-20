@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.0](https://github.com/cincpro/prosody-cs/compare/v2.5.0...v2.6.0) (2026-03-20)
+
+
+### Features
+
+* persistent deduplication with global cache and Cassandra backend ([#29](https://github.com/cincpro/prosody-cs/issues/29)) ([8862a0c](https://github.com/cincpro/prosody-cs/commit/8862a0cbf82cd810dbb934fbb8bc395ff0d4afb5))
+
 ## [2.5.0](https://github.com/cincpro/prosody-cs/compare/v2.4.1...v2.5.0) (2026-03-19)
 
 
