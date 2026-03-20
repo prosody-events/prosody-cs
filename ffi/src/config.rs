@@ -15,6 +15,7 @@
 
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::consumer::ConsumerConfigurationBuilder;
+use prosody::consumer::middleware::deduplication::DeduplicationConfigurationBuilder;
 use prosody::consumer::middleware::defer::DeferConfigurationBuilder;
 use prosody::consumer::middleware::monopolization::MonopolizationConfigurationBuilder;
 use prosody::consumer::middleware::retry::RetryConfigurationBuilder;
@@ -61,7 +62,7 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 /// Creates a consumer configuration builder from client options.
 ///
 /// Configures Kafka consumer settings including bootstrap servers, group ID,
-/// topic subscriptions, idempotence, and flow control parameters.
+/// topic subscriptions, and flow control parameters.
 ///
 /// # Probe Port Handling
 ///
@@ -83,10 +84,6 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
 
     if let Some(group_id) = &options.group_id {
         builder.group_id(group_id);
-    }
-
-    if let Some(cache_size) = options.idempotence_cache_size {
-        builder.idempotence_cache_size(cache_size as usize);
     }
 
     if let Some(topics) = &options.subscribed_topics {
@@ -286,6 +283,29 @@ pub fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurationBuil
     builder
 }
 
+/// Creates a deduplication configuration builder from client options.
+///
+/// Configures the deduplication middleware including the global shared cache
+/// capacity, version string for cache-busting, and Cassandra TTL.
+#[must_use]
+pub fn build_dedup_config(options: &ClientOptions) -> DeduplicationConfigurationBuilder {
+    let mut builder = DeduplicationConfigurationBuilder::default();
+
+    if let Some(cache_capacity) = options.idempotence_cache_size {
+        builder.cache_capacity(cache_capacity as usize);
+    }
+
+    if let Some(version) = &options.idempotence_version {
+        builder.version(version.clone());
+    }
+
+    if let Some(ttl) = options.idempotence_ttl {
+        builder.ttl(ttl);
+    }
+
+    builder
+}
+
 /// Creates a telemetry emitter configuration builder from client options.
 ///
 /// Configures the background Kafka emitter that publishes message and timer
@@ -329,6 +349,7 @@ pub fn build_consumer_builders(
         monopolization: build_monopolization_config(options),
         defer: build_defer_config(options),
         timeout: build_timeout_config(options),
+        dedup: build_dedup_config(options),
         emitter: build_telemetry_emitter_config(options).build()?,
     })
 }

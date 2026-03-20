@@ -108,10 +108,26 @@ public sealed class ClientOptions
     public uint? MaxUncommitted { get; set; }
 
     /// <summary>
-    /// Size of LRU cache for message deduplication. Set to 0 to disable.
-    /// Default: 4096.
+    /// Global shared cache capacity across all partitions for deduplication. Set to 0 to disable.
+    /// Falls back to <c>PROSODY_IDEMPOTENCE_CACHE_SIZE</c> environment variable.
+    /// Default: 8192.
     /// </summary>
     public uint? IdempotenceCacheSize { get; set; }
+
+    /// <summary>
+    /// Version string for cache-busting deduplication hashes. Changing this value invalidates
+    /// all previously recorded dedup entries, causing messages to be reprocessed.
+    /// Falls back to <c>PROSODY_IDEMPOTENCE_VERSION</c> environment variable.
+    /// Default: "1".
+    /// </summary>
+    public string? IdempotenceVersion { get; set; }
+
+    /// <summary>
+    /// TTL for deduplication records in Cassandra. Records expire automatically after this duration.
+    /// Falls back to <c>PROSODY_IDEMPOTENCE_TTL</c> environment variable.
+    /// Default: 7 days.
+    /// </summary>
+    public TimeSpan? IdempotenceTtl { get; set; }
 
     /// <summary>
     /// Handler timeout. Handlers running longer than this are cancelled.
@@ -421,6 +437,8 @@ public sealed class ClientOptions
             MaxConcurrency: MaxConcurrency,
             MaxUncommitted: MaxUncommitted,
             IdempotenceCacheSize: IdempotenceCacheSize,
+            IdempotenceVersion: IdempotenceVersion,
+            IdempotenceTtl: IdempotenceTtl,
             Timeout: Timeout,
             StallThreshold: StallThreshold,
             ShutdownTimeout: ShutdownTimeout,
