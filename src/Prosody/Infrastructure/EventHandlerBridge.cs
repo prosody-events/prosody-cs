@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Prosody.Errors;
 using Prosody.Logging;
@@ -82,13 +83,13 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["event_type"] = "message",
                 ["topic"] = wrappedMessage.Topic,
                 ["key"] = wrappedMessage.Key,
-                ["partition"] = wrappedMessage.Partition.ToString(),
-                ["offset"] = wrappedMessage.Offset.ToString(),
+                ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
+                ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
             }
         );
 
@@ -106,11 +107,11 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            new Dictionary<string, string>
+            new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["event_type"] = "timer",
                 ["key"] = wrappedTimer.Key,
-                ["time"] = wrappedTimer.Time.ToString(),
+                ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
             }
         );
 
