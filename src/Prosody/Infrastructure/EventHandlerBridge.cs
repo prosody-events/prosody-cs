@@ -81,7 +81,15 @@ internal sealed class EventHandlerBridge : NativeHandler
             ct => _userHandler.OnMessageAsync(wrappedContext, wrappedMessage, ct),
             _onMessageAttribute,
             onCancel,
-            carrier
+            carrier,
+            new Dictionary<string, string>
+            {
+                ["event_type"] = "message",
+                ["topic"] = wrappedMessage.Topic,
+                ["key"] = wrappedMessage.Key,
+                ["partition"] = wrappedMessage.Partition.ToString(),
+                ["offset"] = wrappedMessage.Offset.ToString(),
+            }
         );
 
     /// <summary>
@@ -97,7 +105,13 @@ internal sealed class EventHandlerBridge : NativeHandler
             ct => _userHandler.OnTimerAsync(wrappedContext, wrappedTimer, ct),
             _onTimerAttribute,
             onCancel,
-            carrier
+            carrier,
+            new Dictionary<string, string>
+            {
+                ["event_type"] = "timer",
+                ["key"] = wrappedTimer.Key,
+                ["time"] = wrappedTimer.Time.ToString(),
+            }
         );
 
     /// <summary>
@@ -108,7 +122,8 @@ internal sealed class EventHandlerBridge : NativeHandler
         Func<CancellationToken, Task> handler,
         PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
-        Dictionary<string, string> carrier
+        Dictionary<string, string> carrier,
+        Dictionary<string, string>? sentryContext = null
     )
     {
         using var activity = TracePropagation.Extract(carrier);
@@ -129,11 +144,13 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
+            SentryIntegration.CaptureException(ex, sentryContext?["event_type"] ?? "handler", sentryContext);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
+            SentryIntegration.CaptureException(ex, sentryContext?["event_type"] ?? "handler", sentryContext);
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
