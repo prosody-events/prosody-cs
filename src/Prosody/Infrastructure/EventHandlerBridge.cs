@@ -83,14 +83,16 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["event_type"] = "message",
-                ["topic"] = wrappedMessage.Topic,
-                ["key"] = wrappedMessage.Key,
-                ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
-                ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
-            }
+            wrappedMessage is null
+                ? null
+                : new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["event_type"] = "message",
+                    ["topic"] = wrappedMessage.Topic,
+                    ["key"] = wrappedMessage.Key,
+                    ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
+                    ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
+                }
         );
 
     /// <summary>
@@ -107,12 +109,14 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["event_type"] = "timer",
-                ["key"] = wrappedTimer.Key,
-                ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
-            }
+            wrappedTimer is null
+                ? null
+                : new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["event_type"] = "timer",
+                    ["key"] = wrappedTimer.Key,
+                    ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
+                }
         );
 
     /// <summary>
