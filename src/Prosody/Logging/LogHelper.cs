@@ -12,4 +12,7 @@ internal static partial class LogHelper
 
     [LoggerMessage(EventId = 3, Level = LogLevel.Debug, Message = "OnCancel() faulted")]
     internal static partial void LogOnCancelFault(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Failed to capture handler exception to Sentry.")]
+    internal static partial void LogSentryCaptureFault(ILogger logger, Exception exception);
 }

@@ -184,7 +184,7 @@ internal sealed class EventHandlerBridge : NativeHandler
 #pragma warning disable CA1031 // FFI boundary: Sentry failures must not mask the original exception
         catch (Exception captureEx)
         {
-            Logger.LogError(captureEx, "Failed to capture handler exception to Sentry.");
+            LogHelper.LogSentryCaptureFault(Logger, captureEx);
         }
 #pragma warning restore CA1031
     }
