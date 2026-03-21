@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Prosody.Errors;
 using Prosody.Logging;
@@ -83,15 +82,15 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
+            "message",
             wrappedMessage is null
                 ? null
-                : new Dictionary<string, string>(StringComparer.Ordinal)
+                : new
                 {
-                    ["event_type"] = "message",
-                    ["topic"] = wrappedMessage.Topic,
-                    ["key"] = wrappedMessage.Key,
-                    ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
-                    ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
+                    topic = wrappedMessage.Topic,
+                    key = wrappedMessage.Key,
+                    partition = wrappedMessage.Partition,
+                    offset = wrappedMessage.Offset,
                 }
         );
 
@@ -109,14 +108,8 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            wrappedTimer is null
-                ? null
-                : new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["event_type"] = "timer",
-                    ["key"] = wrappedTimer.Key,
-                    ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
-                }
+            "timer",
+            wrappedTimer is null ? null : new { key = wrappedTimer.Key, time = wrappedTimer.Time }
         );
 
     /// <summary>
@@ -128,7 +121,8 @@ internal sealed class EventHandlerBridge : NativeHandler
         PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
-        Dictionary<string, string>? sentryContext = null
+        string eventType = "handler",
+        object? sentryContext = null
     )
     {
         using var activity = TracePropagation.Extract(carrier);
@@ -149,13 +143,13 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
-            TryCaptureToSentry(ex, sentryContext);
+            TryCaptureToSentry(ex, eventType, sentryContext);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
-            TryCaptureToSentry(ex, sentryContext);
+            TryCaptureToSentry(ex, eventType, sentryContext);
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
@@ -173,12 +167,10 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// Captures an exception to Sentry with event context, swallowing any failure so
     /// Sentry issues never mask or replace the original exception at the FFI boundary.
     /// </summary>
-    private static void TryCaptureToSentry(Exception exception, Dictionary<string, string>? sentryContext)
+    private static void TryCaptureToSentry(Exception exception, string eventType, object? sentryContext)
     {
         try
         {
-            var eventType =
-                sentryContext is not null && sentryContext.TryGetValue("event_type", out var et) ? et : "handler";
             SentryIntegration.CaptureException(exception, eventType, sentryContext);
         }
 #pragma warning disable CA1031 // FFI boundary: Sentry failures must not mask the original exception
