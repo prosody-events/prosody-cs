@@ -143,13 +143,13 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
-            TryCaptureToSentry(ex, eventType, sentryContext);
+            TryCaptureToSentry(ex, eventType, sentryContext, "permanent");
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
-            TryCaptureToSentry(ex, eventType, sentryContext);
+            TryCaptureToSentry(ex, eventType, sentryContext, "transient");
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
@@ -167,11 +167,11 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// Captures an exception to Sentry with event context, swallowing any failure so
     /// Sentry issues never mask or replace the original exception at the FFI boundary.
     /// </summary>
-    private static void TryCaptureToSentry(Exception exception, string eventType, object? sentryContext)
+    private static void TryCaptureToSentry(Exception exception, string eventType, object? sentryContext, string? errorClass = null)
     {
         try
         {
-            SentryIntegration.CaptureException(exception, eventType, sentryContext);
+            SentryIntegration.CaptureException(exception, eventType, sentryContext, errorClass);
         }
 #pragma warning disable CA1031 // FFI boundary: Sentry failures must not mask the original exception
         catch (Exception captureEx)
