@@ -1016,6 +1016,7 @@ Prosody checks `SentrySdk.IsEnabled` on each handler failure. If the host has Se
 Both transient and permanent handler exceptions are captured with contextual data:
 
 - `prosody.event_type` tag: `"message"` or `"timer"`
+- `prosody.error_class` tag: `"permanent"` or `"transient"`
 - `prosody` context:
   - For messages: topic, key, partition, offset
   - For timers: key, fire time

@@ -36,20 +36,20 @@ internal static class SentryIntegration
             exception,
             scope =>
             {
-                scope.SetTag("prosody.event_type", eventType);
+                scope.SetTag(SentryConstants.Tags.EventType, eventType);
                 if (errorClass is not null)
                 {
                     scope.SetTag(
-                        "prosody.error_class",
+                        SentryConstants.Tags.ErrorClass,
                         errorClass.Value switch
                         {
-                            ErrorClass.Permanent => "permanent",
-                            _ => "transient",
+                            ErrorClass.Permanent => SentryConstants.TagValues.ErrorClassPermanent,
+                            _ => SentryConstants.TagValues.ErrorClassTransient,
                         }
                     );
                 }
                 if (context is not null)
-                    scope.Contexts["prosody"] = context;
+                    scope.Contexts[SentryConstants.ContextKeys.Prosody] = context;
             }
         );
     }

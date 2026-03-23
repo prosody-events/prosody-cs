@@ -29,12 +29,12 @@ namespace Prosody.Infrastructure;
 /// </remarks>
 internal sealed class EventHandlerBridge : NativeHandler
 {
-    private const string LoggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
+    private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
     // between tests. In production, Configure() is called once before any handler
     // fires, so the factory lookup is effectively constant after startup.
-    private static ILogger Logger => ProsodyLogging.CreateLogger(LoggerCategory);
+    private static ILogger Logger => ProsodyLogging.CreateLogger(_loggerCategory);
 
     private readonly IProsodyHandler _userHandler;
     private readonly PermanentErrorAttribute? _onMessageAttribute;
@@ -80,7 +80,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
-            eventType: "message",
+            eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
                     new Dictionary<string, string>(StringComparer.Ordinal)
@@ -107,7 +107,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            eventType: "timer",
+            eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
                     new Dictionary<string, string>(StringComparer.Ordinal)
