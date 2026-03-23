@@ -1024,6 +1024,8 @@ Both transient and permanent handler exceptions are captured with contextual dat
 
 Sentry failures never affect message processing. If Sentry is unreachable or misconfigured, the exception is logged and handler results are unchanged.
 
+> **Note:** The `Sentry` package is currently a hard dependency of `Witco.Prosody`. A future improvement is to extract Sentry support into a separate `Witco.Prosody.Sentry` package so consumers who don't use Sentry don't pull in the dependency.
+
 ## Administrative Operations
 
 **⚠️ Important Note**: Topic management in production environments should typically be handled through GitOps using

@@ -99,6 +99,27 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildSentryContext_NotInvoked_OnCancellationPath()
+    {
+        var invoked = false;
+
+        var result = await EventHandlerBridge.InvokeHandlerAsync(
+            _ => throw new OperationCanceledException("shutdown"),
+            permanentErrorAttribute: null,
+            NeverCancel,
+            EmptyCarrier,
+            buildSentryContext: () =>
+            {
+                invoked = true;
+                return null;
+            }
+        );
+
+        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.False(invoked);
+    }
+
+    [Fact]
     public async Task LogSentryCaptureFailed_IsEmitted_WhenBuildSentryContextThrows()
     {
         var collector = new FakeLogCollector();

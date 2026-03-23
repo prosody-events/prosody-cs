@@ -29,10 +29,12 @@ namespace Prosody.Infrastructure;
 /// </remarks>
 internal sealed class EventHandlerBridge : NativeHandler
 {
+    private const string LoggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
+
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
     // between tests. In production, Configure() is called once before any handler
     // fires, so the factory lookup is effectively constant after startup.
-    private static ILogger Logger => ProsodyLogging.CreateLogger($"Prosody.{nameof(EventHandlerBridge)}");
+    private static ILogger Logger => ProsodyLogging.CreateLogger(LoggerCategory);
 
     private readonly IProsodyHandler _userHandler;
     private readonly PermanentErrorAttribute? _onMessageAttribute;
@@ -149,6 +151,11 @@ internal sealed class EventHandlerBridge : NativeHandler
         {
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
+        }
+        catch (OperationCanceledException ex)
+        {
+            // Cancellation is normal during shutdown/rebalance — report to Rust but skip Sentry.
+            return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
