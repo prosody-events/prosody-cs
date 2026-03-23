@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Prosody.Errors;
 using Prosody.Logging;
@@ -28,15 +29,10 @@ namespace Prosody.Infrastructure;
 /// </remarks>
 internal sealed class EventHandlerBridge : NativeHandler
 {
-    // Lazy so CreateLogger runs on first log, not at class load — ensures
-    // ProsodyLogging.Configure() has been called. Unlike LogSinkBridge (which
-    // receives ILogger via its constructor during Configure), this class is a
-    // static consumer that cannot participate in the configuration lifecycle.
-    private static readonly Lazy<ILogger> LazyLogger = new(
-        () => ProsodyLogging.CreateLogger($"Prosody.{nameof(EventHandlerBridge)}")
-    );
-
-    private static ILogger Logger => LazyLogger.Value;
+    // Resolved on each access so that test code can Clear/Configure ProsodyLogging
+    // between tests. In production, Configure() is called once before any handler
+    // fires, so the factory lookup is effectively constant after startup.
+    private static ILogger Logger => ProsodyLogging.CreateLogger($"Prosody.{nameof(EventHandlerBridge)}");
 
     private readonly IProsodyHandler _userHandler;
     private readonly PermanentErrorAttribute? _onMessageAttribute;
@@ -82,16 +78,17 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
-            "message",
-            wrappedMessage is null
-                ? null
-                : new
-                {
-                    topic = wrappedMessage.Topic,
-                    key = wrappedMessage.Key,
-                    partition = wrappedMessage.Partition,
-                    offset = wrappedMessage.Offset,
-                }
+            eventType: "message",
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () =>
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["topic"] = wrappedMessage.Topic,
+                        ["key"] = wrappedMessage.Key,
+                        ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
+                        ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
+                    }
+                : null
         );
 
     /// <summary>
@@ -108,21 +105,28 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            "timer",
-            wrappedTimer is null ? null : new { key = wrappedTimer.Key, time = wrappedTimer.Time }
+            eventType: "timer",
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () =>
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["key"] = wrappedTimer.Key,
+                        ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
+                    }
+                : null
         );
 
     /// <summary>
     /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
     /// and classifies any exception as permanent or transient.
     /// </summary>
-    private static async Task<NativeResult> InvokeHandlerAsync(
+    internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
         PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
         string eventType = "handler",
-        object? sentryContext = null
+        Func<Dictionary<string, string>?>? buildSentryContext = null
     )
     {
         using var activity = TracePropagation.Extract(carrier);
@@ -143,13 +147,13 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
-            TryCaptureToSentry(ex, eventType, sentryContext, "permanent");
+            TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
-            TryCaptureToSentry(ex, eventType, sentryContext, "transient");
+            TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Transient);
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
 #pragma warning restore CA1031
@@ -167,16 +171,28 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// Captures an exception to Sentry with event context, swallowing any failure so
     /// Sentry issues never mask or replace the original exception at the FFI boundary.
     /// </summary>
-    private static void TryCaptureToSentry(Exception exception, string eventType, object? sentryContext, string? errorClass = null)
+    private static void TryCaptureToSentry(
+        Exception exception,
+        string eventType,
+        Func<Dictionary<string, string>?>? buildSentryContext,
+        ErrorClass errorClass
+    )
     {
         try
         {
-            SentryIntegration.CaptureException(exception, eventType, sentryContext, errorClass);
+            SentryIntegration.CaptureException(exception, eventType, buildSentryContext?.Invoke(), errorClass);
         }
 #pragma warning disable CA1031 // FFI boundary: Sentry failures must not mask the original exception
         catch (Exception captureEx)
         {
-            LogHelper.LogSentryCaptureFault(Logger, captureEx);
+            try
+            {
+                LogHelper.LogSentryCaptureFailed(Logger, captureEx);
+            }
+            catch
+            {
+                // Swallow — nothing must escape at the FFI boundary.
+            }
         }
 #pragma warning restore CA1031
     }

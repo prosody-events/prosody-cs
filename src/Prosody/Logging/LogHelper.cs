@@ -14,5 +14,5 @@ internal static partial class LogHelper
     internal static partial void LogOnCancelFault(ILogger logger, Exception exception);
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Failed to capture handler exception to Sentry.")]
-    internal static partial void LogSentryCaptureFault(ILogger logger, Exception exception);
+    internal static partial void LogSentryCaptureFailed(ILogger logger, Exception exception);
 }

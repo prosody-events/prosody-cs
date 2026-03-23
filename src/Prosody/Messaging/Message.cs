@@ -14,11 +14,15 @@ public sealed class Message
         ArgumentNullException.ThrowIfNull(native);
         _native = native;
 
-        // Cache string properties eagerly to avoid repeated FFI crossings.
-        // Each call to the native accessor clones a Rust String, allocates a
-        // RustBuffer, and UTF-8 decodes into a C# string.
+        // Cache all properties eagerly to avoid repeated FFI crossings.
+        // Each call to a native accessor crosses the FFI boundary (Arc clone +
+        // method dispatch + atomic bookkeeping); primitives are cheap to cache
+        // once and avoid that overhead on repeated access.
         Topic = native.Topic();
         Key = native.Key();
+        Partition = native.Partition();
+        Offset = native.Offset();
+        Timestamp = new(native.Timestamp(), TimeSpan.Zero);
     }
 
     /// <summary>
@@ -34,17 +38,17 @@ public sealed class Message
     /// <summary>
     /// Gets the partition number.
     /// </summary>
-    public int Partition => _native.Partition();
+    public int Partition { get; }
 
     /// <summary>
     /// Gets the message offset.
     /// </summary>
-    public long Offset => _native.Offset();
+    public long Offset { get; }
 
     /// <summary>
     /// Gets the message timestamp (UTC).
     /// </summary>
-    public DateTimeOffset Timestamp => new(_native.Timestamp(), TimeSpan.Zero);
+    public DateTimeOffset Timestamp { get; }
 
     /// <summary>
     /// Deserializes the payload to the specified type.
