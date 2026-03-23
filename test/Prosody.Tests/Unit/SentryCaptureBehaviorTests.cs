@@ -21,6 +21,7 @@ namespace Prosody.Tests.Unit;
 /// Sentry is enabled. Prosody never calls <c>SentrySdk.Init</c> — it only enriches
 /// an already-initialized instance.
 /// </remarks>
+[Collection(LoggingIsolationCollection.Name)]
 public sealed class SentryCaptureBehaviorTests : IDisposable
 {
     public SentryCaptureBehaviorTests()

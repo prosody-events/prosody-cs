@@ -9,6 +9,7 @@ using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
+[Collection(LoggingIsolationCollection.Name)]
 public sealed class LoggingTests : IDisposable
 {
     public LoggingTests()
