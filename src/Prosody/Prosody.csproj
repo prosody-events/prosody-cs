@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Prosody</AssemblyName>
     <RootNamespace>Prosody</RootNamespace>
-    <VersionPrefix>2.5.0</VersionPrefix>
+    <VersionPrefix>2.6.0</VersionPrefix>
 
     <!-- NuGet package metadata -->
     <PackageId>Witco.Prosody</PackageId>
