@@ -11,6 +11,7 @@ strategies, and integrated OpenTelemetry support for distributed tracing.
 - **Timer System**: Persistent scheduled execution backed by Cassandra or in-memory store
 - **Quality of Service**: Fair scheduling limits concurrency and prevents failures from starving fresh traffic. Pipeline mode adds deferred retry and monopolization detection
 - **Distributed Tracing**: OpenTelemetry integration for tracing message flow across services
+- **Error Monitoring**: Optional Sentry integration for automatic handler exception reporting
 - **Backpressure**: Pauses partitions when handlers fall behind
 - **Mocking**: In-memory Kafka broker for tests (`WithMock(true)`)
 - **Failure Handling**: Pipeline (retry forever), Low-Latency (dead letter), Best-Effort (log and skip)
@@ -980,6 +981,51 @@ var host = builder.Build();
 ```
 
 Log messages are emitted under the `Prosody.Native` category.
+
+## Error Monitoring (Sentry)
+
+Prosody automatically reports handler exceptions to [Sentry](https://sentry.io) when the host application has Sentry initialized. Prosody never calls `SentrySdk.Init` — it only enriches an already-initialized Sentry instance.
+
+### Setup
+
+Initialize Sentry in your host application before subscribing to messages:
+
+```csharp
+SentrySdk.Init(o =>
+{
+    o.Dsn = "https://examplePublicKey@o0.ingest.sentry.io/0";
+    o.Environment = "production";
+    o.Release = "my-app@1.2.3";
+});
+```
+
+Or with ASP.NET Core / Generic Host:
+
+```csharp
+builder.WebHost.UseSentry("https://examplePublicKey@o0.ingest.sentry.io/0");
+```
+
+If Sentry is not initialized, Prosody silently skips error reporting with zero overhead.
+
+### How It Works
+
+Prosody checks `SentrySdk.IsEnabled` on each handler failure. If the host has Sentry initialized, Prosody captures the exception and enriches it with handler context. Prosody never owns the Sentry lifecycle — initialization and disposal remain entirely in the host application.
+
+### What Gets Reported
+
+Both transient and permanent handler exceptions are captured with contextual data:
+
+- `prosody.event_type` tag: `"message"` or `"timer"`
+- `prosody.error_class` tag: `"permanent"` or `"transient"`
+- `prosody` context:
+  - For messages: topic, key, partition, offset
+  - For timers: key, fire time
+
+### Safety Guarantee
+
+Sentry failures never affect message processing. If Sentry is unreachable or misconfigured, the exception is logged and handler results are unchanged.
+
+> **Note:** The `Sentry` package is currently a hard dependency of `Witco.Prosody`. A future improvement is to extract Sentry support into a separate `Witco.Prosody.Sentry` package so consumers who don't use Sentry don't pull in the dependency.
 
 ## Administrative Operations
 

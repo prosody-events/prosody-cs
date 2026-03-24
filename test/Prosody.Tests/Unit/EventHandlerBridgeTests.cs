@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
@@ -16,14 +17,6 @@ namespace Prosody.Tests.Unit;
 /// </remarks>
 public sealed class EventHandlerBridgeTests
 {
-    /// <summary>
-    /// A cancel signal that never fires (hangs forever). Used when cancellation
-    /// is not relevant to the test scenario.
-    /// </summary>
-    private static Func<Task> NeverCancel => () => new TaskCompletionSource().Task;
-
-    private static Dictionary<string, string> EmptyCarrier => new(StringComparer.OrdinalIgnoreCase);
-
     #region Constructor Tests
 
     [Fact]
@@ -381,11 +374,7 @@ public sealed class EventHandlerBridgeTests
 
         // onCancel never completes
 #pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(
-            () => new TaskCompletionSource().Task,
-            cts,
-            handlerDone.Task
-        );
+        var monitor = EventHandlerBridge.BridgeCancellationAsync(NeverCancel, cts, handlerDone.Task);
 #pragma warning restore CA2025
 
         // Handler completes first

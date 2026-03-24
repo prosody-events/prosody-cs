@@ -37,6 +37,8 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2"/>
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0"/>
     <PackageReference Include="OpenTelemetry.Api" Version="1.15.0"/>
+    <!-- TODO: extract to a separate Witco.Prosody.Sentry package so consumers who don't use Sentry don't pull in this dependency -->
+    <PackageReference Include="Sentry" Version="6.2.0"/>
   </ItemGroup>
 
   <ItemGroup Label="Analyzers">

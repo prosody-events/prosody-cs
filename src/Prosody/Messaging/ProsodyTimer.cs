@@ -13,6 +13,7 @@ public sealed class ProsodyTimer
         _native = native;
 
         Key = native.Key();
+        Time = new(native.Time(), TimeSpan.Zero);
     }
 
     /// <summary>
@@ -23,5 +24,5 @@ public sealed class ProsodyTimer
     /// <summary>
     /// Gets the timer fire time (UTC).
     /// </summary>
-    public DateTimeOffset Time => new(_native.Time(), TimeSpan.Zero);
+    public DateTimeOffset Time { get; }
 }
