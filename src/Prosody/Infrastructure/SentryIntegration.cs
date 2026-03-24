@@ -7,9 +7,10 @@ namespace Prosody.Infrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Prosody never calls <c>SentrySdk.Init</c>. If the host application has initialized
-/// Sentry, Prosody automatically enriches captured events with handler context. If Sentry
-/// is not initialized, all capture calls are silent no-ops.
+/// If <c>SENTRY_DSN</c> is set and Sentry is not already initialized, Prosody will
+/// initialize it automatically. If the host application has already initialized Sentry,
+/// Prosody uses the existing instance. If Sentry is not initialized and no DSN is set,
+/// all capture calls are silent no-ops.
 /// </para>
 /// <para>
 /// Sentry failures never affect handler results — all capture errors are caught and
@@ -19,6 +20,13 @@ namespace Prosody.Infrastructure;
 /// </remarks>
 internal static class SentryIntegration
 {
+    static SentryIntegration()
+    {
+        var dsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
+        if (dsn is not null && !SentrySdk.IsEnabled)
+            SentrySdk.Init(o => o.Dsn = dsn);
+    }
+
     // Checked live on each call so that Sentry initialized after Prosody starts is picked up.
     internal static bool IsEnabled => SentrySdk.IsEnabled;
 
