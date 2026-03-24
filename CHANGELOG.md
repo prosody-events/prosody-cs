@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.0](https://github.com/cincpro/prosody-cs/compare/v2.6.0...v2.7.0) (2026-03-24)
+
+
+### Features
+
+* Sentry error monitoring for handler dispatch ([#31](https://github.com/cincpro/prosody-cs/issues/31)) ([831755b](https://github.com/cincpro/prosody-cs/commit/831755bf1d26a30a4b54923cdb0163b0ce6308d9))
+
 ## [2.6.0](https://github.com/cincpro/prosody-cs/compare/v2.5.0...v2.6.0) (2026-03-20)
 
 
