@@ -23,8 +23,15 @@ internal static class SentryIntegration
     static SentryIntegration()
     {
         var dsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
-        if (dsn is not null && !SentrySdk.IsEnabled)
+        if (string.IsNullOrWhiteSpace(dsn) || SentrySdk.IsEnabled)
+            return;
+#pragma warning disable CA1031 // A thrown exception here becomes a TypeInitializationException on every subsequent access, violating the guarantee that Sentry never affects handler results.
+        try
+        {
             SentrySdk.Init(o => o.Dsn = dsn);
+        }
+        catch { }
+#pragma warning restore CA1031
     }
 
     // Checked live on each call so that Sentry initialized after Prosody starts is picked up.
