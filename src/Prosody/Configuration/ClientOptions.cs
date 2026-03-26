@@ -142,7 +142,7 @@ public sealed class ClientOptions
     public TimeSpan? StallThreshold { get; set; }
 
     /// <summary>
-    /// Wait this long for in-flight work before force-quit on shutdown.
+    /// Shutdown budget; handlers complete freely before cancellation fires near the deadline.
     /// Default: 30 seconds.
     /// </summary>
     public TimeSpan? ShutdownTimeout { get; set; }

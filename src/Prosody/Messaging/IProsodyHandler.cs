@@ -55,10 +55,12 @@ public interface IProsodyHandler
     /// <param name="message">The Kafka message data.</param>
     /// <param name="cancellationToken">
     /// Token that is cancelled when Prosody requests the handler to stop processing
-    /// (e.g., during shutdown or rebalance). Handlers should monitor this token and
-    /// exit promptly when cancelled. Note: an <see cref="OperationCanceledException"/>
-    /// thrown in response to this token is treated as a transient error like any other
-    /// exception — Prosody does not distinguish cancellation from failure.
+    /// (e.g., during rebalance or timeout). During shutdown, handlers run freely
+    /// before this token is cancelled near the end of the shutdown timeout. Handlers
+    /// should monitor this token and exit promptly when cancelled. Note: an
+    /// <see cref="OperationCanceledException"/> thrown in response to this token is
+    /// treated as a transient error like any other exception — Prosody does not
+    /// distinguish cancellation from failure.
     /// </param>
     /// <exception cref="PermanentException">
     /// Throw to indicate a permanent error that should not be retried.
@@ -86,10 +88,12 @@ public interface IProsodyHandler
     /// <param name="timer">The timer trigger data.</param>
     /// <param name="cancellationToken">
     /// Token that is cancelled when Prosody requests the handler to stop processing
-    /// (e.g., during shutdown or rebalance). Handlers should monitor this token and
-    /// exit promptly when cancelled. Note: an <see cref="OperationCanceledException"/>
-    /// thrown in response to this token is treated as a transient error like any other
-    /// exception — Prosody does not distinguish cancellation from failure.
+    /// (e.g., during rebalance or timeout). During shutdown, handlers run freely
+    /// before this token is cancelled near the end of the shutdown timeout. Handlers
+    /// should monitor this token and exit promptly when cancelled. Note: an
+    /// <see cref="OperationCanceledException"/> thrown in response to this token is
+    /// treated as a transient error like any other exception — Prosody does not
+    /// distinguish cancellation from failure.
     /// </param>
     /// <exception cref="PermanentException">
     /// Throw to indicate a permanent error that should not be retried.

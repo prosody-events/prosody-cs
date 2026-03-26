@@ -219,7 +219,7 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 | `Timeout` / `PROSODY_TIMEOUT` | Cancel handler if it runs longer than this | 80% of stall threshold |
 | `CommitInterval` / `PROSODY_COMMIT_INTERVAL` | How often to save progress to Kafka | 1s |
 | `PollInterval` / `PROSODY_POLL_INTERVAL` | How often to fetch new messages from Kafka | 100ms |
-| `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Wait this long for in-flight work before force-quit | 30s |
+| `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Shutdown budget; handlers complete freely before cancellation fires near the deadline | 30s |
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
@@ -855,7 +855,7 @@ public class ValidationException : Exception, IPermanentError
 
 ### Handling Task Cancellation
 
-Prosody cancels tasks during partition rebalancing, timeout, or shutdown. How you handle cancellation is critical:
+Prosody cancels tasks during partition rebalancing or timeout. During shutdown, handlers run freely for most of the shutdown timeout before the cancellation signal fires — giving in-flight work time to complete. How you handle cancellation is critical:
 
 - A handler that returns normally (no exception) is considered **successful** — Prosody treats the message as processed.
 - Any exception — including `OperationCanceledException` — signals **failure**. Prosody does not distinguish
