@@ -22,6 +22,7 @@ use prosody::consumer::middleware::retry::RetryConfigurationBuilder;
 use prosody::consumer::middleware::scheduler::SchedulerConfigurationBuilder;
 use prosody::consumer::middleware::timeout::TimeoutConfigurationBuilder;
 use prosody::consumer::middleware::topic::FailureTopicConfigurationBuilder;
+use prosody::consumer::SpanRelation as ProsodySpanRelation;
 use prosody::high_level::ConsumerBuilders;
 use prosody::high_level::mode::Mode;
 use prosody::producer::ProducerConfigurationBuilder;
@@ -128,15 +129,15 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
 
     if let Some(message_spans) = options.message_spans {
         builder.message_spans(match message_spans {
-            SpanRelation::Child => prosody::consumer::SpanRelation::Child,
-            SpanRelation::FollowsFrom => prosody::consumer::SpanRelation::FollowsFrom,
+            SpanRelation::Child => ProsodySpanRelation::Child,
+            SpanRelation::FollowsFrom => ProsodySpanRelation::FollowsFrom,
         });
     }
 
     if let Some(timer_spans) = options.timer_spans {
         builder.timer_spans(match timer_spans {
-            SpanRelation::Child => prosody::consumer::SpanRelation::Child,
-            SpanRelation::FollowsFrom => prosody::consumer::SpanRelation::FollowsFrom,
+            SpanRelation::Child => ProsodySpanRelation::Child,
+            SpanRelation::FollowsFrom => ProsodySpanRelation::FollowsFrom,
         });
     }
 

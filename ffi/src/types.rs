@@ -18,10 +18,10 @@ use std::time::Duration;
 /// Controls how a new span relates to a propagated OpenTelemetry context.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum SpanRelation {
-    /// The propagated span becomes this span's OTel parent (child-of relationship).
+    /// The propagated span becomes this span's `OTel` parent (child-of relationship).
     #[default]
     Child,
-    /// The propagated span is added as an OTel link; this span starts a new trace
+    /// The propagated span is added as an `OTel` link; this span starts a new trace
     /// root (follows-from relationship).
     FollowsFrom,
 }

@@ -429,6 +429,15 @@ public sealed class ClientOptions
 
     private static T[]? CloneArray<T>(T[]? source) => source is not null ? [.. source] : null;
 
+    private static Native.SpanRelation? ToNativeSpanRelation(SpanRelation? relation) =>
+        relation switch
+        {
+            SpanRelation.Child => Native.SpanRelation.Child,
+            SpanRelation.FollowsFrom => Native.SpanRelation.FollowsFrom,
+            null => null,
+            _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
+        };
+
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
@@ -490,19 +499,7 @@ public sealed class ClientOptions
             CassandraRetention: CassandraRetention,
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
-            MessageSpans: MessageSpans switch
-            {
-                SpanRelation.Child => Native.SpanRelation.Child,
-                SpanRelation.FollowsFrom => Native.SpanRelation.FollowsFrom,
-                null => null,
-                _ => throw new InvalidOperationException($"Unknown span relation: {MessageSpans}"),
-            },
-            TimerSpans: TimerSpans switch
-            {
-                SpanRelation.Child => Native.SpanRelation.Child,
-                SpanRelation.FollowsFrom => Native.SpanRelation.FollowsFrom,
-                null => null,
-                _ => throw new InvalidOperationException($"Unknown span relation: {TimerSpans}"),
-            }
+            MessageSpans: ToNativeSpanRelation(MessageSpans),
+            TimerSpans: ToNativeSpanRelation(TimerSpans)
         );
 }
