@@ -15,6 +15,17 @@
 
 use std::time::Duration;
 
+/// Controls how a new span relates to a propagated OpenTelemetry context.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum SpanRelation {
+    /// The propagated span becomes this span's OTel parent (child-of relationship).
+    #[default]
+    Child,
+    /// The propagated span is added as an OTel link; this span starts a new trace
+    /// root (follows-from relationship).
+    FollowsFrom,
+}
+
 /// Determines how the client handles message processing failures.
 ///
 /// Each mode offers different trade-offs between reliability and throughput:
@@ -529,4 +540,24 @@ pub struct ClientOptions {
     /// **Default:** `true`
     #[uniffi(default = None)]
     pub telemetry_enabled: Option<bool>,
+
+    /// Span linking for message execution spans.
+    ///
+    /// Controls how the receive span connects to the OTel context propagated
+    /// from the Kafka message producer. Falls back to `PROSODY_MESSAGE_SPANS`
+    /// environment variable if unset.
+    ///
+    /// **Default:** `Child`
+    #[uniffi(default = None)]
+    pub message_spans: Option<SpanRelation>,
+
+    /// Span linking for timer execution spans.
+    ///
+    /// Controls how timer spans connect to the OTel context stored when the
+    /// timer was scheduled. Falls back to `PROSODY_TIMER_SPANS` environment
+    /// variable if unset.
+    ///
+    /// **Default:** `FollowsFrom`
+    #[uniffi(default = None)]
+    pub timer_spans: Option<SpanRelation>,
 }

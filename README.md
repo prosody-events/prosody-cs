@@ -227,6 +227,8 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
+| `MessageSpans` / `PROSODY_MESSAGE_SPANS` | Span linking for message execution: `child` (child-of) or `follows_from` | `child` |
+| `TimerSpans` / `PROSODY_TIMER_SPANS` | Span linking for timer execution: `child` (child-of) or `follows_from` | `follows_from` |
 
 ### Producer
 
@@ -681,6 +683,16 @@ public class MyHandler : IProsodyHandler
     public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
+
+### Span Linking
+
+By default, message execution spans use **`Child`** (child-of relationship — the execution span is part of
+the same trace as the producer). Timer execution spans use **`FollowsFrom`** (the execution span starts a
+new trace with a span link back to the scheduling span, since timer execution is causally related but not part of
+the same operation).
+
+Both strategies are configurable via the `MessageSpans` / `PROSODY_MESSAGE_SPANS` and `TimerSpans` /
+`PROSODY_TIMER_SPANS` options. Accepted values: `child`, `follows_from`.
 
 ## Best Practices
 

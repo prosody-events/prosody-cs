@@ -30,7 +30,7 @@ use prosody::telemetry::emitter::{
     TelemetryEmitterConfigurationBuilderError,
 };
 
-use crate::types::{ClientMode, ClientOptions};
+use crate::types::{ClientMode, ClientOptions, SpanRelation};
 
 /// Creates a producer configuration builder from client options.
 ///
@@ -124,6 +124,20 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
 
     if let Some(slab_size) = options.slab_size {
         builder.slab_size(slab_size);
+    }
+
+    if let Some(message_spans) = options.message_spans {
+        builder.message_spans(match message_spans {
+            SpanRelation::Child => prosody::consumer::SpanRelation::Child,
+            SpanRelation::FollowsFrom => prosody::consumer::SpanRelation::FollowsFrom,
+        });
+    }
+
+    if let Some(timer_spans) = options.timer_spans {
+        builder.timer_spans(match timer_spans {
+            SpanRelation::Child => prosody::consumer::SpanRelation::Child,
+            SpanRelation::FollowsFrom => prosody::consumer::SpanRelation::FollowsFrom,
+        });
     }
 
     builder
