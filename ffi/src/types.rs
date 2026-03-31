@@ -18,11 +18,12 @@ use std::time::Duration;
 /// Controls how a new span relates to a propagated OpenTelemetry context.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum SpanRelation {
-    /// The propagated span becomes this span's `OTel` parent (child-of relationship).
+    /// The propagated span becomes this span's `OTel` parent (child-of
+    /// relationship).
     #[default]
     Child,
-    /// The propagated span is added as an `OTel` link; this span starts a new trace
-    /// root (follows-from relationship).
+    /// The propagated span is added as an `OTel` link; this span starts a new
+    /// trace root (follows-from relationship).
     FollowsFrom,
 }
 
@@ -195,7 +196,8 @@ pub struct ClientOptions {
     ///
     /// Set to `0` to disable the deduplication middleware entirely.
     ///
-    /// Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE` environment variable if unset.
+    /// Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE` environment variable if
+    /// unset.
     ///
     /// **Default:** `8192`
     #[uniffi(default = None)]
@@ -206,7 +208,8 @@ pub struct ClientOptions {
     /// Changing this value invalidates all previously recorded dedup entries,
     /// causing messages to be reprocessed.
     ///
-    /// Falls back to `PROSODY_IDEMPOTENCE_VERSION` environment variable if unset.
+    /// Falls back to `PROSODY_IDEMPOTENCE_VERSION` environment variable if
+    /// unset.
     ///
     /// **Default:** `"1"`
     #[uniffi(default = None)]
@@ -214,7 +217,8 @@ pub struct ClientOptions {
 
     /// TTL for deduplication records in Cassandra.
     ///
-    /// Must be at least 1 minute. Records expire automatically after this duration.
+    /// Must be at least 1 minute. Records expire automatically after this
+    /// duration.
     ///
     /// Falls back to `PROSODY_IDEMPOTENCE_TTL` environment variable if unset.
     ///
@@ -543,7 +547,7 @@ pub struct ClientOptions {
 
     /// Span linking for message execution spans.
     ///
-    /// Controls how the receive span connects to the OTel context propagated
+    /// Controls how the receive span connects to the `OTel` context propagated
     /// from the Kafka message producer. Falls back to `PROSODY_MESSAGE_SPANS`
     /// environment variable if unset.
     ///
@@ -553,7 +557,7 @@ pub struct ClientOptions {
 
     /// Span linking for timer execution spans.
     ///
-    /// Controls how timer spans connect to the OTel context stored when the
+    /// Controls how timer spans connect to the `OTel` context stored when the
     /// timer was scheduled. Falls back to `PROSODY_TIMER_SPANS` environment
     /// variable if unset.
     ///
