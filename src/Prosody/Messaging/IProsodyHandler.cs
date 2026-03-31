@@ -9,7 +9,7 @@ namespace Prosody.Messaging;
 /// <para>
 /// Implement this interface to handle events from Prosody. The handler methods
 /// receive a <see cref="CancellationToken"/> that is triggered when Prosody
-/// requests cancellation (e.g., during shutdown or rebalance).
+/// requests cancellation (e.g., during shutdown, rebalance, or timeout).
 /// </para>
 /// <para>
 /// <b>Error Classification:</b> By default, all exceptions are treated as transient
