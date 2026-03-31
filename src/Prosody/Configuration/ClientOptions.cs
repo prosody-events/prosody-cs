@@ -142,7 +142,7 @@ public sealed class ClientOptions
     public TimeSpan? StallThreshold { get; set; }
 
     /// <summary>
-    /// Wait this long for in-flight work before force-quit on shutdown.
+    /// Shutdown budget; handlers complete freely before cancellation fires near the deadline.
     /// Default: 30 seconds.
     /// </summary>
     public TimeSpan? ShutdownTimeout { get; set; }
@@ -176,6 +176,20 @@ public sealed class ClientOptions
     /// Default: 1 hour.
     /// </summary>
     public TimeSpan? SlabSize { get; set; }
+
+    /// <summary>
+    /// Span linking for message execution spans.
+    /// Controls how the receive span connects to the OTel context propagated from the Kafka message producer.
+    /// Default: <see cref="SpanRelation.Child"/>.
+    /// </summary>
+    public SpanRelation? MessageSpans { get; set; }
+
+    /// <summary>
+    /// Span linking for timer execution spans.
+    /// Controls how timer spans connect to the OTel context stored when the timer was scheduled.
+    /// Default: <see cref="SpanRelation.FollowsFrom"/>.
+    /// </summary>
+    public SpanRelation? TimerSpans { get; set; }
 
     // ========================================================================
     // Producer options
@@ -415,6 +429,15 @@ public sealed class ClientOptions
 
     private static T[]? CloneArray<T>(T[]? source) => source is not null ? [.. source] : null;
 
+    private static Native.SpanRelation? ToNativeSpanRelation(SpanRelation? relation) =>
+        relation switch
+        {
+            SpanRelation.Child => Native.SpanRelation.Child,
+            SpanRelation.FollowsFrom => Native.SpanRelation.FollowsFrom,
+            null => null,
+            _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
+        };
+
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
@@ -475,6 +498,8 @@ public sealed class ClientOptions
             CassandraPassword: CassandraPassword,
             CassandraRetention: CassandraRetention,
             TelemetryTopic: TelemetryTopic,
-            TelemetryEnabled: TelemetryEnabled
+            TelemetryEnabled: TelemetryEnabled,
+            MessageSpans: ToNativeSpanRelation(MessageSpans),
+            TimerSpans: ToNativeSpanRelation(TimerSpans)
         );
 }

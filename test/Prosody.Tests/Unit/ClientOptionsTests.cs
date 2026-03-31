@@ -268,4 +268,27 @@ public sealed class ClientOptionsTests
             () => Assert.Null(native.TelemetryEnabled)
         );
     }
+
+    [Fact]
+    public void ToNativeConvertsSpanRelation()
+    {
+        var options = new ClientOptions { MessageSpans = SpanRelation.Child, TimerSpans = SpanRelation.FollowsFrom };
+
+        var native = options.ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal(Native.SpanRelation.Child, native.MessageSpans),
+            () => Assert.Equal(Native.SpanRelation.FollowsFrom, native.TimerSpans)
+        );
+    }
+
+    [Fact]
+    public void ToNativePreservesNullSpanRelation()
+    {
+        var options = new ClientOptions { GroupId = "test" };
+
+        var native = options.ToNative();
+
+        Assert.Multiple(() => Assert.Null(native.MessageSpans), () => Assert.Null(native.TimerSpans));
+    }
 }

@@ -219,7 +219,7 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 | `Timeout` / `PROSODY_TIMEOUT` | Cancel handler if it runs longer than this | 80% of stall threshold |
 | `CommitInterval` / `PROSODY_COMMIT_INTERVAL` | How often to save progress to Kafka | 1s |
 | `PollInterval` / `PROSODY_POLL_INTERVAL` | How often to fetch new messages from Kafka | 100ms |
-| `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Wait this long for in-flight work before force-quit | 30s |
+| `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Shutdown budget; handlers complete freely before cancellation fires near the deadline | 30s |
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
@@ -227,6 +227,8 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
+| `MessageSpans` / `PROSODY_MESSAGE_SPANS` | Span linking for message execution: `child` (child-of) or `follows_from` | `child` |
+| `TimerSpans` / `PROSODY_TIMER_SPANS` | Span linking for timer execution: `child` (child-of) or `follows_from` | `follows_from` |
 
 ### Producer
 
@@ -682,6 +684,16 @@ public class MyHandler : IProsodyHandler
 }
 ```
 
+### Span Linking
+
+By default, message execution spans use **`Child`** (child-of relationship — the execution span is part of
+the same trace as the producer). Timer execution spans use **`FollowsFrom`** (the execution span starts a
+new trace with a span link back to the scheduling span, since timer execution is causally related but not part of
+the same operation).
+
+Both strategies are configurable via the `MessageSpans` / `PROSODY_MESSAGE_SPANS` and `TimerSpans` /
+`PROSODY_TIMER_SPANS` options. Accepted values: `child`, `follows_from`.
+
 ## Best Practices
 
 ### Ensuring Thread-Safe Handlers
@@ -855,7 +867,7 @@ public class ValidationException : Exception, IPermanentError
 
 ### Handling Task Cancellation
 
-Prosody cancels tasks during partition rebalancing, timeout, or shutdown. How you handle cancellation is critical:
+Prosody cancels tasks during partition rebalancing or timeout. During shutdown, handlers run freely for most of the shutdown timeout before the cancellation signal fires — giving in-flight work time to complete. How you handle cancellation is critical:
 
 - A handler that returns normally (no exception) is considered **successful** — Prosody treats the message as processed.
 - Any exception — including `OperationCanceledException` — signals **failure**. Prosody does not distinguish
