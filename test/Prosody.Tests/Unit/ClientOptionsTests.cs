@@ -272,11 +272,7 @@ public sealed class ClientOptionsTests
     [Fact]
     public void ToNativeConvertsSpanRelation()
     {
-        var options = new ClientOptions
-        {
-            MessageSpans = SpanRelation.Child,
-            TimerSpans = SpanRelation.FollowsFrom,
-        };
+        var options = new ClientOptions { MessageSpans = SpanRelation.Child, TimerSpans = SpanRelation.FollowsFrom };
 
         var native = options.ToNative();
 
@@ -293,9 +289,6 @@ public sealed class ClientOptionsTests
 
         var native = options.ToNative();
 
-        Assert.Multiple(
-            () => Assert.Null(native.MessageSpans),
-            () => Assert.Null(native.TimerSpans)
-        );
+        Assert.Multiple(() => Assert.Null(native.MessageSpans), () => Assert.Null(native.TimerSpans));
     }
 }
