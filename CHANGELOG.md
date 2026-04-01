@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.8.0](https://github.com/cincpro/prosody-cs/compare/v2.7.0...v2.8.0) (2026-03-31)
+
+
+### Features
+
+* shutdown grace period and configurable span relation ([#34](https://github.com/cincpro/prosody-cs/issues/34)) ([fe120e7](https://github.com/cincpro/prosody-cs/commit/fe120e7b0772adb2885b10a81cf1af96cc6626a2))
+
 ## [2.7.0](https://github.com/cincpro/prosody-cs/compare/v2.6.0...v2.7.0) (2026-03-24)
 
 
