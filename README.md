@@ -1230,4 +1230,4 @@ Enum representing the operating mode:
 
 ## License
 
-UNLICENSED
+MIT
