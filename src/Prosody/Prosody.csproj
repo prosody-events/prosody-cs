@@ -13,7 +13,7 @@
     <!-- NuGet package metadata -->
     <PackageId>Witco.Prosody</PackageId>
     <Authors>Josh Griffith; Mathews Bryan</Authors>
-    <Copyright>Copyright (c) Witco</Copyright>
+    <Copyright>Copyright (c) 2026 Witco</Copyright>
     <Description>C# bindings for the Prosody Kafka client with configurable retry mechanisms, failure handling strategies, timer scheduling, and OpenTelemetry distributed tracing.</Description>
     <PackageTags>kafka;messaging;distributed-systems;opentelemetry;tracing;retry;timers</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
