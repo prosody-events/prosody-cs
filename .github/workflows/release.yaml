@@ -33,10 +33,14 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: actions/checkout@v4
+      - name: Release Please Action
         id: release
+        uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.TEMP_GH_ALL_REPOS_RW }}
+          token: ${{ secrets.GH_PAT }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
           release-as: ${{ github.event.inputs.release_as }}
 
   build-native:
@@ -86,7 +90,7 @@ jobs:
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
         with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
@@ -145,7 +149,7 @@ jobs:
       - name: Setup Git credentials
         uses: de-vri-es/setup-git-credentials@v2
         with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.TEMP_GH_ALL_REPOS_RW }}@github.com/
+          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -268,15 +272,18 @@ jobs:
       - name: Start Kafka container
         run: |
           docker run -d --name kafka --network test-network \
-            -e KAFKA_CFG_NODE_ID=0 \
-            -e KAFKA_CFG_PROCESS_ROLES=controller,broker \
-            -e KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093 \
-            -e KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
-            -e KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
-            -e KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
-            -e KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-            -e KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
-            docker.io/bitnamilegacy/kafka:3.7
+            -e KAFKA_NODE_ID=0 \
+            -e KAFKA_PROCESS_ROLES=controller,broker \
+            -e KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:9093 \
+            -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+            -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
+            -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+            -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+            -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+            -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+            apache/kafka:latest
 
       - name: Start Cassandra container
         run: |
@@ -304,7 +311,7 @@ jobs:
 
           # Wait for Kafka
           for i in {1..60}; do
-            if docker exec kafka kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
+            if docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
               echo "Kafka is ready after ${i} attempts"
               break
             elif [ $i -eq 60 ]; then
@@ -353,17 +360,9 @@ jobs:
           name: nuget-package
           path: packages/
 
-      - name: Publish to GitHub Packages
+      - name: Publish to NuGet.org
         run: |
           dotnet nuget push packages/*.nupkg \
-            --source "https://nuget.pkg.github.com/cincpro/index.json" \
-            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --source "https://api.nuget.org/v3/index.json" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
             --skip-duplicate
-
-      # Uncomment when ready to publish to NuGet.org
-      # - name: Publish to NuGet.org
-      #   run: |
-      #     dotnet nuget push packages/*.nupkg \
-      #       --source "https://api.nuget.org/v3/index.json" \
-      #       --api-key ${{ secrets.NUGET_API_KEY }} \
-      #       --skip-duplicate
