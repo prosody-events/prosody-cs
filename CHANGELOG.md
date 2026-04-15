@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/prosody-events/prosody-cs/compare/v0.1.0...v0.1.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* restore cross + QEMU for linux-arm64 build and test ([#4](https://github.com/prosody-events/prosody-cs/issues/4)) ([d7f2ff5](https://github.com/prosody-events/prosody-cs/commit/d7f2ff541ad2a4751cf3ea8897a29f4695f51aa5))
+
 ## 0.1.0 (2026-04-15)
 
 
