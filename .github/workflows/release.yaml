@@ -73,7 +73,7 @@ jobs:
 
           - rid: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             lib_prefix: lib
             lib_ext: .so
             use_cross: true
@@ -225,16 +225,15 @@ jobs:
   test:
     name: Test ${{ matrix.target.name }} (.NET ${{ matrix.dotnet }})
     needs: [build-package]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
       matrix:
         target:
           - name: linux-x64
-            platform: ""
+            runner: ubuntu-latest
           - name: linux-arm64
-            platform: linux/arm64
-            needs_qemu: true
+            runner: ubuntu-24.04-arm
         dotnet: ["8.0", "9.0", "10.0"]
 
     steps:
@@ -245,16 +244,6 @@ jobs:
         with:
           name: nuget-package
           path: ./packages
-
-      - name: Set up QEMU
-        if: matrix.target.needs_qemu
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Set up binfmt_misc
-        if: matrix.target.needs_qemu
-        run: docker run --rm --privileged tonistiigi/binfmt --install all
 
       - name: Create Docker network
         run: docker network create test-network
@@ -315,7 +304,6 @@ jobs:
       - name: Run tests
         run: |
           docker run --rm --network test-network \
-            ${{ matrix.target.platform && format('--platform {0}', matrix.target.platform) || '' }} \
             -e PROSODY_BOOTSTRAP_SERVERS=kafka:9092 \
             -e PROSODY_CASSANDRA_NODES=cassandra:9042 \
             -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
