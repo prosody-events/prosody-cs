@@ -8,7 +8,7 @@ license = "MIT"
 name = "prosody-ffi"
 readme = "../README.md"
 repository = "https://github.com/prosody-events/prosody-cs"
-version = "0.0.0"
+version = "0.1.0"
 
 # Produces libprosody_ffi.dylib (macOS) / libprosody_ffi.so (Linux) / prosody_ffi.dll (Windows)
 # C# loads this via P/Invoke, and uniffi-bindgen-cs reads it to generate bindings
