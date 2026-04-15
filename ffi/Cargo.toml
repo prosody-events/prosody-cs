@@ -1,15 +1,14 @@
 [package]
-authors = ["Josh Griffith <joshua.griffith@realgeeks.com>"]
 categories = ["api-bindings", "asynchronous", "database"]
 description = "C# bindings for the Prosody Kafka client library"
 edition = "2024"
-homepage = "https://github.com/cincpro/prosody-cs"
+homepage = "https://github.com/prosody-events/prosody-cs"
 keywords = ["bindings", "client", "csharp", "kafka", "prosody"]
 license = "MIT"
 name = "prosody-ffi"
 readme = "../README.md"
-repository = "https://github.com/cincpro/prosody-cs"
-version = "2.8.0"
+repository = "https://github.com/prosody-events/prosody-cs"
+version = "0.0.0"
 
 # Produces libprosody_ffi.dylib (macOS) / libprosody_ffi.so (Linux) / prosody_ffi.dll (Windows)
 # C# loads this via P/Invoke, and uniffi-bindgen-cs reads it to generate bindings
@@ -21,7 +20,6 @@ arc-swap.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 opentelemetry.workspace = true
-parking_lot.workspace = true
 prosody.workspace = true
 serde_json.workspace = true
 simd-json.workspace = true

@@ -15,7 +15,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_TEST_DEBUG: 0
-  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: 1
 
@@ -87,11 +87,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
-
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -145,11 +140,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -353,6 +343,10 @@ jobs:
     needs: [release-please, build-package, test]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write   # request the OIDC token for NuGet trusted publishing
+      contents: read
     steps:
       - name: Download NuGet package
         uses: actions/download-artifact@v7
@@ -360,9 +354,15 @@ jobs:
           name: nuget-package
           path: packages/
 
+      - name: NuGet login (OIDC -> short-lived API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Publish to NuGet.org
         run: |
           dotnet nuget push packages/*.nupkg \
             --source "https://api.nuget.org/v3/index.json" \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --skip-duplicate

@@ -1,6 +1,6 @@
 # Prosody: C# Bindings for Kafka
 
-Prosody offers C# bindings to the [Prosody Kafka client](https://github.com/cincpro/prosody), providing
+Prosody offers C# bindings to the [Prosody Kafka client](https://github.com/prosody-events/prosody), providing
 features for message production and consumption, including configurable retry mechanisms, failure handling
 strategies, and integrated OpenTelemetry support for distributed tracing.
 
@@ -21,7 +21,7 @@ strategies, and integrated OpenTelemetry support for distributed tracing.
 Add the NuGet package to your project:
 
 ```bash
-dotnet add package Witco.Prosody
+dotnet add package ProsodyEvents.Prosody
 ```
 
 ## Quick Start
@@ -1037,7 +1037,7 @@ Both transient and permanent handler exceptions are captured with contextual dat
 
 Sentry failures never affect message processing. If Sentry is unreachable or misconfigured, the exception is logged and handler results are unchanged.
 
-> **Note:** The `Sentry` package is currently a hard dependency of `Witco.Prosody`. A future improvement is to extract Sentry support into a separate `Witco.Prosody.Sentry` package so consumers who don't use Sentry don't pull in the dependency.
+> **Note:** The `Sentry` package is currently a hard dependency of `ProsodyEvents.Prosody`. A future improvement is to extract Sentry support into a separate `ProsodyEvents.Prosody.Sentry` package so consumers who don't use Sentry don't pull in the dependency.
 
 ## Administrative Operations
 
@@ -1090,15 +1090,18 @@ Prosody uses an automated release process managed by GitHub Actions. Here's an o
     - Creates or updates a release pull request with changelog updates and version bumps.
     - When the PR is merged, it creates a GitHub release and a git tag.
 
-3. **Build Process**: If a new release is created, the following build jobs are triggered:
+3. **Build Process**: If a new release is created, the following native build jobs are triggered:
     - Linux builds for x86_64 and aarch64 architectures.
     - Windows builds for x64 and arm64 architectures.
-    - macOS builds for arm64 architecture.
+    - macOS builds for arm64 (Apple Silicon) architecture.
 
-4. **Artifact Upload**: Each build job uploads its artifacts (native libraries) to GitHub Actions.
+4. **Pack**: A single NuGet package (`ProsodyEvents.Prosody`) is assembled from the native artifacts and the generated
+   C# bindings, bundling all supported runtimes under `runtimes/<rid>/native/` inside the `.nupkg`.
 
-5. **Publication**: If all builds are successful, the final step publishes the NuGet package to the GitHub Packages
-   registry.
+5. **Test**: The packed `.nupkg` is consumed by the test project (via `TestPackage=true`) and run against Kafka and
+   Cassandra on each supported RID / target framework combination (.NET 8, 9, 10) before publication.
+
+6. **Publication**: If all tests pass, the package is published to [nuget.org](https://www.nuget.org/packages/ProsodyEvents.Prosody).
 
 ### Contributing to Releases
 
@@ -1114,11 +1117,12 @@ To contribute to a release:
 
 While the process is automated, manual intervention may sometimes be necessary:
 
-- You can manually trigger the release workflow from the GitHub Actions tab if needed.
+- You can manually trigger the release workflow from the GitHub Actions tab if needed (including the `release_as`
+  input to force a specific version, e.g. `2.2.0-beta.1`).
 - If you need to make changes to the release PR created by Release Please, you can do so before merging it.
 
-Remember, all releases are automatically published to the GitHub Packages registry. Ensure you have thoroughly tested
-your changes before merging to `main`.
+All releases are automatically published to nuget.org. Ensure you have thoroughly tested your changes before merging
+to `main`.
 
 ## API Reference
 

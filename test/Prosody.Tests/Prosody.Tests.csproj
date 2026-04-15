@@ -40,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TestPackage)' == 'true'">
-    <PackageReference Include="Witco.Prosody" Version="*" />
+    <PackageReference Include="ProsodyEvents.Prosody" Version="*" />
   </ItemGroup>
 
   <!-- Test configuration file to set xUnit test runner settings -->
