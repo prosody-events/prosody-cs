@@ -16,17 +16,17 @@
 
   <!-- OpenTelemetry for integration test tracing verification -->
   <ItemGroup>
-    <PackageReference Include="OpenTelemetry" Version="1.15.0" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.15.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.2" />
   </ItemGroup>
 
   <!-- DI and Configuration for unit tests -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.3.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.6" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.6" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.5.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.6" />
   </ItemGroup>
 
   <!-- Code analyzers -->
@@ -40,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TestPackage)' == 'true'">
-    <PackageReference Include="Witco.Prosody" Version="*" />
+    <PackageReference Include="ProsodyEvents.Prosody" Version="*" />
   </ItemGroup>
 
   <!-- Test configuration file to set xUnit test runner settings -->

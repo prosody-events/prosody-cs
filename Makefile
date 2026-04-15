@@ -286,11 +286,7 @@ PACK_OUTPUT := packages
 
 # RID for current platform (matches .NET runtime identifier)
 ifeq ($(UNAME),Darwin)
-    ifeq ($(ARCH),arm64)
-        RID := osx-arm64
-    else
-        RID := osx-x64
-    endif
+    RID := osx-arm64
 else ifeq ($(UNAME),Linux)
     ifeq ($(ARCH),aarch64)
         RID := linux-arm64

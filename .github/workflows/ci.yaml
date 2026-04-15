@@ -16,7 +16,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_TEST_DEBUG: 0
-  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   DOTNET_NOLOGO: 1
 
@@ -64,11 +64,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -126,11 +121,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -215,11 +205,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
-
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -246,11 +231,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
-
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -271,11 +251,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - name: Setup Git credentials
-        uses: de-vri-es/setup-git-credentials@v2
-        with:
-          credentials: https://Joshua-Griffith_fnf:${{ secrets.GH_PAT }}@github.com/
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
