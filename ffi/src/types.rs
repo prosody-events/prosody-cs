@@ -387,6 +387,15 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_cache_size: Option<u32>,
 
+    /// Maximum deferred store cache entries per Cassandra defer store.
+    ///
+    /// Controls the size of the built-in write-through cache for deferred store
+    /// entries (next offset/timer + retry count).
+    ///
+    /// **Default:** `8192`
+    #[uniffi(default = None)]
+    pub defer_store_cache_size: Option<u32>,
+
     /// Timeout for loading deferred messages from Kafka.
     ///
     /// **Default:** 30 seconds

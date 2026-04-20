@@ -272,6 +272,10 @@ pub fn build_defer_config(options: &ClientOptions) -> DeferConfigurationBuilder 
         builder.cache_size(cache_size as usize);
     }
 
+    if let Some(store_cache_size) = options.defer_store_cache_size {
+        builder.store_cache_size(store_cache_size as usize);
+    }
+
     if let Some(seek_timeout) = options.defer_seek_timeout {
         builder.seek_timeout(seek_timeout);
     }

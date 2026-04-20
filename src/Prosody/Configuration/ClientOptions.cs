@@ -270,6 +270,13 @@ public sealed class ClientOptions
     public uint? DeferCacheSize { get; set; }
 
     /// <summary>
+    /// Maximum deferred store cache entries per Cassandra defer store.
+    /// Default: 8192.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_DEFER_STORE_CACHE_SIZE</c></remarks>
+    public uint? DeferStoreCacheSize { get; set; }
+
+    /// <summary>
     /// Timeout when loading deferred messages from Kafka.
     /// Default: 30 seconds.
     /// </summary>
@@ -438,6 +445,16 @@ public sealed class ClientOptions
             _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
         };
 
+    private Native.ClientMode? ToNativeMode() =>
+        Mode switch
+        {
+            ClientMode.Pipeline => Native.ClientMode.Pipeline,
+            ClientMode.LowLatency => Native.ClientMode.LowLatency,
+            ClientMode.BestEffort => Native.ClientMode.BestEffort,
+            null => null,
+            _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
+        };
+
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
@@ -446,14 +463,7 @@ public sealed class ClientOptions
             BootstrapServers: BootstrapServers,
             GroupId: GroupId,
             SubscribedTopics: SubscribedTopics,
-            Mode: Mode switch
-            {
-                ClientMode.Pipeline => Native.ClientMode.Pipeline,
-                ClientMode.LowLatency => Native.ClientMode.LowLatency,
-                ClientMode.BestEffort => Native.ClientMode.BestEffort,
-                null => null,
-                _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
-            },
+            Mode: ToNativeMode(),
             AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
@@ -480,6 +490,7 @@ public sealed class ClientOptions
             DeferFailureThreshold: DeferFailureThreshold,
             DeferFailureWindow: DeferFailureWindow,
             DeferCacheSize: DeferCacheSize,
+            DeferStoreCacheSize: DeferStoreCacheSize,
             DeferSeekTimeout: DeferSeekTimeout,
             DeferDiscardThreshold: DeferDiscardThreshold,
             MonopolizationEnabled: MonopolizationEnabled,
