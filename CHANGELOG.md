@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/prosody-events/prosody-cs/compare/v0.1.1...v0.1.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* **deps:** upgrade prosody to 0.1.2 ([#6](https://github.com/prosody-events/prosody-cs/issues/6)) ([a1d6854](https://github.com/prosody-events/prosody-cs/commit/a1d685473dc5acd4b0bcd15d7b3dbf76cb404e67))
+
 ## [0.1.1](https://github.com/prosody-events/prosody-cs/compare/v0.1.0...v0.1.1) (2026-04-15)
 
 
