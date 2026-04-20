@@ -270,6 +270,13 @@ public sealed class ClientOptions
     public uint? DeferCacheSize { get; set; }
 
     /// <summary>
+    /// Maximum deferred store cache entries per Cassandra defer store.
+    /// Default: 8192.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_DEFER_STORE_CACHE_SIZE</c></remarks>
+    public uint? DeferStoreCacheSize { get; set; }
+
+    /// <summary>
     /// Timeout when loading deferred messages from Kafka.
     /// Default: 30 seconds.
     /// </summary>
@@ -480,6 +487,7 @@ public sealed class ClientOptions
             DeferFailureThreshold: DeferFailureThreshold,
             DeferFailureWindow: DeferFailureWindow,
             DeferCacheSize: DeferCacheSize,
+            DeferStoreCacheSize: DeferStoreCacheSize,
             DeferSeekTimeout: DeferSeekTimeout,
             DeferDiscardThreshold: DeferDiscardThreshold,
             MonopolizationEnabled: MonopolizationEnabled,
