@@ -445,6 +445,16 @@ public sealed class ClientOptions
             _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
         };
 
+    private Native.ClientMode? ToNativeMode() =>
+        Mode switch
+        {
+            ClientMode.Pipeline => Native.ClientMode.Pipeline,
+            ClientMode.LowLatency => Native.ClientMode.LowLatency,
+            ClientMode.BestEffort => Native.ClientMode.BestEffort,
+            null => null,
+            _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
+        };
+
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
@@ -453,14 +463,7 @@ public sealed class ClientOptions
             BootstrapServers: BootstrapServers,
             GroupId: GroupId,
             SubscribedTopics: SubscribedTopics,
-            Mode: Mode switch
-            {
-                ClientMode.Pipeline => Native.ClientMode.Pipeline,
-                ClientMode.LowLatency => Native.ClientMode.LowLatency,
-                ClientMode.BestEffort => Native.ClientMode.BestEffort,
-                null => null,
-                _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
-            },
+            Mode: ToNativeMode(),
             AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
