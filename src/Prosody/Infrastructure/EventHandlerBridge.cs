@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Prosody.Errors;
@@ -131,7 +132,13 @@ internal sealed class EventHandlerBridge : NativeHandler
         Func<Dictionary<string, string>?>? buildSentryContext = null
     )
     {
-        using var activity = TracePropagation.Extract(carrier);
+        string activityName = eventType switch
+        {
+            SentryConstants.TagValues.EventTypeMessage => "on_message",
+            SentryConstants.TagValues.EventTypeTimer => "on_timer",
+            _ => "Handle",
+        };
+        using var activity = TracePropagation.Extract(carrier, activityName);
         using var cts = new CancellationTokenSource();
         var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -149,6 +156,16 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddEvent(new ActivityEvent(
+                "exception",
+                tags: new ActivityTagsCollection
+                {
+                    { "exception.type", ex.GetType().FullName ?? ex.GetType().Name },
+                    { "exception.message", ex.Message },
+                    { "exception.stacktrace", ex.ToString() },
+                }
+            ));
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
@@ -160,6 +177,16 @@ internal sealed class EventHandlerBridge : NativeHandler
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddEvent(new ActivityEvent(
+                "exception",
+                tags: new ActivityTagsCollection
+                {
+                    { "exception.type", ex.GetType().FullName ?? ex.GetType().Name },
+                    { "exception.message", ex.Message },
+                    { "exception.stacktrace", ex.ToString() },
+                }
+            ));
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Transient);
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }

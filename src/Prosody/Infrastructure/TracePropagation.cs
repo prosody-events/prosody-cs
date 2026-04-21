@@ -28,7 +28,7 @@ internal static class TracePropagation
     /// Extracts trace context and baggage from a carrier, restoring them as current.
     /// Returns an Activity that should be disposed when the operation completes.
     /// </summary>
-    public static Activity? Extract(Dictionary<string, string> carrier)
+    public static Activity? Extract(Dictionary<string, string> carrier, string activityName = "Handle")
     {
         PropagationContext context = Propagator.Extract(
             default,
@@ -38,6 +38,6 @@ internal static class TracePropagation
 
         Baggage.Current = context.Baggage;
 
-        return Source.StartActivity("Handle", ActivityKind.Consumer, context.ActivityContext);
+        return Source.StartActivity(activityName, ActivityKind.Consumer, context.ActivityContext);
     }
 }
