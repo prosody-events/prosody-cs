@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
 using Prosody.Logging;
 using Prosody.Messaging;
@@ -31,6 +32,11 @@ namespace Prosody.Infrastructure;
 internal sealed class EventHandlerBridge : NativeHandler
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
+
+    internal const string OnMessageActivityName = "on_message";
+    internal const string OnTimerActivityName = "on_timer";
+
+    private static readonly ActivitySource ActivitySource = new("Prosody");
 
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
     // between tests. In production, Configure() is called once before any handler
@@ -81,7 +87,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
-            activityName: "on_message",
+            activityName: OnMessageActivityName,
             eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -109,7 +115,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
-            activityName: "on_timer",
+            activityName: OnTimerActivityName,
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -135,7 +141,12 @@ internal sealed class EventHandlerBridge : NativeHandler
         Func<Dictionary<string, string>?>? buildSentryContext = null
     )
     {
-        using var activity = TracePropagation.Extract(carrier, activityName);
+        PropagationContext propagation = TracePropagation.Extract(carrier);
+        using var activity = ActivitySource.StartActivity(
+            activityName,
+            ActivityKind.Consumer,
+            propagation.ActivityContext
+        );
         using var cts = new CancellationTokenSource();
         var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
