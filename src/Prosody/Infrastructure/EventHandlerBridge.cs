@@ -216,15 +216,17 @@ internal sealed class EventHandlerBridge : NativeHandler
     private static void RecordExceptionOnActivity(Activity? activity, Exception ex)
     {
         activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-        activity?.AddEvent(new ActivityEvent(
-            "exception",
-            tags: new ActivityTagsCollection
-            {
-                { "exception.type", ex.GetType().FullName ?? ex.GetType().Name },
-                { "exception.message", ex.Message },
-                { "exception.stacktrace", ex.ToString() },
-            }
-        ));
+        activity?.AddEvent(
+            new ActivityEvent(
+                "exception",
+                tags: new ActivityTagsCollection
+                {
+                    { "exception.type", ex.GetType().FullName ?? ex.GetType().Name },
+                    { "exception.message", ex.Message },
+                    { "exception.stacktrace", ex.ToString() },
+                }
+            )
+        );
     }
 
     /// <summary>
