@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 
 namespace Prosody.Tests.Unit;
@@ -12,7 +13,7 @@ namespace Prosody.Tests.Unit;
 /// Run sequentially because <see cref="ActivityListener"/> is process-global — concurrent
 /// tests would observe each other's activities.
 /// </summary>
-[Collection("Sequential")]
+[Collection(ActivityListenerIsolationCollection.Name)]
 public sealed class EventHandlerBridgeTracingTests : IDisposable
 {
     private readonly List<Activity> _activities = [];
@@ -32,7 +33,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public void Dispose() => _listener.Dispose();
 
     [Fact]
-    public async Task OnMessage_CreatesActivityNamed_on_message()
+    public async Task OnMessage_CreatesActivityNamed_OnMessage()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge(handler);
@@ -40,12 +41,12 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         await bridge.HandleMessageAsync(null!, null!, NeverCancel, EmptyCarrier);
 
         var activity = Assert.Single(_activities);
-        Assert.Equal("on_message", activity.DisplayName);
+        Assert.Equal("OnMessage", activity.DisplayName);
         Assert.Equal(ActivityKind.Consumer, activity.Kind);
     }
 
     [Fact]
-    public async Task OnTimer_CreatesActivityNamed_on_timer()
+    public async Task OnTimer_CreatesActivityNamed_OnTimer()
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge(handler);
@@ -53,7 +54,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         await bridge.HandleTimerAsync(null!, null!, NeverCancel, EmptyCarrier);
 
         var activity = Assert.Single(_activities);
-        Assert.Equal("on_timer", activity.DisplayName);
+        Assert.Equal("OnTimer", activity.DisplayName);
         Assert.Equal(ActivityKind.Consumer, activity.Kind);
     }
 

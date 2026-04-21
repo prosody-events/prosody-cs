@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
@@ -33,10 +34,13 @@ internal sealed class EventHandlerBridge : NativeHandler
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
-    internal const string OnMessageActivityName = "on_message";
-    internal const string OnTimerActivityName = "on_timer";
+    internal const string OnMessageActivityName = "OnMessage";
+    internal const string OnTimerActivityName = "OnTimer";
 
-    private static readonly ActivitySource ActivitySource = new("Prosody");
+    private static readonly ActivitySource ActivitySource = new(
+        "Prosody",
+        typeof(EventHandlerBridge).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+    );
 
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
     // between tests. In production, Configure() is called once before any handler
@@ -221,21 +225,8 @@ internal sealed class EventHandlerBridge : NativeHandler
 #pragma warning restore CA1031
     }
 
-    private static void RecordExceptionOnActivity(Activity? activity, Exception ex)
-    {
-        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-        activity?.AddEvent(
-            new ActivityEvent(
-                "exception",
-                tags: new ActivityTagsCollection
-                {
-                    { "exception.type", ex.GetType().FullName ?? ex.GetType().Name },
-                    { "exception.message", ex.Message },
-                    { "exception.stacktrace", ex.ToString() },
-                }
-            )
-        );
-    }
+    private static void RecordExceptionOnActivity(Activity? activity, Exception ex) =>
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message).AddException(ex);
 
     /// <summary>
     /// Bridges a cancellation signal to a <see cref="CancellationTokenSource"/>.
