@@ -39,7 +39,9 @@ internal sealed class EventHandlerBridge : NativeHandler
 
     private static readonly ActivitySource ActivitySource = new(
         "Prosody",
-        typeof(EventHandlerBridge).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        typeof(EventHandlerBridge)
+            .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
     );
 
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
