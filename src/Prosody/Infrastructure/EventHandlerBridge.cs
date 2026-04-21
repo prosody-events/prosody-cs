@@ -81,6 +81,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
+            activityName: "on_message",
             eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -108,6 +109,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
+            activityName: "on_timer",
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -128,16 +130,11 @@ internal sealed class EventHandlerBridge : NativeHandler
         PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
+        string activityName,
         string eventType = "handler",
         Func<Dictionary<string, string>?>? buildSentryContext = null
     )
     {
-        string activityName = eventType switch
-        {
-            SentryConstants.TagValues.EventTypeMessage => "on_message",
-            SentryConstants.TagValues.EventTypeTimer => "on_timer",
-            _ => "handle",
-        };
         using var activity = TracePropagation.Extract(carrier, activityName);
         using var cts = new CancellationTokenSource();
         var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
