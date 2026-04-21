@@ -9,7 +9,10 @@ namespace Prosody.Tests.Unit;
 /// <summary>
 /// Unit tests asserting the OpenTelemetry <see cref="Activity"/> behavior of
 /// <see cref="EventHandlerBridge"/>: span naming, error status, and exception events.
+/// Run sequentially because <see cref="ActivityListener"/> is process-global — concurrent
+/// tests would observe each other's activities.
 /// </summary>
+[Collection("Sequential")]
 public sealed class EventHandlerBridgeTracingTests : IDisposable
 {
     private readonly List<Activity> _activities = [];
