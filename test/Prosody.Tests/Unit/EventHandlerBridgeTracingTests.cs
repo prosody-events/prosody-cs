@@ -33,7 +33,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public void Dispose() => _listener.Dispose();
 
     [Fact]
-    public async Task OnMessage_CreatesActivityNamed_OnMessage()
+    public async Task OnMessage_CreatesActivityNamed_on_message()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge(handler);
@@ -41,12 +41,12 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         await bridge.HandleMessageAsync(null!, null!, NeverCancel, EmptyCarrier);
 
         var activity = Assert.Single(_activities);
-        Assert.Equal("OnMessage", activity.DisplayName);
+        Assert.Equal("on_message", activity.DisplayName);
         Assert.Equal(ActivityKind.Consumer, activity.Kind);
     }
 
     [Fact]
-    public async Task OnTimer_CreatesActivityNamed_OnTimer()
+    public async Task OnTimer_CreatesActivityNamed_on_timer()
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge(handler);
@@ -54,7 +54,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         await bridge.HandleTimerAsync(null!, null!, NeverCancel, EmptyCarrier);
 
         var activity = Assert.Single(_activities);
-        Assert.Equal("OnTimer", activity.DisplayName);
+        Assert.Equal("on_timer", activity.DisplayName);
         Assert.Equal(ActivityKind.Consumer, activity.Kind);
     }
 

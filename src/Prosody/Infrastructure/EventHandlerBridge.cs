@@ -34,8 +34,8 @@ internal sealed class EventHandlerBridge : NativeHandler
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
-    internal const string OnMessageActivityName = "OnMessage";
-    internal const string OnTimerActivityName = "OnTimer";
+    internal const string OnMessageActivityName = "on_message";
+    internal const string OnTimerActivityName = "on_timer";
 
     private static readonly ActivitySource ActivitySource = new(
         "Prosody",
