@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Reflection;
 using Microsoft.Extensions.Logging;
+using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
 using Prosody.Logging;
 using Prosody.Messaging;
@@ -30,6 +33,16 @@ namespace Prosody.Infrastructure;
 internal sealed class EventHandlerBridge : NativeHandler
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
+
+    internal const string OnMessageActivityName = "on_message";
+    internal const string OnTimerActivityName = "on_timer";
+
+    private static readonly ActivitySource ActivitySource = new(
+        "Prosody",
+        typeof(EventHandlerBridge)
+            .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+    );
 
     // Resolved on each access so that test code can Clear/Configure ProsodyLogging
     // between tests. In production, Configure() is called once before any handler
@@ -80,6 +93,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onMessageAttribute,
             onCancel,
             carrier,
+            activityName: OnMessageActivityName,
             eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -107,6 +121,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             _onTimerAttribute,
             onCancel,
             carrier,
+            activityName: OnTimerActivityName,
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
@@ -127,11 +142,17 @@ internal sealed class EventHandlerBridge : NativeHandler
         PermanentErrorAttribute? permanentErrorAttribute,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
+        string activityName,
         string eventType = "handler",
         Func<Dictionary<string, string>?>? buildSentryContext = null
     )
     {
-        using var activity = TracePropagation.Extract(carrier);
+        PropagationContext propagation = TracePropagation.Extract(carrier);
+        using var activity = ActivitySource.StartActivity(
+            activityName,
+            ActivityKind.Consumer,
+            propagation.ActivityContext
+        );
         using var cts = new CancellationTokenSource();
         var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -149,6 +170,7 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
         catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
         {
+            RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
             return new NativeResult(NativeResultCode.PermanentError, ex.ToString());
         }
@@ -160,6 +182,7 @@ internal sealed class EventHandlerBridge : NativeHandler
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
+            RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Transient);
             return new NativeResult(NativeResultCode.TransientError, ex.ToString());
         }
@@ -203,6 +226,9 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
 #pragma warning restore CA1031
     }
+
+    private static void RecordExceptionOnActivity(Activity? activity, Exception ex) =>
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message).AddException(ex);
 
     /// <summary>
     /// Bridges a cancellation signal to a <see cref="CancellationTokenSource"/>.

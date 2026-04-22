@@ -39,6 +39,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () => throw new InvalidOperationException("sentry context failed")
         );
 
@@ -53,6 +54,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () => throw new InvalidOperationException("sentry context failed")
         );
 
@@ -69,6 +71,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () =>
             {
                 invoked = true;
@@ -89,6 +92,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () =>
             {
                 invoked = true;
@@ -109,6 +113,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () =>
             {
                 invoked = true;
@@ -132,6 +137,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             permanentErrorAttribute: null,
             NeverCancel,
             EmptyCarrier,
+            activityName: "test",
             buildSentryContext: () => throw new InvalidOperationException("sentry context failed")
         );
 

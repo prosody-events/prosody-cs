@@ -10,7 +10,6 @@ namespace Prosody.Infrastructure;
 internal static class TracePropagation
 {
     private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
-    private static readonly ActivitySource Source = new("Prosody");
 
     /// <summary>
     /// Injects the current trace context and baggage into a carrier.
@@ -25,10 +24,11 @@ internal static class TracePropagation
     }
 
     /// <summary>
-    /// Extracts trace context and baggage from a carrier, restoring them as current.
-    /// Returns an Activity that should be disposed when the operation completes.
+    /// Extracts trace context and baggage from a carrier, restoring baggage as current.
+    /// Returns the propagation context so the caller can use its own ActivitySource
+    /// to start an activity.
     /// </summary>
-    public static Activity? Extract(Dictionary<string, string> carrier)
+    public static PropagationContext Extract(Dictionary<string, string> carrier)
     {
         PropagationContext context = Propagator.Extract(
             default,
@@ -38,6 +38,6 @@ internal static class TracePropagation
 
         Baggage.Current = context.Baggage;
 
-        return Source.StartActivity("Handle", ActivityKind.Consumer, context.ActivityContext);
+        return context;
     }
 }

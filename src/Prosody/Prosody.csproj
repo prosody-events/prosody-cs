@@ -36,7 +36,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3"/>
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2"/>
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0"/>
-    <PackageReference Include="OpenTelemetry.Api" Version="1.15.2"/>
+    <PackageReference Include="OpenTelemetry.Api" Version="1.15.3"/>
     <!-- TODO: extract to a separate ProsodyEvents.Prosody.Sentry package so consumers who don't use Sentry don't pull in this dependency -->
     <PackageReference Include="Sentry" Version="6.3.2"/>
   </ItemGroup>
