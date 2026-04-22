@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Prosody</AssemblyName>
     <RootNamespace>Prosody</RootNamespace>
-    <VersionPrefix>0.1.2</VersionPrefix>
+    <VersionPrefix>0.1.3</VersionPrefix>
 
     <!-- NuGet package metadata -->
     <PackageId>ProsodyEvents.Prosody</PackageId>

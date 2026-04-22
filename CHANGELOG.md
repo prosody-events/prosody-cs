@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/prosody-events/prosody-cs/compare/v0.1.2...v0.1.3) (2026-04-22)
+
+
+### Bug Fixes
+
+* **tracing:** record error status and exception on failed handler spans ([#8](https://github.com/prosody-events/prosody-cs/issues/8)) ([2ac968c](https://github.com/prosody-events/prosody-cs/commit/2ac968ce7e898aea51c2c50200d9cb20b82cd80a))
+
 ## [0.1.2](https://github.com/prosody-events/prosody-cs/compare/v0.1.1...v0.1.2) (2026-04-20)
 
 
