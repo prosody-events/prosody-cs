@@ -52,7 +52,11 @@ public interface IProsodyHandler
     /// Called when a Kafka message arrives.
     /// </summary>
     /// <param name="prosodyContext">Event context for scheduling timers and checking cancellation.</param>
-    /// <param name="message">The Kafka message data.</param>
+    /// <param name="message">
+    /// The Kafka message data. Valid only for the duration of this method — the framework
+    /// owns the <see cref="Message"/> and may reclaim its resources once the returned
+    /// <see cref="Task"/> completes. Do not store the reference or access it after that point.
+    /// </param>
     /// <param name="cancellationToken">
     /// Token that is cancelled when Prosody requests the handler to stop processing
     /// (e.g., during rebalance or timeout). During shutdown, handlers run freely
