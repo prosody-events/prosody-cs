@@ -125,8 +125,8 @@ pub enum FfiError {
 /// # Error Classification
 ///
 /// This type implements [`ClassifyError`] to support retry logic:
-/// - [`Transient`][Self::Transient], [`Ffi`][Self::Ffi], and
-///   [`Json`][Self::Json] are classified as transient (retriable).
+/// - [`Transient`][Self::Transient] and [`Ffi`][Self::Ffi] are classified as
+///   transient (retriable).
 /// - [`Permanent`][Self::Permanent] errors should not be retried.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
