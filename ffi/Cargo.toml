@@ -19,6 +19,7 @@ crate-type = ["cdylib"]
 arc-swap.workspace = true
 async-trait.workspace = true
 futures.workspace = true
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] }
 opentelemetry.workspace = true
 prosody.workspace = true
 thiserror.workspace = true
@@ -28,11 +29,6 @@ tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 uniffi = { workspace = true, features = ["tokio"] }
-
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = { workspace = true, features = [
-  "disable_initial_exec_tls",
-] }
 
 [dev-dependencies]
 color-eyre.workspace = true
