@@ -1159,7 +1159,6 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
 - `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic.
-- `Task SendRawAsync(string topic, string key, byte[] jsonPayload, CancellationToken cancellationToken = default)`: Send raw JSON bytes to a specified topic.
 - `Task SubscribeAsync(IProsodyHandler handler)`: Subscribe to messages using the provided handler.
 - `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
 - `void Dispose()`: Dispose of client resources synchronously.

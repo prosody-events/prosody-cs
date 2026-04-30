@@ -28,7 +28,6 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use futures::executor::block_on;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use prosody::Codec;
 use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -44,7 +43,7 @@ use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
 use crate::timer::Timer;
-use crate::types::{ClientOptions, ConsumerState};
+use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::{BinaryPayload, JsonBinaryCodec};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
@@ -329,35 +328,38 @@ impl ProsodyClient {
 
     /// Sends a message to a Kafka topic.
     ///
-    /// The payload must be valid UTF-8 encoded JSON. OpenTelemetry tracing
-    /// context is extracted from the carrier to link the send operation with
-    /// the parent span from C#.
+    /// The payload bytes are forwarded to Kafka verbatim; this method does
+    /// not inspect or parse them. The caller supplies optional event metadata
+    /// (typically pulled from the typed object on the C# side before JSON
+    /// serialization), avoiding a JSON re-parse on the FFI boundary.
+    /// `event_id` participates in producer idempotence dedup when present;
+    /// `event_type` is carried for downstream consumers that filter on
+    /// `allowed_events`. OpenTelemetry tracing context is extracted from the
+    /// carrier to link the send operation with the parent span from C#.
     ///
     /// # Errors
     ///
-    /// - [`FfiError::PayloadDecode`] if the payload is not valid JSON.
     /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
     /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
         &self,
         topic: String,
         key: String,
-        mut payload: Vec<u8>,
+        metadata: EventMetadata,
+        payload: Vec<u8>,
         carrier: HashMap<String, String>,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.client.propagator().extract(&carrier);
 
-        // Create span with extracted context as parent (matches C#
-        // SendAsync/SendRawAsync)
+        // Create span with extracted context as parent (matches C# SendAsync)
         let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
         if let Err(err) = span.set_parent(context) {
             debug!("failed to set parent span: {err:#}");
         }
 
-        let binary_payload =
-            JsonBinaryCodec::with_cached_local(|codec| codec.deserialize(&mut payload))?;
+        let binary_payload = BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
 
         // Send the message with tracing, with optional cancellation
         let send_future = self
