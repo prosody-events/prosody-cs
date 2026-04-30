@@ -120,7 +120,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var typeInfo = (JsonTypeInfo<T>)_jsonOptions.GetTypeInfo(typeof(T));
-        var (eventId, eventType) = TypedEventMetadataExtractor<T>.Extract(payload);
+        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
 
         var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
