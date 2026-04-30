@@ -6,23 +6,27 @@
 
 use std::time::SystemTime;
 
+use prosody::codec::BinaryPayload;
 use prosody::consumer::Keyed;
 use prosody::consumer::message::ConsumerMessage;
 
 /// A Kafka message received from a consumer.
 ///
 /// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
-/// through FFI-safe accessor methods. The payload is eagerly serialized to JSON
-/// bytes at construction time to avoid repeated serialization costs.
+/// through FFI-safe accessor methods. The payload bytes are copied verbatim
+/// from the wire by [`JsonBinaryCodec`] and cached at construction time to
+/// avoid repeated cloning on each accessor call.
+///
+/// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
 #[derive(uniffi::Object)]
 pub struct Message {
     /// The underlying prosody message.
-    inner: ConsumerMessage,
+    inner: ConsumerMessage<BinaryPayload>,
     /// Cached topic name to avoid repeated allocation.
     topic: String,
     /// Cached message key to avoid repeated allocation.
     key: String,
-    /// Pre-serialized JSON payload bytes.
+    /// Cached payload bytes for repeated FFI access.
     payload: Vec<u8>,
 }
 
@@ -33,24 +37,23 @@ pub struct Message {
 impl Message {
     /// Creates a new `Message` from a [`ConsumerMessage`].
     ///
-    /// Eagerly serializes the message payload to JSON bytes and caches the
-    /// topic and key strings for efficient repeated access.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`simd_json::Error`] if the payload cannot be serialized to
-    /// JSON.
-    pub fn new(inner: ConsumerMessage) -> Result<Self, simd_json::Error> {
+    /// Caches the topic, key, and payload bytes for efficient repeated access.
+    #[must_use]
+    pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
         let topic = inner.topic().to_string();
         let key = inner.key().to_string();
-        // Serialize JSON Value back to UTF-8 bytes using simd_json
-        let payload = simd_json::to_vec(inner.payload())?;
-        Ok(Self {
+        // The payload sits behind an `Arc` shared with retry middleware,
+        // which clones the message to re-dispatch on transient failure.
+        // UniFFI's `Lower for Vec<T>` consumes an owned `Vec` and copies
+        // it byte-by-byte into a fresh `RustBuffer`, so we must produce
+        // an owned `Vec<u8>` here regardless.
+        let payload = inner.payload().bytes.clone();
+        Self {
             inner,
             topic,
             key,
             payload,
-        })
+        }
     }
 }
 
@@ -86,7 +89,7 @@ impl Message {
         self.key.clone()
     }
 
-    /// The message payload as UTF-8 JSON bytes.
+    /// The message payload as raw bytes copied verbatim from the wire.
     #[must_use]
     pub fn payload(&self) -> Vec<u8> {
         self.payload.clone()

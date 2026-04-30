@@ -13,6 +13,7 @@
 use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
+use prosody::codec::{BinaryCodecError, JsonExtractError};
 use prosody::consumer::event_context::BoxEventContextError;
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
@@ -84,13 +85,25 @@ pub enum FfiError {
     ///
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
-    Client(#[from] HighLevelClientError),
+    Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
 
     /// A producer operation failed.
     ///
     /// Occurs when publishing messages to Kafka fails.
     #[error("producer operation failed: {0:#}")]
-    Producer(#[from] ProducerError),
+    Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
+
+    /// The C#-supplied payload could not be parsed as JSON.
+    ///
+    /// Returned by [`JsonExtractor`] while scanning the payload for the
+    /// optional `id` and `type` metadata fields prior to wrapping it as a
+    /// binary payload. Fires when the bytes aren't valid JSON, or when `id`
+    /// or `type` is present but isn't a string. Absent `id`/`type` is not
+    /// an error.
+    ///
+    /// [`JsonExtractor`]: prosody::codec::JsonExtractor
+    #[error("invalid JSON payload: {0:#}")]
+    JsonExtract(#[from] JsonExtractError),
 
     /// An event context operation failed.
     ///
