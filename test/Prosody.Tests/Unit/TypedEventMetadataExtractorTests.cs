@@ -67,7 +67,10 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void ReturnsNullsForNullPayload()
     {
-        var (id, type) = TypedEventMetadataExtractor.Extract<LowercasePayload?>(null, DefaultTypeInfo<LowercasePayload?>());
+        var (id, type) = TypedEventMetadataExtractor.Extract<LowercasePayload?>(
+            null,
+            DefaultTypeInfo<LowercasePayload?>()
+        );
 
         Assert.Multiple(() => Assert.Null(id), () => Assert.Null(type));
     }
@@ -116,7 +119,11 @@ public sealed class TypedEventMetadataExtractorTests
     public void UsesProvidedTypeInfoNotDefaultOptions()
     {
         // A naming policy that lowercases everything: PascalCase Id → "id" on the wire.
-        var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+        var opts = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
         opts.MakeReadOnly();
         var typeInfo = (JsonTypeInfo<PascalCasePayload>)opts.GetTypeInfo(typeof(PascalCasePayload));
 
