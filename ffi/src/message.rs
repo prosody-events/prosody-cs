@@ -22,12 +22,6 @@ use prosody::consumer::message::ConsumerMessage;
 pub struct Message {
     /// The underlying prosody message.
     inner: ConsumerMessage<BinaryPayload>,
-    /// Cached topic name to avoid repeated allocation.
-    topic: String,
-    /// Cached message key to avoid repeated allocation.
-    key: String,
-    /// Cached payload bytes for repeated FFI access.
-    payload: Vec<u8>,
 }
 
 #[expect(
@@ -36,24 +30,9 @@ pub struct Message {
 )]
 impl Message {
     /// Creates a new `Message` from a [`ConsumerMessage`].
-    ///
-    /// Caches the topic, key, and payload bytes for efficient repeated access.
     #[must_use]
     pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
-        let topic = inner.topic().to_string();
-        let key = inner.key().to_string();
-        // The payload sits behind an `Arc` shared with retry middleware,
-        // which clones the message to re-dispatch on transient failure.
-        // UniFFI's `Lower for Vec<T>` consumes an owned `Vec` and copies
-        // it byte-by-byte into a fresh `RustBuffer`, so we must produce
-        // an owned `Vec<u8>` here regardless.
-        let payload = inner.payload().bytes.clone();
-        Self {
-            inner,
-            topic,
-            key,
-            payload,
-        }
+        Self { inner }
     }
 }
 
@@ -62,7 +41,7 @@ impl Message {
     /// The Kafka topic this message was consumed from.
     #[must_use]
     pub fn topic(&self) -> String {
-        self.topic.clone()
+        self.inner.topic().to_string()
     }
 
     /// The partition number within the topic.
@@ -86,12 +65,12 @@ impl Message {
     /// The message key used for partitioning.
     #[must_use]
     pub fn key(&self) -> String {
-        self.key.clone()
+        self.inner.key().to_string()
     }
 
     /// The message payload as raw bytes copied verbatim from the wire.
     #[must_use]
     pub fn payload(&self) -> Vec<u8> {
-        self.payload.clone()
+        self.inner.payload().bytes.clone()
     }
 }
