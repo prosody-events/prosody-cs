@@ -87,19 +87,6 @@ pub enum FfiError {
     #[error("producer operation failed: {0:#}")]
     Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
 
-    /// The C#-supplied payload could not be decoded by [`JsonBinaryCodec`].
-    ///
-    /// The codec copies the payload bytes verbatim and then runs
-    /// [`JsonExtractor`] over them to pull out the optional `id` and `type`
-    /// metadata fields. This variant fires when extraction fails: the bytes
-    /// aren't valid JSON, or `id` / `type` is present but isn't a string.
-    /// Absent `id` / `type` is not an error.
-    ///
-    /// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
-    /// [`JsonExtractor`]: prosody::codec::JsonExtractor
-    #[error("payload decode failed: {0:#}")]
-    PayloadDecode(#[from] BinaryCodecError<JsonExtractError>),
-
     /// An event context operation failed.
     ///
     /// Wraps errors from event acknowledgment and state management.

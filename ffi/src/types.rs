@@ -574,3 +574,21 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub timer_spans: Option<SpanRelation>,
 }
+
+/// Optional event metadata supplied by the caller on send.
+///
+/// Both fields are optional. `event_id`, when present, participates in
+/// producer idempotence dedup. `event_type` is carried alongside the payload
+/// for downstream consumers that filter on `allowed_events`. Pulling these
+/// from the typed object on the C# side avoids re-parsing the JSON payload
+/// in Rust.
+#[derive(Debug, Clone, Default, uniffi::Record)]
+pub struct EventMetadata {
+    /// Stable identifier for the event, used by producer idempotence dedup.
+    #[uniffi(default = None)]
+    pub event_id: Option<String>,
+
+    /// Event-type tag, used by consumer-side `allowed_events` filtering.
+    #[uniffi(default = None)]
+    pub event_type: Option<String>,
+}
