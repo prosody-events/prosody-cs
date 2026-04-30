@@ -1,3 +1,4 @@
+using Prosody.Configuration;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
@@ -16,6 +17,9 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
 
     private protected Task<IntegrationTestContext> CreateTestContextAsync() =>
         IntegrationTestContext.CreateAsync(Fixture.Admin);
+
+    private protected Task<IntegrationTestContext> CreateTestContextAsync(Action<ClientOptions> configure) =>
+        IntegrationTestContext.CreateAsync(Fixture.Admin, configure);
 
     protected static void AssertTimerApproximatelyEqual(DateTimeOffset actual, DateTimeOffset expected)
     {

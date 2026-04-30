@@ -289,6 +289,30 @@ public sealed class ProsodyClientBuilder
     }
 
     /// <summary>
+    /// Registers a callback that customizes JSON serialization options after library defaults are applied.
+    /// </summary>
+    /// <param name="configure">
+    /// An action that mutates the <see cref="System.Text.Json.JsonSerializerOptions"/> instance.
+    /// Library defaults (<see cref="System.Text.Json.JsonSerializerDefaults.Web"/>,
+    /// <c>JsonStringEnumConverter</c>, <c>WhenWritingNull</c>) are applied first.
+    /// </param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// Set <c>TypeInfoResolver</c> inside the callback to enable AOT/trim-safe serialization:
+    /// </para>
+    /// <code>
+    /// .ConfigureJsonSerializer(opts => opts.TypeInfoResolver = AppJsonContext.Default)
+    /// </code>
+    /// </remarks>
+    public ProsodyClientBuilder ConfigureJsonSerializer(Action<System.Text.Json.JsonSerializerOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        _options.ConfigureJsonSerializer = configure;
+        return this;
+    }
+
+    /// <summary>
     /// Creates a new <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
     /// <returns>A new <see cref="ProsodyClient"/> instance.</returns>

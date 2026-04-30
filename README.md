@@ -198,6 +198,43 @@ builder.Services.AddProsodyClient(options => options.Mock = true);
 
 The client is validated at startup via `ValidateOnStart()`. Invalid configuration throws `OptionsValidationException`.
 
+### JSON Serialization
+
+Prosody serializes and deserializes payloads with these defaults:
+
+```csharp
+new JsonSerializerOptions(JsonSerializerDefaults.Web)
+{
+    Converters = { new JsonStringEnumConverter() },
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+}
+```
+
+Override any option via `ConfigureJsonSerializer`:
+
+```csharp
+ProsodyClientBuilder.Create()
+    .ConfigureJsonSerializer(opts =>
+        opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
+    .Build();
+```
+
+### AOT / Trim-safe Usage
+
+Register a source-generated `JsonSerializerContext` to enable AOT-safe serialization without reflection:
+
+```csharp
+[JsonSerializable(typeof(OrderCreated))]
+[JsonSerializable(typeof(PaymentReceived))]
+internal partial class AppJsonContext : JsonSerializerContext { }
+
+ProsodyClientBuilder.Create()
+    .ConfigureJsonSerializer(opts => opts.TypeInfoResolver = AppJsonContext.Default)
+    .Build();
+```
+
+`SendAsync<T>` and `Message.GetPayload<T>` both route through the same configured options and emit no trim warnings when a `TypeInfoResolver` is set.
+
 ### Core
 
 | Property / Environment Variable | Description | Default |
@@ -1193,7 +1230,8 @@ Represents a Kafka message with the following properties:
 - `Offset` (long): The message offset within the partition.
 - `Timestamp` (DateTimeOffset): The timestamp when the message was created or sent.
 - `Key` (string): The message key.
-- `T GetPayload<T>()`: Deserialize and return the message payload as type T.
+- `ReadOnlyMemory<byte> RawPayload`: The raw payload bytes (zero-copy view of the internal buffer).
+- `T? GetPayload<T>()`: Deserialize the payload using the client's configured `JsonSerializerOptions`.
 
 ### ProsodyContext
 

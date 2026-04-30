@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
@@ -52,15 +53,22 @@ internal sealed class EventHandlerBridge : NativeHandler
     private readonly IProsodyHandler _userHandler;
     private readonly PermanentErrorAttribute? _onMessageAttribute;
     private readonly PermanentErrorAttribute? _onTimerAttribute;
+    private readonly JsonSerializerOptions _jsonOptions;
 
     /// <summary>
     /// Creates a new wrapper around the user's event handler.
     /// </summary>
     /// <param name="userHandler">The user's event handler implementation.</param>
-    public EventHandlerBridge(IProsodyHandler userHandler)
+    /// <param name="jsonOptions">
+    /// Serializer options to pass to each <see cref="Message"/> so
+    /// <see cref="Message.GetPayload{T}"/> uses the client's configured options.
+    /// Defaults to <see cref="JsonSerializerOptions.Default"/> when <c>null</c>.
+    /// </param>
+    public EventHandlerBridge(IProsodyHandler userHandler, JsonSerializerOptions? jsonOptions = null)
     {
         ArgumentNullException.ThrowIfNull(userHandler);
         _userHandler = userHandler;
+        _jsonOptions = jsonOptions ?? JsonSerializerOptions.Default;
 
         // Resolve attributes once at construction time (cached across instances of the same handler type)
         var handlerType = userHandler.GetType();
@@ -73,7 +81,7 @@ internal sealed class EventHandlerBridge : NativeHandler
         Native.Context context,
         Native.Message message,
         Dictionary<string, string> carrier
-    ) => HandleMessageAsync(new ProsodyContext(context), new Message(message), context.OnCancel, carrier);
+    ) => HandleMessageAsync(new ProsodyContext(context), new Message(message, _jsonOptions), context.OnCancel, carrier);
 
     /// <inheritdoc/>
     public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>

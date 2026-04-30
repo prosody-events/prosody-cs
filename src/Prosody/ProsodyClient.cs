@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
@@ -11,10 +13,12 @@ namespace Prosody;
 public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
+    internal readonly JsonSerializerOptions _jsonOptions;
 
-    private ProsodyClient(Native.ProsodyClient native)
+    private ProsodyClient(Native.ProsodyClient native, JsonSerializerOptions jsonOptions)
     {
         _native = native;
+        _jsonOptions = jsonOptions;
         SourceSystem = native.SourceSystem();
     }
 
@@ -29,6 +33,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
+        _jsonOptions = BuildJsonOptions(options);
         SourceSystem = _native.SourceSystem();
     }
 
@@ -38,7 +43,19 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     internal static ProsodyClient FromValidatedOptions(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return new ProsodyClient(new Native.ProsodyClient(options.ToNative()));
+        return new ProsodyClient(new Native.ProsodyClient(options.ToNative()), BuildJsonOptions(options));
+    }
+
+    private static JsonSerializerOptions BuildJsonOptions(ClientOptions options)
+    {
+        var opts = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
+        opts.Converters.Add(new JsonStringEnumConverter());
+        options.ConfigureJsonSerializer?.Invoke(opts);
+        opts.MakeReadOnly();
+        return opts;
     }
 
     /// <summary>
@@ -78,7 +95,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task<bool> IsStalledAsync() => _native.IsStalled();
 
     /// <summary>
-    /// Sends a message to a topic.
+    /// Sends a message to a topic, serializing <paramref name="payload"/> with the client's
+    /// configured <see cref="JsonSerializerOptions"/>.
     /// </summary>
     /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
     /// <param name="topic">The topic to send to.</param>
@@ -90,10 +108,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);
 
-        // Optimization opportunity: use pooled ArrayBufferWriter<byte> to reduce allocations
-        // once the FFI binding accepts ReadOnlyMemory<byte> instead of byte[].
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload);
-        return SendRawAsync(topic, key, jsonBytes, cancellationToken);
+        var typeInfo = (JsonTypeInfo<T>)_jsonOptions.GetTypeInfo(typeof(T));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
+        return SendRawAsync(topic, key, bytes, cancellationToken);
     }
 
     /// <summary>
@@ -140,7 +157,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="handler">The event handler to process messages and timers.</param>
     public Task SubscribeAsync(IProsodyHandler handler)
     {
-        var bridge = new EventHandlerBridge(handler);
+        var bridge = new EventHandlerBridge(handler, _jsonOptions);
         return _native.Subscribe(bridge);
     }
 
