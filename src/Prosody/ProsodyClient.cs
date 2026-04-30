@@ -54,6 +54,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         };
         opts.Converters.Add(new JsonStringEnumConverter());
         options.ConfigureJsonSerializer?.Invoke(opts);
+        opts.TypeInfoResolver ??= new DefaultJsonTypeInfoResolver();
         opts.MakeReadOnly();
         return opts;
     }
