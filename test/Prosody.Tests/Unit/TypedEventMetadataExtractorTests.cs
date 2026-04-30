@@ -107,16 +107,6 @@ public sealed class TypedEventMetadataExtractorTests
         Assert.Equal("evt-9", id);
     }
 
-    [Fact]
-    public void AttributeMatchTakesPrecedenceOverNameMatch()
-    {
-        var payload = new MixedPrecedencePayload { id = "by-name", MessageId = "by-attribute" };
-
-        var (id, _) = TypedEventMetadataExtractor<MixedPrecedencePayload>.Extract(payload);
-
-        Assert.Equal("by-attribute", id);
-    }
-
 #pragma warning disable IDE1006 // Naming Styles - exercising lowercase-property path
     private sealed record LowercasePayload
     {
@@ -165,14 +155,6 @@ public sealed class TypedEventMetadataExtractorTests
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public string? id { get; init; }
-    }
-
-    private sealed record MixedPrecedencePayload
-    {
-        public string? id { get; init; }
-
-        [JsonPropertyName("id")]
-        public string? MessageId { get; init; }
     }
 #pragma warning restore IDE1006
 }

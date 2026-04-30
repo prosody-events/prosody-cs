@@ -1,85 +1,52 @@
-using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Prosody.Infrastructure;
 
 /// <summary>
 /// Pulls the JSON <c>id</c> and <c>type</c> string fields out of a typed
-/// payload <typeparamref name="T"/> by reading public string properties
-/// directly off the object — no JSON parse step.
+/// payload <typeparamref name="T"/> by walking System.Text.Json's
+/// <see cref="JsonTypeInfo"/> — the same metadata <see cref="JsonSerializer"/>
+/// uses to emit the wire bytes.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Matching is case-sensitive against the lowercase JSON names <c>id</c> and
-/// <c>type</c>, mirroring the downstream consumer's JSON extractor which
-/// reads those fields verbatim from the wire. PascalCase CLR names like
-/// <c>Id</c> or <c>Type</c> do not match unless re-mapped via
-/// <c>[JsonPropertyName("id")]</c>.
-/// </para>
-/// <para>
-/// A property is matched when either:
+/// Because the contract is shared with the serializer, the extracted values
+/// are exactly what would appear on the wire (modulo a user-supplied
+/// <see cref="JsonConverter"/> on <typeparamref name="T"/> that takes over
+/// output entirely). A property is matched when its
+/// <see cref="JsonPropertyInfo.Name"/> is exactly <c>"id"</c> or <c>"type"</c>:
 /// </para>
 /// <list type="bullet">
-///   <item>
-///     It carries <see cref="JsonPropertyNameAttribute"/> whose name is
-///     exactly <c>"id"</c> or <c>"type"</c>, or
-///   </item>
-///   <item>
-///     It has no <see cref="JsonPropertyNameAttribute"/> and its CLR name is
-///     exactly <c>id</c> or <c>type</c>.
-///   </item>
+///   <item>Properties carrying <c>[JsonPropertyName("id")]</c> resolve to that name directly.</item>
+///   <item>Properties whose CLR name is <c>id</c> or <c>type</c> resolve to themselves under the default identity naming policy used by <see cref="JsonSerializerOptions.Default"/>.</item>
+///   <item>PascalCase properties (<c>Id</c>, <c>Type</c>) without <c>[JsonPropertyName]</c> do not match — they would serialize as <c>"Id"</c> / <c>"Type"</c>, which the downstream consumer's JSON extractor would not see either.</item>
+///   <item><c>[JsonIgnore]</c> (default condition <see cref="JsonIgnoreCondition.Always"/>) properties are absent from <see cref="JsonTypeInfo.Properties"/>, so they're naturally skipped.</item>
 /// </list>
 /// <para>
-/// Attribute matches always take precedence over name matches, so the result
-/// is independent of <see cref="System.Type.GetProperties()"/> ordering.
-/// Properties annotated with <c>[JsonIgnore]</c> (default condition
-/// <see cref="JsonIgnoreCondition.Always"/>) are skipped so the metadata
-/// reflects what the JSON actually contains.
-/// </para>
-/// <para>
-/// The matched <see cref="PropertyInfo"/> is cached per closed generic
-/// <typeparamref name="T"/>; reflection runs once per type for the lifetime
-/// of the assembly.
+/// The matched <see cref="JsonPropertyInfo.Get"/> delegate is cached per
+/// closed generic <typeparamref name="T"/>; type-info resolution runs once
+/// per type for the lifetime of the assembly.
 /// </para>
 /// </remarks>
 internal static class TypedEventMetadataExtractor<T>
 {
-    private static readonly PropertyInfo? IdProperty = FindProperty("id");
-    private static readonly PropertyInfo? TypeProperty = FindProperty("type");
+    private static readonly Func<object, object?>? IdGetter = FindGetter("id");
+    private static readonly Func<object, object?>? TypeGetter = FindGetter("type");
 
     internal static (string? Id, string? Type) Extract(T value) =>
-        value is null ? (null, null) : (IdProperty?.GetValue(value) as string, TypeProperty?.GetValue(value) as string);
+        value is null ? (null, null) : (IdGetter?.Invoke(value) as string, TypeGetter?.Invoke(value) as string);
 
-    private static PropertyInfo? FindProperty(string jsonName)
+    private static Func<object, object?>? FindGetter(string jsonName)
     {
-        PropertyInfo? attributeMatch = null;
-        PropertyInfo? nameMatch = null;
-
-        foreach (PropertyInfo prop in typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        foreach (JsonPropertyInfo prop in JsonSerializerOptions.Default.GetTypeInfo(typeof(T)).Properties)
         {
-            if (prop.PropertyType != typeof(string))
+            if (prop.PropertyType == typeof(string) && string.Equals(prop.Name, jsonName, StringComparison.Ordinal))
             {
-                continue;
-            }
-            if (prop.GetCustomAttribute<JsonIgnoreAttribute>() is { Condition: JsonIgnoreCondition.Always })
-            {
-                continue;
-            }
-
-            JsonPropertyNameAttribute? attr = prop.GetCustomAttribute<JsonPropertyNameAttribute>();
-            if (attr is not null)
-            {
-                if (string.Equals(attr.Name, jsonName, StringComparison.Ordinal))
-                {
-                    attributeMatch ??= prop;
-                }
-            }
-            else if (string.Equals(prop.Name, jsonName, StringComparison.Ordinal))
-            {
-                nameMatch ??= prop;
+                return prop.Get;
             }
         }
-
-        return attributeMatch ?? nameMatch;
+        return null;
     }
 }
