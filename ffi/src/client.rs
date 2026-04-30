@@ -45,7 +45,7 @@ use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
 use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState};
-use prosody::codec::{BinaryExtractor, BinaryPayload, JsonBinaryCodec, JsonExtractor};
+use prosody::codec::{BinaryPayload, JsonBinaryCodec};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
@@ -335,7 +335,7 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// - [`FfiError::JsonExtract`] if the payload is not valid JSON.
+    /// - [`FfiError::PayloadDecode`] if the payload is not valid JSON.
     /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
     /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
