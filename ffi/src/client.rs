@@ -364,7 +364,7 @@ impl ProsodyClient {
         // Send the message with tracing, with optional cancellation
         let send_future = self
             .client
-            .send(topic.as_str().into(), &key, &binary_payload)
+            .send(topic.as_str().into(), &key, binary_payload)
             .instrument(span.clone());
 
         if let Some(signal) = cancel {
