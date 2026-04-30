@@ -1910,8 +1910,6 @@ dependencies = [
  "futures",
  "opentelemetry",
  "prosody",
- "serde_json",
- "simd-json",
  "thiserror",
  "tikv-jemallocator",
  "tokio",

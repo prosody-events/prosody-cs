@@ -44,12 +44,6 @@ pub enum FfiError {
     #[error("topic name contains null byte: {0:#}")]
     TopicContainsNul(#[from] NulError),
 
-    /// JSON serialization or deserialization failed.
-    ///
-    /// Occurs when event payloads cannot be converted to/from JSON.
-    #[error("JSON serialization failed: {0:#}")]
-    Json(#[from] simd_json::Error),
-
     /// An unexpected error occurred in a `UniFFI` callback.
     ///
     /// This typically indicates a bug in the generated bindings or a panic
@@ -155,12 +149,6 @@ pub enum CsHandlerError {
     /// Classified as transient since infrastructure issues are often temporary.
     #[error(transparent)]
     Ffi(#[from] FfiError),
-
-    /// JSON serialization failed during callback processing.
-    ///
-    /// Classified as transient to allow retry with potentially different data.
-    #[error(transparent)]
-    Json(#[from] simd_json::Error),
 }
 
 /// Classifies errors for retry decisions.
@@ -171,7 +159,7 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Transient(_) | Self::Ffi(_) | Self::Json(_) => ErrorCategory::Transient,
+            Self::Transient(_) | Self::Ffi(_) => ErrorCategory::Transient,
             Self::Permanent(_) => ErrorCategory::Permanent,
         }
     }

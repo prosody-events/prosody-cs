@@ -14,8 +14,8 @@ use prosody::consumer::message::ConsumerMessage;
 ///
 /// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
 /// through FFI-safe accessor methods. The payload bytes are copied verbatim
-/// from the wire by [`JsonBinaryCodec`] and cached at construction time to
-/// avoid repeated cloning on each accessor call.
+/// from the wire by [`JsonBinaryCodec`] when the message is decoded. Each
+/// accessor clones once into the FFI return buffer as required by `UniFFI`.
 ///
 /// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
 #[derive(uniffi::Object)]
