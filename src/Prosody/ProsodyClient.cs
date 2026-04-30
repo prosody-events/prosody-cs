@@ -104,43 +104,34 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="key">The message key.</param>
     /// <param name="payload">The message payload (will be serialized to JSON).</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    public Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// If <typeparamref name="T"/> exposes lowercase <c>id</c> or <c>type</c> string
+    /// properties (matched by <see cref="JsonPropertyNameAttribute"/> or by exact CLR
+    /// name), their values are forwarded as event metadata so the producer's idempotence
+    /// dedup and downstream <c>allowed_events</c> filtering see them without re-parsing
+    /// the JSON. PascalCase properties (<c>Id</c>, <c>Type</c>) must use
+    /// <c>[JsonPropertyName("id")]</c> to participate, matching the lowercase wire
+    /// contract the rest of the system requires.
+    /// </remarks>
+    public async Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var typeInfo = (JsonTypeInfo<T>)_jsonOptions.GetTypeInfo(typeof(T));
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
-        return SendRawAsync(topic, key, bytes, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a raw JSON message to a topic.
-    /// </summary>
-    /// <param name="topic">The topic to send to.</param>
-    /// <param name="key">The message key.</param>
-    /// <param name="jsonPayload">The message payload as UTF-8 JSON bytes.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task SendRawAsync(
-        string topic,
-        string key,
-        byte[] jsonPayload,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(jsonPayload);
-
-        cancellationToken.ThrowIfCancellationRequested();
+        var (eventId, eventType) = TypedEventMetadataExtractor<T>.Extract(payload);
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
 
         var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
 
+        var metadata = new Native.EventMetadata(EventId: eventId, EventType: eventType);
+
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         try
         {
-            await _native.Send(topic, key, jsonPayload, carrier, linked?.Signal).ConfigureAwait(false);
+            await _native.Send(topic, key, metadata, jsonBytes, carrier, linked?.Signal).ConfigureAwait(false);
         }
         finally
         {
