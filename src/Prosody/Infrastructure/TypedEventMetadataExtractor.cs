@@ -42,9 +42,7 @@ internal static class TypedEventMetadataExtractor<T>
     private static readonly PropertyInfo? TypeProperty = FindProperty("type");
 
     internal static (string? Id, string? Type) Extract(T value) =>
-        value is null
-            ? (null, null)
-            : (IdProperty?.GetValue(value) as string, TypeProperty?.GetValue(value) as string);
+        value is null ? (null, null) : (IdProperty?.GetValue(value) as string, TypeProperty?.GetValue(value) as string);
 
     private static PropertyInfo? FindProperty(string jsonName)
     {
