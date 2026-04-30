@@ -28,7 +28,7 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use futures::executor::block_on;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use simd_json::serde::from_slice;
+use prosody::Codec;
 use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -45,6 +45,7 @@ use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
 use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState};
+use prosody::codec::{BinaryPayload, JsonBinaryCodec};
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
@@ -101,6 +102,8 @@ impl Clone for CsHandler {
 /// for distributed tracing continuity across the FFI boundary.
 impl FallibleHandler for CsHandler {
     type Error = CsHandlerError;
+    type Output = ();
+    type Payload = BinaryPayload;
 
     /// Processes an incoming Kafka message by delegating to the C# handler.
     ///
@@ -109,9 +112,9 @@ impl FallibleHandler for CsHandler {
     async fn on_message<C>(
         &self,
         context: C,
-        message: ConsumerMessage,
+        message: ConsumerMessage<Self::Payload>,
         _demand_type: DemandType,
-    ) -> Result<(), Self::Error>
+    ) -> Result<Self::Output, Self::Error>
     where
         C: EventContext,
     {
@@ -125,7 +128,7 @@ impl FallibleHandler for CsHandler {
 
         // Wrap the context and message for C#
         let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let msg = Arc::new(Message::new(message)?);
+        let msg = Arc::new(Message::new(message));
 
         // Call the C# handler - it returns a result with code and optional error
         // message
@@ -148,7 +151,7 @@ impl FallibleHandler for CsHandler {
         context: C,
         trigger: Trigger,
         _demand_type: DemandType,
-    ) -> Result<(), Self::Error>
+    ) -> Result<Self::Output, Self::Error>
     where
         C: EventContext,
     {
@@ -224,7 +227,7 @@ impl FallibleHandler for CsHandler {
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
-    client: HighLevelClient<CsHandler>,
+    client: HighLevelClient<CsHandler, JsonBinaryCodec>,
     /// Holds the C# handler reference to prevent premature deallocation.
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
@@ -332,7 +335,7 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// - [`FfiError::Json`] if the payload is not valid JSON.
+    /// - [`FfiError::PayloadDecode`] if the payload is not valid JSON.
     /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
     /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
@@ -353,14 +356,13 @@ impl ProsodyClient {
             debug!("failed to set parent span: {err:#}");
         }
 
-        // Parse the payload as JSON using simd_json's serde integration.
-        // This deserializes into serde_json::Value which prosody expects.
-        let json_value: serde_json::Value = from_slice(&mut payload)?;
+        let binary_payload =
+            JsonBinaryCodec::with_cached_local(|codec| codec.deserialize(&mut payload))?;
 
         // Send the message with tracing, with optional cancellation
         let send_future = self
             .client
-            .send(topic.as_str().into(), &key, &json_value)
+            .send(topic.as_str().into(), &key, &binary_payload)
             .instrument(span.clone());
 
         if let Some(signal) = cancel {

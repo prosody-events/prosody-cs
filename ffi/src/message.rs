@@ -6,24 +6,22 @@
 
 use std::time::SystemTime;
 
+use prosody::codec::BinaryPayload;
 use prosody::consumer::Keyed;
 use prosody::consumer::message::ConsumerMessage;
 
 /// A Kafka message received from a consumer.
 ///
 /// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
-/// through FFI-safe accessor methods. The payload is eagerly serialized to JSON
-/// bytes at construction time to avoid repeated serialization costs.
+/// through FFI-safe accessor methods. The payload bytes are copied verbatim
+/// from the wire by [`JsonBinaryCodec`] when the message is decoded. Each
+/// accessor clones once into the FFI return buffer as required by `UniFFI`.
+///
+/// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
 #[derive(uniffi::Object)]
 pub struct Message {
     /// The underlying prosody message.
-    inner: ConsumerMessage,
-    /// Cached topic name to avoid repeated allocation.
-    topic: String,
-    /// Cached message key to avoid repeated allocation.
-    key: String,
-    /// Pre-serialized JSON payload bytes.
-    payload: Vec<u8>,
+    inner: ConsumerMessage<BinaryPayload>,
 }
 
 #[expect(
@@ -32,25 +30,9 @@ pub struct Message {
 )]
 impl Message {
     /// Creates a new `Message` from a [`ConsumerMessage`].
-    ///
-    /// Eagerly serializes the message payload to JSON bytes and caches the
-    /// topic and key strings for efficient repeated access.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`simd_json::Error`] if the payload cannot be serialized to
-    /// JSON.
-    pub fn new(inner: ConsumerMessage) -> Result<Self, simd_json::Error> {
-        let topic = inner.topic().to_string();
-        let key = inner.key().to_string();
-        // Serialize JSON Value back to UTF-8 bytes using simd_json
-        let payload = simd_json::to_vec(inner.payload())?;
-        Ok(Self {
-            inner,
-            topic,
-            key,
-            payload,
-        })
+    #[must_use]
+    pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
+        Self { inner }
     }
 }
 
@@ -59,7 +41,7 @@ impl Message {
     /// The Kafka topic this message was consumed from.
     #[must_use]
     pub fn topic(&self) -> String {
-        self.topic.clone()
+        self.inner.topic().to_string()
     }
 
     /// The partition number within the topic.
@@ -83,12 +65,12 @@ impl Message {
     /// The message key used for partitioning.
     #[must_use]
     pub fn key(&self) -> String {
-        self.key.clone()
+        self.inner.key().to_string()
     }
 
-    /// The message payload as UTF-8 JSON bytes.
+    /// The message payload as raw bytes copied verbatim from the wire.
     #[must_use]
     pub fn payload(&self) -> Vec<u8> {
-        self.payload.clone()
+        self.inner.payload().bytes.clone()
     }
 }

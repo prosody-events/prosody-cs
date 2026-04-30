@@ -13,6 +13,7 @@
 use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
+use prosody::codec::{BinaryCodecError, JsonExtractError};
 use prosody::consumer::event_context::BoxEventContextError;
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
@@ -42,12 +43,6 @@ pub enum FfiError {
     /// Kafka topic names must be valid C strings for interop with librdkafka.
     #[error("topic name contains null byte: {0:#}")]
     TopicContainsNul(#[from] NulError),
-
-    /// JSON serialization or deserialization failed.
-    ///
-    /// Occurs when event payloads cannot be converted to/from JSON.
-    #[error("JSON serialization failed: {0:#}")]
-    Json(#[from] simd_json::Error),
 
     /// An unexpected error occurred in a `UniFFI` callback.
     ///
@@ -84,13 +79,26 @@ pub enum FfiError {
     ///
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
-    Client(#[from] HighLevelClientError),
+    Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
 
     /// A producer operation failed.
     ///
     /// Occurs when publishing messages to Kafka fails.
     #[error("producer operation failed: {0:#}")]
-    Producer(#[from] ProducerError),
+    Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
+
+    /// The C#-supplied payload could not be decoded by [`JsonBinaryCodec`].
+    ///
+    /// The codec copies the payload bytes verbatim and then runs
+    /// [`JsonExtractor`] over them to pull out the optional `id` and `type`
+    /// metadata fields. This variant fires when extraction fails: the bytes
+    /// aren't valid JSON, or `id` / `type` is present but isn't a string.
+    /// Absent `id` / `type` is not an error.
+    ///
+    /// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
+    /// [`JsonExtractor`]: prosody::codec::JsonExtractor
+    #[error("payload decode failed: {0:#}")]
+    PayloadDecode(#[from] BinaryCodecError<JsonExtractError>),
 
     /// An event context operation failed.
     ///
@@ -117,8 +125,8 @@ pub enum FfiError {
 /// # Error Classification
 ///
 /// This type implements [`ClassifyError`] to support retry logic:
-/// - [`Transient`][Self::Transient], [`Ffi`][Self::Ffi], and
-///   [`Json`][Self::Json] are classified as transient (retriable).
+/// - [`Transient`][Self::Transient] and [`Ffi`][Self::Ffi] are classified as
+///   transient (retriable).
 /// - [`Permanent`][Self::Permanent] errors should not be retried.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
@@ -141,12 +149,6 @@ pub enum CsHandlerError {
     /// Classified as transient since infrastructure issues are often temporary.
     #[error(transparent)]
     Ffi(#[from] FfiError),
-
-    /// JSON serialization failed during callback processing.
-    ///
-    /// Classified as transient to allow retry with potentially different data.
-    #[error(transparent)]
-    Json(#[from] simd_json::Error),
 }
 
 /// Classifies errors for retry decisions.
@@ -157,7 +159,7 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Transient(_) | Self::Ffi(_) | Self::Json(_) => ErrorCategory::Transient,
+            Self::Transient(_) | Self::Ffi(_) => ErrorCategory::Transient,
             Self::Permanent(_) => ErrorCategory::Permanent,
         }
     }

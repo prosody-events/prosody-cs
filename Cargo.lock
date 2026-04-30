@@ -398,9 +398,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.60"
+version = "1.2.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43c5703da9466b66a946814e1adf53ea2c90f10063b86290cc9eb67ce3478a20"
+checksum = "d16d90359e986641506914ba71350897565610e87ce0ad9e6f28569db3dd5c6d"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -1078,9 +1078,9 @@ checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.10"
+version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3944cf8cf766b40e2a1a333ee5e9b563f854d5fa49d6a8ca2764e97c6eddb214"
+checksum = "08d46837a0ed51fe95bd3b05de33cd64a1ee88fc797477ca48446872504507c5"
 dependencies = [
  "typenum",
 ]
@@ -1274,9 +1274,9 @@ dependencies = [
 
 [[package]]
 name = "idna_adapter"
-version = "1.2.1"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3acae9609540aa318d1bc588455225fb2085b9ed0c4f6bd0d9d5bcd86f1a0344"
+checksum = "cb68373c0d6620ef8105e855e7745e18b0d00d3bdb07fb532e434244cdb9a714"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
@@ -1356,9 +1356,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "js-sys"
-version = "0.3.95"
+version = "0.3.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2964e92d1d9dc3364cae4d718d93f227e3abb088e747d92e0395bfdedf1c12ca"
+checksum = "a1840c94c045fbcf8ba2812c95db44499f7c64910a912551aaaa541decebcacf"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -1380,9 +1380,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.185"
+version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ff2c0fe9bc6cb6b14a0592c2ff4fa9ceb83eea9db979b0487cd054946a2b8f"
+checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libredox"
@@ -1843,9 +1843,9 @@ dependencies = [
 
 [[package]]
 name = "prosody"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31165aa5c07d25b92ab22a47d9400b20b1115f702b55c4c0325d51e285903b83"
+checksum = "26aec6b844756474045bb4ede521eef221008e354c2ad841112a1da66b84a1f7"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -1902,7 +1902,7 @@ dependencies = [
 
 [[package]]
 name = "prosody-ffi"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -1910,8 +1910,6 @@ dependencies = [
  "futures",
  "opentelemetry",
  "prosody",
- "serde_json",
- "simd-json",
  "thiserror",
  "tikv-jemallocator",
  "tokio",
@@ -2315,9 +2313,9 @@ dependencies = [
 
 [[package]]
 name = "scylla"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ab73aaea18839882f43c08bc6367dfd1d4e9d285a2ab6ac4335b9dc06b63c19"
+checksum = "e0f9ff6ccde6555beec62c794bbc8dcae08a15f2397e057a5978c199174be920"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2340,9 +2338,9 @@ dependencies = [
 
 [[package]]
 name = "scylla-cql"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87834c927e9336270725aac24fada6e86f9d14aa04a8c8f93223b002e86f3891"
+checksum = "1687853d084bd9debb38f326298aeb7ae9c9a336d6f22684f3579db785051efd"
 dependencies = [
  "byteorder",
  "bytes",
@@ -2360,9 +2358,9 @@ dependencies = [
 
 [[package]]
 name = "scylla-macros"
-version = "1.5.0"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad97e5f7ccd8a1d41e631e361c9851c21b093e15ff5dcd08861f6ac83215d434"
+checksum = "619e45d49f95b355afa56840d9021c789eddf8c3a6bef8d4b82de0912097d578"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2799,7 +2797,7 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "toml_parser",
- "winnow 1.0.1",
+ "winnow 1.0.2",
 ]
 
 [[package]]
@@ -2808,7 +2806,7 @@ version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2abe9b86193656635d2411dc43050282ca48aa31c2451210f4202550afb7526"
 dependencies = [
- "winnow 1.0.1",
+ "winnow 1.0.2",
 ]
 
 [[package]]
@@ -3301,9 +3299,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.118"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0bf938a0bacb0469e83c1e148908bd7d5a6010354cf4fb73279b7447422e3a89"
+checksum = "df52b6d9b87e0c74c9edfa1eb2d9bf85e5d63515474513aa50fa181b3c4f5db1"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -3314,9 +3312,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.68"
+version = "0.4.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f371d383f2fb139252e0bfac3b81b265689bf45b6874af544ffa4c975ac1ebf8"
+checksum = "af934872acec734c2d80e6617bbb5ff4f12b052dd8e6332b0817bce889516084"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3324,9 +3322,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.118"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeff24f84126c0ec2db7a449f0c2ec963c6a49efe0698c4242929da037ca28ed"
+checksum = "78b1041f495fb322e64aca85f5756b2172e35cd459376e67f2a6c9dffcedb103"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -3334,9 +3332,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.118"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d08065faf983b2b80a79fd87d8254c409281cf7de75fc4b773019824196c904"
+checksum = "9dcd0ff20416988a18ac686d4d4d0f6aae9ebf08a389ff5d29012b05af2a1b41"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -3347,9 +3345,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.118"
+version = "0.2.120"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fd04d9e306f1907bd13c6361b5c6bfc7b3b3c095ed3f8a9246390f8dbdee129"
+checksum = "49757b3c82ebf16c57d69365a142940b384176c24df52a087fb748e2085359ea"
 dependencies = [
  "unicode-ident",
 ]
@@ -3390,9 +3388,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.95"
+version = "0.3.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f2dfbb17949fa2088e5d39408c48368947b86f7834484e87b73de55bc14d97d"
+checksum = "2eadbac71025cd7b0834f20d1fe8472e8495821b4e9801eb0a60bd1f19827602"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -3419,9 +3417,9 @@ dependencies = [
 
 [[package]]
 name = "whoami"
-version = "2.1.1"
+version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6a5b12f9df4f978d2cfdb1bd3bac52433f44393342d7ee9c25f5a1c14c0f45d"
+checksum = "998767ef88740d1f5b0682a9c53c24431453923962269c2db68ee43788c5a40d"
 dependencies = [
  "libc",
  "libredox",
@@ -3613,9 +3611,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09dac053f1cd375980747450bfc7250c264eaae0583872e845c0c7cd578872b5"
+checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 dependencies = [
  "memchr",
 ]
