@@ -87,10 +87,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="payload">The message payload (will be serialized to JSON).</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <remarks>
-    /// If <typeparamref name="T"/> exposes <c>id</c> or <c>type</c> string properties (matched
-    /// by <see cref="JsonPropertyNameAttribute"/> or by case-insensitive CLR name), their
-    /// values are forwarded as event metadata so the producer's idempotence dedup and
-    /// downstream <c>allowed_events</c> filtering see them without re-parsing the JSON.
+    /// If <typeparamref name="T"/> exposes lowercase <c>id</c> or <c>type</c> string
+    /// properties (matched by <see cref="JsonPropertyNameAttribute"/> or by exact CLR
+    /// name), their values are forwarded as event metadata so the producer's idempotence
+    /// dedup and downstream <c>allowed_events</c> filtering see them without re-parsing
+    /// the JSON. PascalCase properties (<c>Id</c>, <c>Type</c>) must use
+    /// <c>[JsonPropertyName("id")]</c> to participate, matching the lowercase wire
+    /// contract the rest of the system requires.
     /// </remarks>
     public async Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
     {

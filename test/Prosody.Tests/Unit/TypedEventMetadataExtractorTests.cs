@@ -20,13 +20,13 @@ public sealed class TypedEventMetadataExtractorTests
     }
 
     [Fact]
-    public void ExtractsPascalCaseIdAndTypeProperties()
+    public void DoesNotMatchPascalCaseCLRNamesWithoutAttribute()
     {
-        var payload = new PascalCasePayload { Id = "evt-2", Type = "order.placed" };
+        var payload = new PascalCasePayload { Id = "ignored", Type = "ignored" };
 
         var (id, type) = TypedEventMetadataExtractor<PascalCasePayload>.Extract(payload);
 
-        Assert.Multiple(() => Assert.Equal("evt-2", id), () => Assert.Equal("order.placed", type));
+        Assert.Multiple(() => Assert.Null(id), () => Assert.Null(type));
     }
 
     [Fact]
@@ -62,7 +62,7 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void ReturnsNullsForNullPayload()
     {
-        var (id, type) = TypedEventMetadataExtractor<PascalCasePayload?>.Extract(null);
+        var (id, type) = TypedEventMetadataExtractor<LowercasePayload?>.Extract(null);
 
         Assert.Multiple(() => Assert.Null(id), () => Assert.Null(type));
     }
@@ -70,7 +70,7 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void IgnoresNonStringIdProperty()
     {
-        var payload = new NumericIdPayload { Id = 42 };
+        var payload = new NumericIdPayload { id = 42 };
 
         var (id, _) = TypedEventMetadataExtractor<NumericIdPayload>.Extract(payload);
 
@@ -80,9 +80,9 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void ReturnsNullWhenStringPropertyValueIsNull()
     {
-        var payload = new PascalCasePayload { Id = null!, Type = null! };
+        var payload = new LowercasePayload { id = null, type = null };
 
-        var (id, type) = TypedEventMetadataExtractor<PascalCasePayload>.Extract(payload);
+        var (id, type) = TypedEventMetadataExtractor<LowercasePayload>.Extract(payload);
 
         Assert.Multiple(() => Assert.Null(id), () => Assert.Null(type));
     }
@@ -90,7 +90,7 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void SkipsPropertiesMarkedJsonIgnore()
     {
-        var payload = new IgnoredIdPayload { Id = "should-be-ignored" };
+        var payload = new IgnoredIdPayload { id = "should-be-ignored" };
 
         var (id, _) = TypedEventMetadataExtractor<IgnoredIdPayload>.Extract(payload);
 
@@ -100,7 +100,7 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void IncludesPropertiesMarkedJsonIgnoreNever()
     {
-        var payload = new ConditionallyIgnoredPayload { Id = "evt-9" };
+        var payload = new ConditionallyIgnoredPayload { id = "evt-9" };
 
         var (id, _) = TypedEventMetadataExtractor<ConditionallyIgnoredPayload>.Extract(payload);
 
@@ -110,19 +110,18 @@ public sealed class TypedEventMetadataExtractorTests
     [Fact]
     public void AttributeMatchTakesPrecedenceOverNameMatch()
     {
-        var payload = new MixedPrecedencePayload { Id = "by-name", MessageId = "by-attribute" };
+        var payload = new MixedPrecedencePayload { id = "by-name", MessageId = "by-attribute" };
 
         var (id, _) = TypedEventMetadataExtractor<MixedPrecedencePayload>.Extract(payload);
 
         Assert.Equal("by-attribute", id);
     }
 
+#pragma warning disable IDE1006 // Naming Styles - exercising lowercase-property path
     private sealed record LowercasePayload
     {
-#pragma warning disable IDE1006 // Naming Styles - exercising lowercase-property path
         public string? id { get; init; }
         public string? type { get; init; }
-#pragma warning restore IDE1006
     }
 
     private sealed record PascalCasePayload
@@ -153,26 +152,27 @@ public sealed class TypedEventMetadataExtractorTests
 
     private sealed record NumericIdPayload
     {
-        public int Id { get; init; }
+        public int id { get; init; }
     }
 
     private sealed record IgnoredIdPayload
     {
         [JsonIgnore]
-        public string? Id { get; init; }
+        public string? id { get; init; }
     }
 
     private sealed record ConditionallyIgnoredPayload
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public string? Id { get; init; }
+        public string? id { get; init; }
     }
 
     private sealed record MixedPrecedencePayload
     {
-        public string? Id { get; init; }
+        public string? id { get; init; }
 
         [JsonPropertyName("id")]
         public string? MessageId { get; init; }
     }
+#pragma warning restore IDE1006
 }

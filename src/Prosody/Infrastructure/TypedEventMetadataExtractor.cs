@@ -10,17 +10,23 @@ namespace Prosody.Infrastructure;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A property is matched to a JSON name when either:
+/// Matching is case-sensitive against the lowercase JSON names <c>id</c> and
+/// <c>type</c>, mirroring the downstream consumer's JSON extractor which
+/// reads those fields verbatim from the wire. PascalCase CLR names like
+/// <c>Id</c> or <c>Type</c> do not match unless re-mapped via
+/// <c>[JsonPropertyName("id")]</c>.
+/// </para>
+/// <para>
+/// A property is matched when either:
 /// </para>
 /// <list type="bullet">
 ///   <item>
-///     It carries <see cref="JsonPropertyNameAttribute"/> whose name matches
-///     case-sensitively, or
+///     It carries <see cref="JsonPropertyNameAttribute"/> whose name is
+///     exactly <c>"id"</c> or <c>"type"</c>, or
 ///   </item>
 ///   <item>
-///     It has no <see cref="JsonPropertyNameAttribute"/> and its CLR name
-///     matches case-insensitively (so CLR <c>Id</c> matches JSON <c>id</c>
-///     under either no naming policy or <c>JsonNamingPolicy.CamelCase</c>).
+///     It has no <see cref="JsonPropertyNameAttribute"/> and its CLR name is
+///     exactly <c>id</c> or <c>type</c>.
 ///   </item>
 /// </list>
 /// <para>
@@ -68,7 +74,7 @@ internal static class TypedEventMetadataExtractor<T>
                     attributeMatch ??= prop;
                 }
             }
-            else if (string.Equals(prop.Name, jsonName, StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(prop.Name, jsonName, StringComparison.Ordinal))
             {
                 nameMatch ??= prop;
             }
