@@ -156,7 +156,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// handler is invoked. For topics with dynamic or mixed schemas, use
     /// <c>TPayload = <see cref="System.Text.Json.JsonElement"/></c>.
     /// </remarks>
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection. Not compatible with trimming or Native AOT; source-generator support is pending.")]
+    [RequiresUnreferencedCode(
+        "Reads PermanentErrorAttribute from handler methods via reflection. Not compatible with trimming or Native AOT; source-generator support is pending."
+    )]
     [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {

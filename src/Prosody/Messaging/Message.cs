@@ -11,14 +11,7 @@ namespace Prosody.Messaging;
 /// </remarks>
 public sealed class Message<T>
 {
-    internal Message(
-        string topic,
-        string key,
-        int partition,
-        long offset,
-        DateTimeOffset timestamp,
-        T? payload
-    )
+    internal Message(string topic, string key, int partition, long offset, DateTimeOffset timestamp, T? payload)
     {
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);

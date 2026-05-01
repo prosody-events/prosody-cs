@@ -18,8 +18,11 @@ public sealed class ProsodyHandlerTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     [Fact]
@@ -141,9 +144,7 @@ public sealed class ProsodyHandlerTests
     public void CanApplyPermanentErrorAttribute()
     {
         var handler = new AttributeHandler();
-        var method = handler
-            .GetType()
-            .GetMethod(nameof(IProsodyHandler<TestPayload>.OnMessageAsync));
+        var method = handler.GetType().GetMethod(nameof(IProsodyHandler<TestPayload>.OnMessageAsync));
         var attr = method?.GetCustomAttributes(typeof(PermanentErrorAttribute), true).FirstOrDefault();
 
         Assert.NotNull(attr);

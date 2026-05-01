@@ -301,11 +301,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     }
 
     /// <inheritdoc/>
-    public Task<NativeResult> OnTimer(
-        Native.Context context,
-        Native.Timer timer,
-        Dictionary<string, string> carrier
-    ) => HandleTimerAsync(new ProsodyContext(context), new ProsodyTimer(timer), context.OnCancel, carrier);
+    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
+        HandleTimerAsync(new ProsodyContext(context), new ProsodyTimer(timer), context.OnCancel, carrier);
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.

@@ -127,9 +127,7 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task OnMessageReturnsPermanentErrorForAttributeMatchedType()
     {
-        var handler = new AttributeOnMessageHandler(
-            onMessage: (_, _, _) => throw new FormatException("bad format")
-        );
+        var handler = new AttributeOnMessageHandler(onMessage: (_, _, _) => throw new FormatException("bad format"));
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
 
         var result = await HandleMsg(bridge);
@@ -261,9 +259,7 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task OnTimerReturnsPermanentErrorForAttributeMatchedType()
     {
-        var handler = new AttributeOnTimerHandler(
-            onTimer: (_, _, _) => throw new FormatException("bad timer format")
-        );
+        var handler = new AttributeOnTimerHandler(onTimer: (_, _, _) => throw new FormatException("bad timer format"));
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
 
         var result = await bridge.HandleTimerAsync(null, null, NeverCancel, EmptyCarrier);
@@ -534,10 +530,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
 
-        var result = await HandleMsg(
-            bridge,
-            onCancel: () => throw new InvalidOperationException("context torn down")
-        );
+        var result = await HandleMsg(bridge, onCancel: () => throw new InvalidOperationException("context torn down"));
 
         Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
     }
@@ -664,9 +657,8 @@ public sealed class EventHandlerBridgeTests
     /// <summary>
     /// Handler with <see cref="PermanentErrorAttribute"/> on <see cref="IProsodyHandler{T}.OnTimerAsync"/>.
     /// </summary>
-    private sealed class AttributeOnTimerHandler(
-        Func<ProsodyContext, ProsodyTimer, CancellationToken, Task> onTimer
-    ) : IProsodyHandler<JsonElement>
+    private sealed class AttributeOnTimerHandler(Func<ProsodyContext, ProsodyTimer, CancellationToken, Task> onTimer)
+        : IProsodyHandler<JsonElement>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,

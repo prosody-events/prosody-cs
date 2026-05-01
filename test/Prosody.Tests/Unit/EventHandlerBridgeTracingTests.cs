@@ -36,7 +36,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         _listener = new ActivityListener
         {
             ShouldListenTo = source => source.Name == "Prosody",
-            Sample = (ref _) => ActivitySamplingResult.AllDataAndRecorded,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = activity => _activities.Add(activity),
         };
         ActivitySource.AddActivityListener(_listener);
