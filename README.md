@@ -1196,7 +1196,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
 - `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic.
-- `Task SubscribeAsync(IProsodyHandler handler)`: Subscribe to messages using the provided handler.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler.
 - `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
 - `void Dispose()`: Dispose of client resources synchronously.
 - `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
@@ -1208,19 +1208,19 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task DeleteTopicAsync(string name)`: Delete an existing Kafka topic.
 - `void Dispose()`: Dispose of admin client resources.
 
-### IProsodyHandler
+### IProsodyHandler&lt;TPayload&gt;
 
 Interface for handling messages and timers:
 
 ```csharp
-public interface IProsodyHandler
+public interface IProsodyHandler<TPayload>
 {
-    Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken);
-    Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken);
+    Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+    Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }
 ```
 
-### Message
+### Message&lt;T&gt;
 
 Represents a Kafka message with the following properties:
 
@@ -1229,8 +1229,7 @@ Represents a Kafka message with the following properties:
 - `Offset` (long): The message offset within the partition.
 - `Timestamp` (DateTimeOffset): The timestamp when the message was created or sent.
 - `Key` (string): The message key.
-- `ReadOnlyMemory<byte> RawPayload`: The raw payload bytes (zero-copy view of the internal buffer).
-- `T? GetPayload<T>()`: Deserialize the payload using the client's configured `JsonSerializerOptions`.
+- `T? Payload`: The deserialized payload (deserialized once before the handler is invoked).
 
 ### ProsodyContext
 

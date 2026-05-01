@@ -20,15 +20,15 @@ namespace Prosody.Errors;
 /// </remarks>
 /// <example>
 /// <code>
-/// public class OrderHandler : IProsodyHandler
+/// public class OrderHandler : IProsodyHandler&lt;Order&gt;
 /// {
 ///     [PermanentError(typeof(JsonException), typeof(ValidationException))]
-///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
+///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message&lt;Order&gt; message, CancellationToken ct)
 ///     {
-///         // JsonException → permanent (no retry)
+///         // JsonException → permanent (no retry) — also covers deserialization failures
 ///         // ValidationException → permanent (no retry)
 ///         // All other exceptions → transient (will retry)
-///         var order = JsonSerializer.Deserialize&lt;Order&gt;(message.Payload);
+///         var order = message.Payload;
 ///         Validate(order);
 ///         await ProcessOrder(order, ct);
 ///     }

@@ -3,13 +3,19 @@ using Prosody.Errors;
 namespace Prosody.Messaging;
 
 /// <summary>
-/// Event handler interface for processing Kafka messages and timer events.
+/// Event handler interface for processing Kafka messages with a strongly typed payload and timer events.
 /// </summary>
+/// <typeparam name="TPayload">The message payload type.</typeparam>
 /// <remarks>
 /// <para>
 /// Implement this interface to handle events from Prosody. The handler methods
 /// receive a <see cref="CancellationToken"/> that is triggered when Prosody
 /// requests cancellation (e.g., during shutdown, rebalance, or timeout).
+/// </para>
+/// <para>
+/// Prosody deserializes the payload once, using the client's configured JSON options, before invoking
+/// <see cref="OnMessageAsync"/>. For topics with dynamic or mixed schemas, use
+/// <c>TPayload = <see cref="System.Text.Json.JsonElement"/></c>.
 /// </para>
 /// <para>
 /// <b>Error Classification:</b> By default, all exceptions are treated as transient
@@ -22,15 +28,15 @@ namespace Prosody.Messaging;
 /// </remarks>
 /// <example>
 /// <code>
-/// public class OrderHandler : IProsodyHandler
+/// public class OrderHandler : IProsodyHandler&lt;Order&gt;
 /// {
-///     // Attribute declares JsonException as permanent for this method
+///     // Attribute declares JsonException as permanent for this method (covers deserialization failures too)
 ///     [PermanentError(typeof(JsonException))]
-///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
+///     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message&lt;Order&gt; message, CancellationToken ct)
 ///     {
-///         var order = JsonSerializer.Deserialize&lt;Order&gt;(message.Payload);
+///         var order = message.Payload;
 ///
-///         if (!order.IsValid)
+///         if (order is null || !order.IsValid)
 ///         {
 ///             // Runtime decision: this specific error is permanent
 ///             throw new PermanentException("Invalid order data");
@@ -46,13 +52,13 @@ namespace Prosody.Messaging;
 /// }
 /// </code>
 /// </example>
-public interface IProsodyHandler
+public interface IProsodyHandler<TPayload>
 {
     /// <summary>
     /// Called when a Kafka message arrives.
     /// </summary>
     /// <param name="prosodyContext">Event context for scheduling timers and checking cancellation.</param>
-    /// <param name="message">The Kafka message data.</param>
+    /// <param name="message">The Kafka message data, including the deserialized payload.</param>
     /// <param name="cancellationToken">
     /// Token that is cancelled when Prosody requests the handler to stop processing
     /// (e.g., during rebalance or timeout). During shutdown, handlers run freely
@@ -78,8 +84,12 @@ public interface IProsodyHandler
     /// implementing <see cref="IPermanentError"/>, or throw an exception type declared
     /// in <see cref="PermanentErrorAttribute"/>. Prosody will not retry.
     /// </para>
+    /// <para>
+    /// Payload deserialization failures are classified using <see cref="PermanentErrorAttribute"/>
+    /// on this method, just like exceptions thrown by the method body.
+    /// </para>
     /// </remarks>
-    Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken);
+    Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
 
     /// <summary>
     /// Called when a timer fires.

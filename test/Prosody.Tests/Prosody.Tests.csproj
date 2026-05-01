@@ -7,6 +7,8 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+    <!-- Tests do not publish AOT; suppress reflection-safety warnings from annotated library methods -->
+    <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
   </PropertyGroup>
 
   <!-- Test framework -->

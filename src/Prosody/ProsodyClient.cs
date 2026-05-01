@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -13,12 +14,13 @@ namespace Prosody;
 public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
-    internal readonly JsonSerializerOptions _jsonOptions;
+
+    internal JsonSerializerOptions JsonOptions { get; }
 
     private ProsodyClient(Native.ProsodyClient native, JsonSerializerOptions jsonOptions)
     {
         _native = native;
-        _jsonOptions = jsonOptions;
+        JsonOptions = jsonOptions;
         SourceSystem = native.SourceSystem();
     }
 
@@ -33,7 +35,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
-        _jsonOptions = BuildJsonOptions(options);
+        JsonOptions = BuildJsonOptions(options);
         SourceSystem = _native.SourceSystem();
     }
 
@@ -119,11 +121,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var typeInfo = (JsonTypeInfo<T>)_jsonOptions.GetTypeInfo(typeof(T));
+        var typeInfo = (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
         var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
 
-        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // W3C propagation injects at most 2 headers (traceparent, tracestate); pre-size to avoid rehash.
+        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
 
         var metadata = new Native.EventMetadata(EventId: eventId, EventType: eventType);
@@ -144,12 +147,20 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Subscribes to receive messages using the provided event handler.
+    /// Subscribes to receive messages using the provided strongly typed event handler.
     /// </summary>
+    /// <typeparam name="TPayload">The message payload type.</typeparam>
     /// <param name="handler">The event handler to process messages and timers.</param>
-    public Task SubscribeAsync(IProsodyHandler handler)
+    /// <remarks>
+    /// The payload is deserialized once into <see cref="Message{T}.Payload"/> before the
+    /// handler is invoked. For topics with dynamic or mixed schemas, use
+    /// <c>TPayload = <see cref="System.Text.Json.JsonElement"/></c>.
+    /// </remarks>
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection. Not compatible with trimming or Native AOT; source-generator support is pending.")]
+    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
+    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
-        var bridge = new EventHandlerBridge(handler, _jsonOptions);
+        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions);
         return _native.Subscribe(bridge);
     }
 

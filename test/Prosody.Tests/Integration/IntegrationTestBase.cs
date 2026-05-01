@@ -40,14 +40,14 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     /// <summary>
     /// Configurable handler for tests. Pass lambdas for OnMessage/OnTimer callbacks.
     /// </summary>
-    protected sealed class TestProsodyHandler(
-        Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
+    protected sealed class TestProsodyHandler<T>(
+        Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null,
         Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
-    ) : IProsodyHandler
+    ) : IProsodyHandler<T>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
-            Message message,
+            Message<T> message,
             CancellationToken cancellationToken
         ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 

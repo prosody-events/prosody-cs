@@ -8,59 +8,27 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class ProsodyHandlerTests
 {
-    private sealed class SuccessHandler : IProsodyHandler
+    private sealed record TestPayload(string Name);
+
+    private sealed class TypedHandler : IProsodyHandler<TestPayload>
     {
-        public int MessageCount { get; private set; }
-        public int TimerCount { get; private set; }
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
 
-        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
-        {
-            MessageCount++;
-            return Task.CompletedTask;
-        }
-
-        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
-        {
-            TimerCount++;
-            return Task.CompletedTask;
-        }
+        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) =>
+            Task.CompletedTask;
     }
 
     [Fact]
-    public void CanImplementIProsodyHandler()
+    public void CanImplementTypedIProsodyHandler()
     {
-        IProsodyHandler handler = new SuccessHandler();
-        Assert.NotNull(handler);
-    }
+        IProsodyHandler<TestPayload> handler = new TypedHandler();
+        var payload = new TestPayload("test");
 
-    private sealed class AsyncHandler : IProsodyHandler
-    {
-        public TimeSpan Delay { get; init; } = TimeSpan.FromMilliseconds(10);
-
-        public async Task OnMessageAsync(
-            ProsodyContext prosodyContext,
-            Message message,
-            CancellationToken cancellationToken
-        )
-        {
-            await Task.Delay(Delay, cancellationToken);
-        }
-
-        public async Task OnTimerAsync(
-            ProsodyContext prosodyContext,
-            ProsodyTimer timer,
-            CancellationToken cancellationToken
-        )
-        {
-            await Task.Delay(Delay, cancellationToken);
-        }
-    }
-
-    [Fact]
-    public void CanCreateAsyncImplementation()
-    {
-        IProsodyHandler handler = new AsyncHandler();
-        Assert.NotNull(handler);
+        Assert.Multiple(() => Assert.NotNull(handler), () => Assert.Equal("test", payload.Name));
     }
 
     #region PermanentException Tests
@@ -153,25 +121,29 @@ public sealed class ProsodyHandlerTests
 
     #region Handler with Attribute Tests
 
-    private sealed class AttributeHandler : IProsodyHandler
+    private sealed class AttributeHandler : IProsodyHandler<TestPayload>
     {
         [PermanentError(typeof(FormatException), typeof(ArgumentException))]
-        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     [Fact]
     public void CanApplyPermanentErrorAttribute()
     {
         var handler = new AttributeHandler();
-        var method = handler.GetType().GetMethod(nameof(IProsodyHandler.OnMessageAsync));
+        var method = handler
+            .GetType()
+            .GetMethod(nameof(IProsodyHandler<TestPayload>.OnMessageAsync));
         var attr = method?.GetCustomAttributes(typeof(PermanentErrorAttribute), true).FirstOrDefault();
 
         Assert.NotNull(attr);
@@ -205,17 +177,22 @@ public sealed class ProsodyHandlerTests
         );
     }
 
-    private sealed class CustomExceptionHandler : IProsodyHandler
+    private sealed class CustomExceptionHandler : IProsodyHandler<TestPayload>
     {
-        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        )
         {
             throw new OrderValidationException("Order is invalid");
         }
 
-        public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     [Fact]

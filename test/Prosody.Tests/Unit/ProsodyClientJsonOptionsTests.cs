@@ -26,20 +26,20 @@ public sealed partial class ProsodyClientJsonOptionsTests : IDisposable
     [Fact]
     public void Defaults_UseCamelCaseNaming()
     {
-        Assert.Equal(JsonNamingPolicy.CamelCase, _client._jsonOptions.PropertyNamingPolicy);
+        Assert.Equal(JsonNamingPolicy.CamelCase, _client.JsonOptions.PropertyNamingPolicy);
     }
 
     [Fact]
     public void Defaults_IncludeJsonStringEnumConverter()
     {
-        var hasEnumConverter = _client._jsonOptions.Converters.Any(c => c is JsonStringEnumConverter);
+        var hasEnumConverter = _client.JsonOptions.Converters.Any(c => c is JsonStringEnumConverter);
         Assert.True(hasEnumConverter, "JsonStringEnumConverter should be present in default options");
     }
 
     [Fact]
     public void Defaults_WhenWritingNullIgnoreCondition()
     {
-        Assert.Equal(JsonIgnoreCondition.WhenWritingNull, _client._jsonOptions.DefaultIgnoreCondition);
+        Assert.Equal(JsonIgnoreCondition.WhenWritingNull, _client.JsonOptions.DefaultIgnoreCondition);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public sealed partial class ProsodyClientJsonOptionsTests : IDisposable
 
         Assert.True(invoked, "ConfigureJsonSerializer callback should have been invoked");
         Assert.Equal(JsonNamingPolicy.CamelCase, capturedPolicy);
-        Assert.Equal(JsonNamingPolicy.SnakeCaseLower, client._jsonOptions.PropertyNamingPolicy);
+        Assert.Equal(JsonNamingPolicy.SnakeCaseLower, client.JsonOptions.PropertyNamingPolicy);
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public sealed partial class ProsodyClientJsonOptionsTests : IDisposable
             }
         );
 
-        Assert.Equal(JsonNamingPolicy.CamelCase, client._jsonOptions.PropertyNamingPolicy);
-        Assert.Equal(JsonIgnoreCondition.WhenWritingNull, client._jsonOptions.DefaultIgnoreCondition);
+        Assert.Equal(JsonNamingPolicy.CamelCase, client.JsonOptions.PropertyNamingPolicy);
+        Assert.Equal(JsonIgnoreCondition.WhenWritingNull, client.JsonOptions.DefaultIgnoreCondition);
     }
 
     [JsonSerializable(typeof(SamplePayload))]
@@ -106,7 +106,7 @@ public sealed partial class ProsodyClientJsonOptionsTests : IDisposable
             }
         );
 
-        var typeInfo = client._jsonOptions.GetTypeInfo(typeof(SamplePayload));
+        var typeInfo = client.JsonOptions.GetTypeInfo(typeof(SamplePayload));
         Assert.IsAssignableFrom<JsonTypeInfo<SamplePayload>>(typeInfo);
     }
 }

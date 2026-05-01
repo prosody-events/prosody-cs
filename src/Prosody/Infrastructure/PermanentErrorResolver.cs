@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Prosody.Errors;
-using Prosody.Messaging;
 
 namespace Prosody.Infrastructure;
 
@@ -12,11 +12,11 @@ namespace Prosody.Infrastructure;
 internal static class PermanentErrorResolver
 {
     /// <summary>
-    /// Cached attribute lookup keyed by (handler type, method name).
+    /// Cached attribute lookup keyed by (handler type, interface type, method name).
     /// A <see langword="null"/> value means the method was inspected but had no attribute.
     /// </summary>
     private static readonly ConcurrentDictionary<
-        (Type HandlerType, string MethodName),
+        (Type HandlerType, Type InterfaceType, string MethodName),
         PermanentErrorAttribute?
     > PermanentErrorHandlerCache = new();
 
@@ -25,12 +25,17 @@ internal static class PermanentErrorResolver
     /// Results are cached so that repeated construction of bridges for the same handler type does not re-invoke reflection.
     /// </summary>
     /// <param name="handlerType">The handler implementation type.</param>
+    /// <param name="interfaceType">The implemented handler interface type.</param>
     /// <param name="methodName">The method name to inspect.</param>
     /// <returns>The attribute if found; otherwise, <see langword="null"/>.</returns>
-    internal static PermanentErrorAttribute? GetAttribute(Type handlerType, string methodName) =>
+    /// <remarks>Uses reflection; not compatible with trimming or Native AOT.
+    /// Follow-up: replace with a source-generator-based path.</remarks>
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
+    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
+    internal static PermanentErrorAttribute? GetAttribute(Type handlerType, Type interfaceType, string methodName) =>
         PermanentErrorHandlerCache.GetOrAdd(
-            (handlerType, methodName),
-            static key => ResolveAttribute(key.HandlerType, key.MethodName)
+            (handlerType, interfaceType, methodName),
+            static key => ResolveAttribute(key.HandlerType, key.InterfaceType, key.MethodName)
         );
 
     /// <summary>
@@ -53,39 +58,27 @@ internal static class PermanentErrorResolver
         // Default: transient (will retry)
     }
 
-    private static PermanentErrorAttribute? ResolveAttribute(Type handlerType, string methodName)
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
+    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
+    private static PermanentErrorAttribute? ResolveAttribute(Type handlerType, Type interfaceType, string methodName)
     {
-        // First, try the concrete type with both public and non-public bindings.
-        // Non-public is needed for explicit interface implementations (which are private).
-        // inherit: true walks the inheritance chain for base class attributes.
-        // Uses GetMethods + Array.Find instead of GetMethod to avoid AmbiguousMatchException
-        // if a handler declares overloads of the same method name.
-        var method = Array.Find(
-            handlerType.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance),
+        // Resolve through the interface map first. This identifies the concrete method that implements
+        // the interface method, which may carry the attribute even when the name doesn't
+        // match (e.g., explicit implementations like IProsodyHandler.OnMessageAsync), and avoids
+        // selecting the wrong overload when a handler implements both typed and untyped interfaces.
+        var interfaceMethod = Array.Find(
+            interfaceType.GetMethods(),
             m => string.Equals(m.Name, methodName, StringComparison.Ordinal)
         );
-
-        var attribute = method?.GetCustomAttribute<PermanentErrorAttribute>(inherit: true);
-        if (attribute is not null)
+        if (interfaceMethod is not null)
         {
-            return attribute;
-        }
-
-        // Fall back to the interface map — resolves the concrete method that implements
-        // the interface method, which may carry the attribute even when the name doesn't
-        // match (e.g., explicit implementations like IProsodyHandler.OnMessageAsync).
-        var interfaceMethod = typeof(IProsodyHandler).GetMethod(methodName);
-        if (interfaceMethod is null)
-        {
-            return null;
-        }
-
-        var mapping = handlerType.GetInterfaceMap(typeof(IProsodyHandler));
-        for (var i = 0; i < mapping.InterfaceMethods.Length; i++)
-        {
-            if (mapping.InterfaceMethods[i] == interfaceMethod)
+            var mapping = handlerType.GetInterfaceMap(interfaceType);
+            for (var i = 0; i < mapping.InterfaceMethods.Length; i++)
             {
-                return mapping.TargetMethods[i].GetCustomAttribute<PermanentErrorAttribute>(inherit: true);
+                if (mapping.InterfaceMethods[i] == interfaceMethod)
+                {
+                    return mapping.TargetMethods[i].GetCustomAttribute<PermanentErrorAttribute>(inherit: true);
+                }
             }
         }
 

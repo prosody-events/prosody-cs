@@ -22,18 +22,15 @@ namespace Prosody.Errors;
 /// </remarks>
 /// <example>
 /// <code>
-/// public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
+/// public async Task OnMessageAsync(ProsodyContext prosodyContext, Message&lt;Order&gt; message, CancellationToken ct)
 /// {
-///     try
+///     var order = message.Payload;
+///     if (order is null)
 ///     {
-///         var order = JsonSerializer.Deserialize&lt;Order&gt;(message.Payload);
-///         await ProcessOrder(order, ct);
+///         // Null payload won't be fixed by retry
+///         throw new PermanentException("Order payload is required");
 ///     }
-///     catch (JsonException ex)
-///     {
-///         // Malformed JSON won't be fixed by retry
-///         throw new PermanentException("Invalid message format", ex);
-///     }
+///     await ProcessOrder(order, ct);
 /// }
 /// </code>
 /// </example>

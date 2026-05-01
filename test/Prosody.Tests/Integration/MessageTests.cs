@@ -1,5 +1,3 @@
-using System.Text.Json;
-using Prosody.Configuration;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
@@ -15,8 +13,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     {
         await using var ctx = await CreateTestContextAsync();
 
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
@@ -34,11 +32,10 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             TestContext.Current.CancellationToken
         );
 
-        var payload = received.GetPayload<TestPayload>();
         Assert.Multiple(
             () => Assert.Equal(ctx.Topic, received.Topic),
             () => Assert.Equal("test-key", received.Key),
-            () => Assert.Equal("Hello, Kafka!", payload?.Content)
+            () => Assert.Equal("Hello, Kafka!", received.Payload?.Content)
         );
     }
 
@@ -47,8 +44,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     {
         await using var ctx = await CreateTestContextAsync();
 
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
@@ -84,7 +81,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         foreach (var (_, msgs) in byKey)
         {
-            var sequences = msgs.Select(m => m.GetPayload<TestPayload>()?.Sequence).ToList();
+            var sequences = msgs.Select(m => m.Payload?.Sequence).ToList();
             var sorted = sequences.OrderBy(s => s).ToList();
             Assert.Equal(sorted, sequences);
         }
@@ -101,7 +98,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         var processingAborted = new EventNotifier();
         var wasAborted = false;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (_, _, ct) =>
             {
                 processingStarted.Signal();
@@ -138,47 +135,15 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task RawPayloadReturnsProducerEncodedBytes()
-    {
-        await using var ctx = await CreateTestContextAsync();
-
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
-            onMessage: (_, msg, _) =>
-            {
-                messages.Send(msg);
-                return Task.CompletedTask;
-            }
-        );
-
-        await ctx.Client.SubscribeAsync(handler);
-
-        var testPayload = new TestPayload { Content = "raw-payload-test", Sequence = 42 };
-        await ctx.Client.SendAsync(ctx.Topic, "rp-key", testPayload, TestContext.Current.CancellationToken);
-
-        var received = await messages.ReceiveAsync(
-            IntegrationTestFixture.DefaultTimeout,
-            TestContext.Current.CancellationToken
-        );
-
-        var expectedBytes = JsonSerializer.SerializeToUtf8Bytes(testPayload, ctx.Client._jsonOptions);
-        Assert.Equal(expectedBytes, received.RawPayload.ToArray());
-
-        // Two accesses must share the same backing array (zero-copy contract).
-        var first = received.RawPayload;
-        var second = received.RawPayload;
-        Assert.True(first.Equals(second), "RawPayload instances must share the same backing array");
-    }
-
-    [Fact(Timeout = 60_000)]
-    public async Task GetPayload_HonorsSnakeCaseOverride_RoundTrip()
+    public async Task PayloadRoundTrip_HonorsSnakeCaseOverride()
     {
         await using var ctx = await CreateTestContextAsync(o =>
-            o.ConfigureJsonSerializer = opts => opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            o.ConfigureJsonSerializer = opts =>
+                opts.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower
         );
 
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
@@ -196,15 +161,9 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             TestContext.Current.CancellationToken
         );
 
-        var payload = received.GetPayload<TestPayload>();
         Assert.Multiple(
-            () => Assert.Equal("snake-case-test", payload?.Content),
-            () => Assert.Equal(7, payload?.Sequence)
+            () => Assert.Equal("snake-case-test", received.Payload?.Content),
+            () => Assert.Equal(7, received.Payload?.Sequence)
         );
-
-        // Raw bytes use snake_case keys when the client is configured with SnakeCaseLower.
-        var rawJson = System.Text.Encoding.UTF8.GetString(received.RawPayload.Span);
-        Assert.Contains("\"content\":", rawJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"Content\":", rawJson, StringComparison.Ordinal);
     }
 }

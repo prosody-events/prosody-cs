@@ -17,7 +17,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
         var messageCount = 0;
         var retryEvent = new EventNotifier();
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, _, _) =>
             {
                 messageCount++;
@@ -51,7 +51,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
         var messageCount = 0;
         var errorEvent = new EventNotifier();
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, _, _) =>
             {
                 messageCount++;
@@ -105,10 +105,14 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
         Assert.Equal(1, messageCount);
     }
 
-    private sealed class AttributeBasedHandler(Action onMessage) : IProsodyHandler
+    private sealed class AttributeBasedHandler(Action onMessage) : IProsodyHandler<TestPayload>
     {
         [PermanentError(typeof(FormatException))]
-        public Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        )
         {
             onMessage();
             return Task.CompletedTask;

@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -6,112 +5,88 @@ using Prosody.Messaging;
 
 namespace Prosody.Tests.Unit;
 
+// Namespace-level so the STJ source generator can reference them from its .g.cs output
+internal sealed record SampleRecord(string Name, int Value);
+
+[JsonSerializable(typeof(SampleRecord))]
+internal sealed partial class SampleAotJsonContext : JsonSerializerContext;
+
 /// <summary>
-/// Unit tests for <see cref="Message.RawPayload"/> and <see cref="Message.GetPayload{T}"/>.
+/// Unit tests for <see cref="Message{T}"/>.
 /// Uses the internal test constructor to avoid requiring a real Native.Message (FFI object).
 /// </summary>
-public sealed partial class MessageTests
+public sealed class MessageTests
 {
-    private sealed record SampleRecord(string Name, int Value);
+    private static readonly JsonSerializerOptions AotOptions = BuildAotOptions();
 
-    private static readonly JsonSerializerOptions DefaultOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+    private static JsonSerializerOptions BuildAotOptions()
     {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
+        var o = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        o.TypeInfoResolverChain.Add(SampleAotJsonContext.Default);
+        o.MakeReadOnly();
+        return o;
+    }
 
-    private static byte[] Serialize<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, DefaultOptions);
-
-    private static Message CreateMessage(byte[] payload, JsonSerializerOptions? options = null) =>
-        new("topic", "key", partition: 0, offset: 0, DateTimeOffset.UtcNow, payload, options ?? DefaultOptions);
+    private static Message<T> CreateTypedMessage<T>(T? payload) =>
+        new("topic", "key", partition: 0, offset: 0, DateTimeOffset.UtcNow, payload);
 
     [Fact]
-    public void RawPayload_ReturnsExactBytes()
+    public void TypedMessage_ExposesDeserializedPayload()
     {
-        var bytes = Serialize(new SampleRecord("hello", 1));
-        var message = CreateMessage(bytes);
+        var expected = new SampleRecord("erin", 11);
+        var message = CreateTypedMessage(expected);
 
-        Assert.True(message.RawPayload.Span.SequenceEqual(bytes));
+        Assert.Multiple(
+            () => Assert.Equal(expected, message.Payload),
+            () => Assert.Equal("topic", message.Topic),
+            () => Assert.Equal("key", message.Key)
+        );
     }
 
     [Fact]
-    public void RawPayload_ZeroCopy_AliasesInternalArray()
+    public void TypedMessage_NullPayload_ReturnsNull()
     {
-        var message = CreateMessage(Serialize(new SampleRecord("hello", 1)));
+        var message = CreateTypedMessage<SampleRecord>(null);
 
-        MemoryMarshal.TryGetArray(message.RawPayload, out var first);
-        MemoryMarshal.TryGetArray(message.RawPayload, out var second);
-
-        Assert.Same(first.Array, second.Array);
+        Assert.Null(message.Payload);
     }
 
     [Fact]
-    public void GetPayload_Deserializes_WithClientOptions()
+    public void TypedMessage_JsonElementPayload_ParsesJsonDom()
     {
-        var expected = new SampleRecord("alice", 10);
-        var message = CreateMessage(Serialize(expected));
+        var element = JsonSerializer.Deserialize<JsonElement>("""{"name":"frank","value":12}""");
+        var message = CreateTypedMessage(element);
 
-        var result = message.GetPayload<SampleRecord>();
-
-        Assert.Equal(expected, result);
+        Assert.Multiple(
+            () => Assert.Equal(JsonValueKind.Object, message.Payload.ValueKind),
+            () => Assert.Equal("frank", message.Payload.GetProperty("name").GetString()),
+            () => Assert.Equal(12, message.Payload.GetProperty("value").GetInt32())
+        );
     }
 
     [Fact]
-    public void GetPayload_EmptyPayload_ThrowsJsonException()
+    public void TypedMessage_MetadataFields_AreExposed()
     {
-        var message = CreateMessage([]);
+        var ts = new DateTimeOffset(2024, 1, 15, 10, 30, 0, TimeSpan.Zero);
+        var message = new Message<SampleRecord>("my-topic", "my-key", partition: 3, offset: 42L, ts, null);
 
-        Assert.Throws<JsonException>(() => message.GetPayload<SampleRecord>());
+        Assert.Multiple(
+            () => Assert.Equal("my-topic", message.Topic),
+            () => Assert.Equal("my-key", message.Key),
+            () => Assert.Equal(3, message.Partition),
+            () => Assert.Equal(42L, message.Offset),
+            () => Assert.Equal(ts, message.Timestamp)
+        );
     }
 
     [Fact]
-    public void GetPayload_MalformedJson_ThrowsJsonException()
+    public void Bridge_HonorsConfiguredTypeInfoResolver()
     {
-        var message = CreateMessage("{not valid json"u8.ToArray());
+        var typeInfo = (JsonTypeInfo<SampleRecord>)AotOptions.GetTypeInfo(typeof(SampleRecord));
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new SampleRecord("dave", 99), AotOptions);
+        var payload = JsonSerializer.Deserialize(bytes.AsSpan(), typeInfo);
+        var message = new Message<SampleRecord>("t", "k", 0, 0L, default, payload);
 
-        Assert.Throws<JsonException>(() => message.GetPayload<SampleRecord>());
-    }
-
-    [Fact]
-    public void GetPayload_JsonNullToken_ReturnsNull()
-    {
-        var message = CreateMessage("null"u8.ToArray());
-
-        var result = message.GetPayload<SampleRecord>();
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public void GetPayload_HonorsSnakeCaseOverride()
-    {
-        var snakeOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-        };
-        var snakeBytes = """{"name":"carol","value":30}"""u8.ToArray();
-        var message = CreateMessage(snakeBytes, snakeOptions);
-
-        var result = message.GetPayload<SampleRecord>();
-
-        Assert.Equal(new SampleRecord("carol", 30), result);
-    }
-
-    [JsonSerializable(typeof(SampleRecord))]
-    private sealed partial class SampleAotContext : JsonSerializerContext;
-
-    [Fact]
-    public void GetPayload_HonorsConfiguredTypeInfoResolver()
-    {
-        var aotOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        aotOptions.TypeInfoResolverChain.Add(SampleAotContext.Default);
-        aotOptions.MakeReadOnly();
-
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(new SampleRecord("dave", 99), aotOptions);
-        var message = CreateMessage(bytes, aotOptions);
-
-        var result = message.GetPayload<SampleRecord>();
-
-        Assert.Equal(new SampleRecord("dave", 99), result);
+        Assert.Equal(new SampleRecord("dave", 99), message.Payload);
     }
 }
