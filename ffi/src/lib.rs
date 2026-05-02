@@ -38,12 +38,10 @@
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
 
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
+use mimalloc::MiMalloc;
 
-#[cfg(not(target_env = "msvc"))]
 #[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+static GLOBAL: MiMalloc = MiMalloc;
 
 use std::collections::HashMap;
 
