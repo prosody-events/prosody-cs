@@ -80,7 +80,7 @@ public sealed class MessageTests
     }
 
     [Fact]
-    public void Bridge_HonorsConfiguredTypeInfoResolver()
+    public void Message_RoundTripsViaSourceGenContext()
     {
         var typeInfo = (JsonTypeInfo<SampleRecord>)AotOptions.GetTypeInfo(typeof(SampleRecord));
         var bytes = JsonSerializer.SerializeToUtf8Bytes(new SampleRecord("dave", 99), AotOptions);

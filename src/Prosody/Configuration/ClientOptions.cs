@@ -422,7 +422,7 @@ public sealed class ClientOptions
     /// <c>JsonSerializerContext</c> here.
     /// </para>
     /// </remarks>
-    public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonSerializer { get; set; }
+    public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonOptions { get; set; }
 
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.

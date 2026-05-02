@@ -15,6 +15,9 @@ public sealed class ProsodyContext
         _native = native;
     }
 
+    /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
+    internal ProsodyContext() => _native = null!;
+
     /// <summary>
     /// Gets a value indicating whether cancellation has been requested.
     /// </summary>

@@ -24,6 +24,9 @@
 
     <!-- Generate XML documentation for IntelliSense -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Enforce trim annotations: IL2026/IL3050 errors surface any reflection paths not yet annotated -->
+    <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
 
   <ItemGroup>

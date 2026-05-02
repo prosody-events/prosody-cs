@@ -27,9 +27,12 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
     };
 
+    private static readonly ProsodyContext AnyContext = new();
+    private static readonly ProsodyTimer AnyTimer = new("t", default);
+
     // Wraps the 9-param HandleMessageAsync with dummy metadata; tracing tests don't inspect message contents.
     private static Task<NativeResult> HandleMsgAsync(EventHandlerBridge<JsonElement> bridge) =>
-        bridge.HandleMessageAsync(null, "t", "k", 0, 0L, default, "null"u8.ToArray(), NeverCancel, EmptyCarrier);
+        bridge.HandleMessageAsync(AnyContext, "t", "k", 0, 0L, default, "null"u8.ToArray(), NeverCancel, EmptyCarrier);
 
     public EventHandlerBridgeTracingTests()
     {
@@ -63,7 +66,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         var handler = new LambdaHandler(onTimer: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
 
-        await bridge.HandleTimerAsync(null, null, NeverCancel, EmptyCarrier);
+        await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Activity activity = Assert.Single(_activities);
         Assert.Equal("on_timer", activity.DisplayName);
@@ -144,7 +147,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => throw new InvalidOperationException("timer boom"));
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
-        await bridge.HandleTimerAsync(null, null, NeverCancel, EmptyCarrier);
+        await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Activity activity = Assert.Single(_activities);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);

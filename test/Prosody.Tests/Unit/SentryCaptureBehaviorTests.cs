@@ -36,7 +36,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
     {
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("transient"),
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",
@@ -51,7 +51,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
     {
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new PermanentException("permanent"),
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",
@@ -68,7 +68,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
 
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("error"),
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",
@@ -89,7 +89,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
 
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => Task.CompletedTask,
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",
@@ -110,7 +110,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
 
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new OperationCanceledException("shutdown"),
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",
@@ -134,7 +134,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
 
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("error"),
-            permanentErrorAttribute: null,
+            isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,
             activityName: "test",

@@ -67,7 +67,7 @@ internal static class EventHandlerBridge
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
-        PermanentErrorAttribute? permanentErrorAttribute,
+        Func<Exception, bool> isPermanentError,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
         string activityName,
@@ -96,7 +96,7 @@ internal static class EventHandlerBridge
             await handler(cts.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null);
         }
-        catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
+        catch (Exception ex) when (isPermanentError(ex))
         {
             RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
@@ -236,38 +236,55 @@ internal static class EventHandlerBridge
 /// </summary>
 /// <remarks>
 /// Deserializes the payload once per message, inside the protected handler scope so that
-/// <see cref="JsonException"/> is classified by <see cref="PermanentErrorAttribute"/> on
+/// <see cref="JsonException"/> is classified by the error classification logic on
 /// <see cref="IProsodyHandler{TPayload}.OnMessageAsync"/> exactly like any other exception.
 /// </remarks>
 internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 {
     private readonly IProsodyHandler<TPayload> _userHandler;
-    private readonly PermanentErrorAttribute? _onMessageAttribute;
-    private readonly PermanentErrorAttribute? _onTimerAttribute;
+    private readonly Func<Exception, bool> _isMessagePermanent;
+    private readonly Func<Exception, bool> _isTimerPermanent;
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
 
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
-    public EventHandlerBridge(IProsodyHandler<TPayload> userHandler, JsonSerializerOptions? jsonOptions = null)
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection. Type.GetInterfaceMap is not supported under trimming; use the constructor that accepts IPermanentErrorClassifier for AOT-safe error classification.")]
+    [RequiresDynamicCode("Type.GetInterfaceMap is not supported in Native AOT. Use the constructor that accepts IPermanentErrorClassifier for AOT-safe error classification.")]
+    public EventHandlerBridge(IProsodyHandler<TPayload> userHandler, JsonSerializerOptions jsonOptions)
     {
         ArgumentNullException.ThrowIfNull(userHandler);
+        ArgumentNullException.ThrowIfNull(jsonOptions);
 
         _userHandler = userHandler;
-        var options = jsonOptions ?? JsonSerializerOptions.Default;
-        _payloadTypeInfo = (JsonTypeInfo<TPayload>)options.GetTypeInfo(typeof(TPayload));
+        _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
 
         var handlerType = userHandler.GetType();
         var interfaceType = typeof(IProsodyHandler<TPayload>);
-        _onMessageAttribute = PermanentErrorResolver.GetAttribute(
+        var onMsgAttr = PermanentErrorResolver.GetAttribute(
             handlerType,
             interfaceType,
             nameof(IProsodyHandler<TPayload>.OnMessageAsync)
         );
-        _onTimerAttribute = PermanentErrorResolver.GetAttribute(
+        var onTimerAttr = PermanentErrorResolver.GetAttribute(
             handlerType,
             interfaceType,
             nameof(IProsodyHandler<TPayload>.OnTimerAsync)
         );
+        _isMessagePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onMsgAttr);
+        _isTimerPermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onTimerAttr);
+    }
+
+    public EventHandlerBridge(
+        IProsodyHandler<TPayload> userHandler,
+        JsonSerializerOptions jsonOptions,
+        IPermanentErrorClassifier classifier)
+    {
+        ArgumentNullException.ThrowIfNull(userHandler);
+        ArgumentNullException.ThrowIfNull(jsonOptions);
+        ArgumentNullException.ThrowIfNull(classifier);
+
+        _userHandler = userHandler;
+        _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
+        _isMessagePermanent = classifier.IsMessageErrorPermanent;
+        _isTimerPermanent = classifier.IsTimerErrorPermanent;
     }
 
     /// <inheritdoc/>
@@ -307,10 +324,10 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
     /// Deserialization runs inside the handler closure so <see cref="JsonException"/> is
-    /// classified by <see cref="PermanentErrorAttribute"/> on the method.
+    /// classified by the bridge's error classification logic exactly like any other exception.
     /// </summary>
     internal Task<NativeResult> HandleMessageAsync(
-        ProsodyContext? prosodyContext,
+        ProsodyContext prosodyContext,
         string topic,
         string key,
         int partition,
@@ -325,9 +342,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             {
                 var deserialized = JsonSerializer.Deserialize(payload.AsSpan(), _payloadTypeInfo);
                 var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized);
-                return _userHandler.OnMessageAsync(prosodyContext!, msg, ct);
+                return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
             },
-            _onMessageAttribute,
+            _isMessagePermanent,
             onCancel,
             carrier,
             activityName: EventHandlerBridge.OnMessageActivityName,
@@ -341,20 +358,20 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     /// Core timer handling logic, decoupled from native types for testability.
     /// </summary>
     internal Task<NativeResult> HandleTimerAsync(
-        ProsodyContext? prosodyContext,
-        ProsodyTimer? wrappedTimer,
+        ProsodyContext prosodyContext,
+        ProsodyTimer wrappedTimer,
         Func<Task> onCancel,
         Dictionary<string, string> carrier
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
-            ct => _userHandler.OnTimerAsync(prosodyContext!, wrappedTimer!, ct),
-            _onTimerAttribute,
+            ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
+            _isTimerPermanent,
             onCancel,
             carrier,
             activityName: EventHandlerBridge.OnTimerActivityName,
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
-                ? () => EventHandlerBridge.BuildTimerSentryContext(wrappedTimer!)
+                ? () => EventHandlerBridge.BuildTimerSentryContext(wrappedTimer)
                 : null
         );
 }

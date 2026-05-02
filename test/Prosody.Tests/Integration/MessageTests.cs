@@ -138,7 +138,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     public async Task PayloadRoundTrip_HonorsSnakeCaseOverride()
     {
         await using var ctx = await CreateTestContextAsync(o =>
-            o.ConfigureJsonSerializer = opts =>
+            o.ConfigureJsonOptions = opts =>
                 opts.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower
         );
 
@@ -153,7 +153,14 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         await ctx.Client.SubscribeAsync(handler);
 
-        var testPayload = new TestPayload { Content = "snake-case-test", Sequence = 7 };
+        // MessageContent is a multi-word property: snake_case → "message_content"; camelCase → "messageContent".
+        // This asserts that the snake_case override is actually applied end-to-end and not silently ignored.
+        var testPayload = new TestPayload
+        {
+            Content = "snake-case-test",
+            Sequence = 7,
+            MessageContent = "multi-word-value",
+        };
         await ctx.Client.SendAsync(ctx.Topic, "sc-key", testPayload, TestContext.Current.CancellationToken);
 
         var received = await messages.ReceiveAsync(
@@ -163,7 +170,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         Assert.Multiple(
             () => Assert.Equal("snake-case-test", received.Payload?.Content),
-            () => Assert.Equal(7, received.Payload?.Sequence)
+            () => Assert.Equal(7, received.Payload?.Sequence),
+            () => Assert.Equal("multi-word-value", received.Payload?.MessageContent)
         );
     }
 }

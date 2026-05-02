@@ -55,26 +55,27 @@ await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!
 await client.UnsubscribeAsync();
 
 // Handler implementation
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Process the received message
-        var payload = message.GetPayload<MyPayload>();
+        var payload = message.Payload;
         Console.WriteLine($"Received message: {payload}");
 
         // Schedule a timer for delayed processing (requires Cassandra unless Mock = true)
-        if (payload.ScheduleFollowup)
+        if (payload?.ScheduleFollowup == true)
         {
             var futureTime = DateTimeOffset.UtcNow.AddSeconds(30);
             await prosodyContext.ScheduleAsync(futureTime);
         }
     }
 
-    public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
     {
         // Handle timer firing
         Console.WriteLine($"Timer fired for key: {timer.Key} at {timer.Time}");
+        return Task.CompletedTask;
     }
 }
 ```
@@ -202,38 +203,48 @@ The client is validated at startup via `ValidateOnStart()`. Invalid configuratio
 
 Prosody serializes and deserializes payloads with these defaults:
 
-```csharp
-new JsonSerializerOptions(JsonSerializerDefaults.Web)
-{
-    Converters = { new JsonStringEnumConverter() },
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-}
-```
+- `PropertyNamingPolicy`: `CamelCase`
+- `DefaultIgnoreCondition`: `WhenWritingNull`
+- Converters: `JsonStringEnumConverter`
 
-Override any option via `ConfigureJsonSerializer`:
+Override any option via `ConfigureJsonOptions`:
 
 ```csharp
 ProsodyClientBuilder.Create()
-    .ConfigureJsonSerializer(opts =>
+    .ConfigureJsonOptions(opts =>
         opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
     .Build();
 ```
 
 ### AOT / Trim-safe Usage
 
-Register a source-generated `JsonSerializerContext` to enable AOT-safe serialization without reflection:
+By default, `new ProsodyClient(options)` and `ProsodyClientBuilder.Build()` install a `DefaultJsonTypeInfoResolver`,
+which uses reflection. Both are annotated with `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`.
+
+To eliminate trim/AOT warnings, supply a source-generated context and use the trim-clean overloads:
 
 ```csharp
 [JsonSerializable(typeof(OrderCreated))]
 [JsonSerializable(typeof(PaymentReceived))]
 internal partial class AppJsonContext : JsonSerializerContext { }
 
+// Register the source-gen context (replaces DefaultJsonTypeInfoResolver)
 ProsodyClientBuilder.Create()
-    .ConfigureJsonSerializer(opts => opts.TypeInfoResolver = AppJsonContext.Default)
+    .ConfigureJsonOptions(opts => opts.TypeInfoResolverChain.Add(AppJsonContext.Default))
     .Build();
+
+// Trim-clean send: pass the JsonTypeInfo directly
+var typeInfo = AppJsonContext.Default.OrderCreated;
+await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 ```
 
-`SendAsync<T>` and `Message.GetPayload<T>` both route through the same configured options and emit no trim warnings when a `TypeInfoResolver` is set.
+| Path | AOT story |
+|---|---|
+| `SendAsync<T>(..., JsonTypeInfo<T>, ...)` | Fully trim-clean. |
+| `SendAsync<T>(...)` (convenience) | Annotated; suppress `IL2026`/`IL3050` at call site if source-gen resolver is configured. |
+| `new ProsodyClient(options)` / `Build()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
+| `SubscribeAsync<TPayload>(handler, classifier)` | Trim-clean; pass an `IPermanentErrorClassifier` instead of relying on `[PermanentError]` attribute reflection. |
+| `SubscribeAsync<TPayload>(handler)` | Annotated — uses `Type.GetInterfaceMap`, unsupported under NativeAOT. Use the classifier overload for NativeAOT targets. |
 
 ### Core
 
@@ -565,9 +576,9 @@ if Cassandra is not configured.
 Prosody supports timer-based delayed execution within message handlers. When a timer fires, your handler's `OnTimerAsync` method will be called:
 
 ```csharp
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Schedule a timer to fire in 30 seconds
         var futureTime = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -584,11 +595,12 @@ public class MyHandler : IProsodyHandler
         Console.WriteLine($"Scheduled timers: {scheduledTimes.Length}");
     }
 
-    public async Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken)
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken)
     {
         Console.WriteLine("Timer fired!");
         Console.WriteLine($"Key: {timer.Key}");
         Console.WriteLine($"Scheduled time: {timer.Time}");
+        return Task.CompletedTask;
     }
 }
 ```
@@ -703,22 +715,21 @@ Kafka:
 ```csharp
 using System.Diagnostics;
 
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
     private static readonly ActivitySource ActivitySource = new("my-service-name");
 
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("process-message");
 
         // Process the received message
         activity?.AddEvent(new ActivityEvent("message.received"));
 
-        var payload = message.GetPayload<MyPayload>();
-        Console.WriteLine($"Received message: {payload}");
+        Console.WriteLine($"Received message: {message.Payload}");
     }
 
-    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -844,17 +855,17 @@ Use the `[PermanentError]` attribute to classify exceptions that should not be r
 using Prosody;
 using System.Text.Json;
 
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
     [PermanentError(typeof(JsonException), typeof(ArgumentException))]
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Your message handling logic here
         // JsonException and ArgumentException will be treated as permanent
         // All other exceptions will be treated as transient (default behavior)
     }
 
-    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -865,13 +876,13 @@ You can also throw a `PermanentException` directly:
 ```csharp
 using Prosody;
 
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
-        var payload = message.GetPayload<MyPayload>();
+        var payload = message.Payload;
 
-        if (payload.Version < MinimumSupportedVersion)
+        if (payload?.Version < MinimumSupportedVersion)
         {
             throw new PermanentException("Message version is no longer supported");
         }
@@ -879,7 +890,7 @@ public class MyHandler : IProsodyHandler
         // Process message...
     }
 
-    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -934,13 +945,13 @@ Best practices:
 Example of using CancellationToken in message processing:
 
 ```csharp
-public class MyHandler : IProsodyHandler
+public class MyHandler : IProsodyHandler<MyPayload>
 {
     private readonly HttpClient _httpClient;
     private readonly MyDbContext _dbContext;
     private readonly ProsodyClient _client;
 
-    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Pass the token to HTTP calls — throws OperationCanceledException on cancellation
         var response = await _httpClient.GetAsync("https://api.example.com", cancellationToken);
@@ -954,7 +965,7 @@ public class MyHandler : IProsodyHandler
         await _client.SendAsync("topic", "key", new { Data = "value" }, cancellationToken);
     }
 
-    public Task OnTimerAsync(ProsodyContext prosodyContext, Timer timer, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -962,17 +973,20 @@ For CPU-bound loops, poll `ThrowIfCancellationRequested()` periodically. This th
 cancellation is requested, correctly signaling to Prosody that the handler did not complete:
 
 ```csharp
-public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken cancellationToken)
+public class MyHandler : IProsodyHandler<List<Item>>
 {
-    var items = message.GetPayload<List<Item>>();
-
-    foreach (var item in items)
+    public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<List<Item>> message, CancellationToken cancellationToken)
     {
-        // Correct: throws OperationCanceledException, signaling incomplete work
-        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var item in message.Payload ?? [])
+        {
+            // Correct: throws OperationCanceledException, signaling incomplete work
+            cancellationToken.ThrowIfCancellationRequested();
 
-        ProcessItem(item);
+            ProcessItem(item);
+        }
     }
+
+    public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 ```
 
@@ -1184,6 +1198,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithProbePort(ushort port)`: Set health check probe port
 - `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
 - `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
+- `ConfigureJsonOptions(Action<JsonSerializerOptions> configure)`: Override JSON serialization options (runs after defaults are applied)
 
 **Build:**
 - `ProsodyClient Build()`: Validates configuration and creates a new ProsodyClient.
@@ -1192,11 +1207,13 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 
 - `ProsodyClient(ClientOptions options)`: Create a new ProsodyClient with the specified options.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
-- `Task<ConsumerState> ConsumerStateAsync()`: Get the current state of the consumer.
+- `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
 - `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
-- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler.
+- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
+- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
 - `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
 - `void Dispose()`: Dispose of client resources synchronously.
 - `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
@@ -1246,7 +1263,7 @@ Timer scheduling methods:
 - `Task ClearScheduledAsync()`: Removes all scheduled timers
 - `Task<DateTimeOffset[]> ScheduledAsync()`: Returns an array of all scheduled timer times
 
-### Timer
+### ProsodyTimer
 
 Represents a timer that has fired, provided to the `OnTimerAsync` method:
 

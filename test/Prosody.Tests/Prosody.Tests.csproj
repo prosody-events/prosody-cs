@@ -7,7 +7,11 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
-    <!-- Tests do not publish AOT; suppress reflection-safety warnings from annotated library methods -->
+    <!-- Tests do not publish AOT, so reflection-safety warnings from annotated library APIs are suppressed.
+         Annotated APIs include: ProsodyClient constructor, ProsodyClientBuilder.Build(),
+         ProsodyClient.SendAsync<T> (convenience overload), ProsodyClient.SubscribeAsync<TPayload>
+         (reflection overload), EventHandlerBridge<T> constructor, PermanentErrorResolver.GetAttribute,
+         and ProsodyServiceCollectionExtensions.AddProsodyClient. -->
     <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
   </PropertyGroup>
 

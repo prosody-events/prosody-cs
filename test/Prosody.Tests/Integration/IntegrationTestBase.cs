@@ -35,6 +35,7 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     {
         public string Content { get; init; } = "";
         public int Sequence { get; init; }
+        public string MessageContent { get; init; } = "";
     }
 
     /// <summary>
