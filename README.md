@@ -1225,7 +1225,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task DeleteTopicAsync(string name)`: Delete an existing Kafka topic.
 - `void Dispose()`: Dispose of admin client resources.
 
-### IProsodyHandler&lt;TPayload&gt;
+### `IProsodyHandler<TPayload>`
 
 Interface for handling messages and timers:
 
@@ -1237,7 +1237,7 @@ public interface IProsodyHandler<TPayload>
 }
 ```
 
-### Message&lt;T&gt;
+### `Message<T>`
 
 Represents a Kafka message with the following properties:
 
