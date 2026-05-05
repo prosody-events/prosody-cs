@@ -83,8 +83,12 @@ public static class ProsodyServiceCollectionExtensions
     /// builder.Services.AddProsodyClient(options =&gt; options.Mock = true);
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode("Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization.")]
-    [RequiresDynamicCode("Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization.")]
+    [RequiresUnreferencedCode(
+        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
+    )]
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
         Action<ClientOptions>? configure = null
@@ -120,8 +124,12 @@ public static class ProsodyServiceCollectionExtensions
     /// builder.Services.AddProsodyClient("MyApp:Kafka", options =&gt; options.Mock = true);
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode("Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization.")]
-    [RequiresDynamicCode("Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization.")]
+    [RequiresUnreferencedCode(
+        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
+    )]
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
         string configSectionPath,

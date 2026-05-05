@@ -506,8 +506,8 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         // Act & Assert - validation runs eagerly when resolving IOptions<ClientOptions>
         using ServiceProvider provider = services.BuildServiceProvider();
-        var ex = Assert.Throws<OptionsValidationException>(
-            () => provider.GetRequiredService<IOptions<ClientOptions>>().Value
+        var ex = Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<ClientOptions>>().Value
         );
 
         Assert.Contains("FailureTopic is required when Mode is LowLatency", ex.Message, StringComparison.Ordinal);

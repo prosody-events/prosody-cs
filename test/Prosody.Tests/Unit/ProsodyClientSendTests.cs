@@ -51,8 +51,8 @@ public sealed class ProsodyClientSendTests : IDisposable
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(
-            () => _client.SendAsync("topic", "key", new { }, cts.Token)
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            _client.SendAsync("topic", "key", new { }, cts.Token)
         );
     }
 

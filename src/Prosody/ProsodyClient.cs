@@ -36,8 +36,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// To avoid this, set <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c>
     /// in the <see cref="ClientOptions.ConfigureJsonOptions"/> callback.
     /// </remarks>
-    [RequiresUnreferencedCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization.")]
-    [RequiresDynamicCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation.")]
+    [RequiresUnreferencedCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
+    )]
     public ProsodyClient(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -50,16 +54,24 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Creates a new ProsodyClient from pre-validated options, skipping redundant validation.
     /// </summary>
-    [RequiresUnreferencedCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization.")]
-    [RequiresDynamicCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation.")]
+    [RequiresUnreferencedCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
+    )]
     internal static ProsodyClient FromValidatedOptions(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new ProsodyClient(new Native.ProsodyClient(options.ToNative()), BuildJsonOptions(options));
     }
 
-    [RequiresUnreferencedCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization.")]
-    [RequiresDynamicCode("Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation.")]
+    [RequiresUnreferencedCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
+    )]
     private static JsonSerializerOptions BuildJsonOptions(ClientOptions options)
     {
         var opts = new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -136,8 +148,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// contract the rest of the system requires.
     /// </para>
     /// </remarks>
-    [RequiresUnreferencedCode("Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver (reflection-based). Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing.")]
-    [RequiresDynamicCode("Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver. Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing.")]
+    [RequiresUnreferencedCode(
+        "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver (reflection-based). Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
+    )]
+    [RequiresDynamicCode(
+        "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver. Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
+    )]
     public Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(topic);
@@ -167,7 +183,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         string key,
         T payload,
         JsonTypeInfo<T> typeInfo,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);
@@ -177,7 +194,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return SendCoreAsync(topic, key, payload, typeInfo, cancellationToken);
     }
 
-    private async Task SendCoreAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
+    private async Task SendCoreAsync<T>(
+        string topic,
+        string key,
+        T payload,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken cancellationToken
+    )
     {
         var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
@@ -225,7 +248,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Type.GetInterfaceMap is not supported under trimming; use SubscribeAsync(handler, classifier) for AOT-safe error classification."
     )]
-    [RequiresDynamicCode("Type.GetInterfaceMap is not supported in Native AOT. Use SubscribeAsync(handler, classifier) for AOT-safe error classification.")]
+    [RequiresDynamicCode(
+        "Type.GetInterfaceMap is not supported in Native AOT. Use SubscribeAsync(handler, classifier) for AOT-safe error classification."
+    )]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
         var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions);

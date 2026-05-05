@@ -238,10 +238,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge, payload: "null"u8.ToArray());
 
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.Success, result.Code),
-            () => Assert.Null(observedPayload)
-        );
+        Assert.Multiple(() => Assert.Equal(NativeResultCode.Success, result.Code), () => Assert.Null(observedPayload));
     }
 
     [Fact]
@@ -355,9 +352,7 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task ClassifierOverload_ReturnsPermanentWhenClassifierReturnsTrue()
     {
-        var handler = new TypedLambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new JsonException("bad json")
-        );
+        var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => throw new JsonException("bad json"));
         var classifier = new LambdaClassifier(isMessagePermanent: _ => true, isTimerPermanent: _ => false);
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
 
@@ -369,9 +364,7 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task ClassifierOverload_ReturnsTransientWhenClassifierReturnsFalse()
     {
-        var handler = new TypedLambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new JsonException("bad json")
-        );
+        var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => throw new JsonException("bad json"));
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
 
@@ -707,8 +700,8 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task OnTimerDetectsAttributeOnExplicitInterfaceImplementation()
     {
-        var handler = new ExplicitInterfaceHandler(
-            onTimer: () => throw new FormatException("explicit timer permanent")
+        var handler = new ExplicitInterfaceHandler(onTimer: () =>
+            throw new FormatException("explicit timer permanent")
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
 
@@ -858,6 +851,7 @@ public sealed class EventHandlerBridgeTests
     ) : IPermanentErrorClassifier
     {
         public bool IsMessageErrorPermanent(Exception exception) => isMessagePermanent(exception);
+
         public bool IsTimerErrorPermanent(Exception exception) => isTimerPermanent(exception);
     }
 

@@ -201,8 +201,8 @@ public sealed class ProsodyHandlerTests
     {
         var handler = new CustomExceptionHandler();
 
-        var ex = await Assert.ThrowsAsync<OrderValidationException>(
-            () => handler.OnMessageAsync(null!, null!, CancellationToken.None)
+        var ex = await Assert.ThrowsAsync<OrderValidationException>(() =>
+            handler.OnMessageAsync(null!, null!, CancellationToken.None)
         );
 
         Assert.IsAssignableFrom<IPermanentError>(ex);

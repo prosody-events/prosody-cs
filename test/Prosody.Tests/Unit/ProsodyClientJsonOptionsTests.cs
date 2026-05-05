@@ -98,8 +98,8 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     [Fact]
     public void JsonOptions_IsReadOnly_AfterConstruction()
     {
-        Assert.Throws<InvalidOperationException>(
-            () => _client.JsonOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+        Assert.Throws<InvalidOperationException>(() =>
+            _client.JsonOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
         );
     }
 
@@ -108,7 +108,8 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     {
         // Two consecutive .ConfigureJsonOptions calls on the builder: the second assignment overwrites the first
         // because ConfigureJsonOptions is a simple property, not a chain/accumulator.
-        using var client = ProsodyClientBuilder.Create()
+        using var client = ProsodyClientBuilder
+            .Create()
             .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("test-group")
             .WithSourceSystem("test")
@@ -202,9 +203,8 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
 
     private sealed record RecordWithSnakeCaseField(string FieldValue);
 
-    private sealed class LambdaHandler<T>(
-        Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null
-    ) : IProsodyHandler<T>
+    private sealed class LambdaHandler<T>(Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null)
+        : IProsodyHandler<T>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
