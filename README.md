@@ -241,9 +241,10 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | Path | AOT story |
 |---|---|
 | `SendAsync<T>(..., JsonTypeInfo<T>, ...)` | Fully trim-clean. |
+| `SendAsync<T>(..., JsonTypeInfo<T>, SendOptions, ...)` | Fully trim-clean; explicit metadata bypasses naming-policy assumptions. |
 | `SendAsync<T>(...)` (convenience) | Annotated; suppress `IL2026`/`IL3050` at call site if source-gen resolver is configured. |
 | `new ProsodyClient(options)` / `Build()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
-| `SubscribeAsync<TPayload>(handler, classifier)` | Trim-clean; pass an `IPermanentErrorClassifier` instead of relying on `[PermanentError]` attribute reflection. |
+| `SubscribeAsync<TPayload>(handler, classifier)` | Trim-clean for error classification. Full AOT safety also requires the client's `JsonSerializerOptions` to use a source-gen resolver (via `ConfigureJsonOptions`) for payload deserialization. |
 | `SubscribeAsync<TPayload>(handler)` | Annotated — uses `Type.GetInterfaceMap`, unsupported under NativeAOT. Use the classifier overload for NativeAOT targets. |
 
 ### Core

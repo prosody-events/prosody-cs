@@ -161,7 +161,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         var typeInfo = (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-        return SendCoreAsync(topic, key, payload, typeInfo, cancellationToken);
+        return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
     }
 
     /// <summary>
@@ -178,6 +178,16 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <c>AppJsonContext.Default.MyType</c>.
     /// </param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <remarks>
+    /// <para>
+    /// Event metadata (<c>id</c> and <c>type</c>) is extracted by walking the
+    /// <paramref name="typeInfo"/>'s property list. If your source-generated context
+    /// uses a naming policy that does not produce lowercase <c>"id"</c>/<c>"type"</c>
+    /// property names, extraction will silently yield <c>null</c>. In that scenario,
+    /// use the overload that accepts <see cref="SendOptions"/> to provide explicit
+    /// <see cref="SendOptions.EventId"/> and <see cref="SendOptions.EventType"/> values.
+    /// </para>
+    /// </remarks>
     public Task SendAsync<T>(
         string topic,
         string key,
@@ -191,7 +201,42 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(typeInfo);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return SendCoreAsync(topic, key, payload, typeInfo, cancellationToken);
+        return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a message to a topic, serializing <paramref name="payload"/> using the supplied
+    /// <paramref name="typeInfo"/> with explicit metadata overrides (trim-safe).
+    /// </summary>
+    /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
+    /// <param name="topic">The topic to send to.</param>
+    /// <param name="key">The message key.</param>
+    /// <param name="payload">The message payload (will be serialized to JSON).</param>
+    /// <param name="typeInfo">
+    /// Source-generated <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/>.
+    /// </param>
+    /// <param name="options">
+    /// Per-message overrides. When <see cref="SendOptions.EventId"/> or
+    /// <see cref="SendOptions.EventType"/> is set, that value is used instead of
+    /// extracting from the payload.
+    /// </param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    public Task SendAsync<T>(
+        string topic,
+        string key,
+        T payload,
+        JsonTypeInfo<T> typeInfo,
+        SendOptions options,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(typeInfo);
+        ArgumentNullException.ThrowIfNull(options);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return SendCoreAsync(topic, key, payload, typeInfo, options, cancellationToken);
     }
 
     private async Task SendCoreAsync<T>(
@@ -199,10 +244,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         string key,
         T payload,
         JsonTypeInfo<T> typeInfo,
+        SendOptions? options,
         CancellationToken cancellationToken
     )
     {
-        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
+        var (extractedId, extractedType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
+        var eventId = options?.EventId ?? extractedId;
+        var eventType = options?.EventType ?? extractedType;
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
 
         // W3C propagation injects at most 2 headers (traceparent, tracestate); pre-size to avoid rehash.
