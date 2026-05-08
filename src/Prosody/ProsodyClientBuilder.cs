@@ -303,7 +303,7 @@ public sealed class ProsodyClientBuilder
     /// Set <c>TypeInfoResolver</c> inside the callback to enable AOT/trim-safe serialization:
     /// </para>
     /// <code>
-    /// .ConfigureJsonOptions(opts => opts.TypeInfoResolver = AppJsonContext.Default)
+    /// .ConfigureJsonOptions(opts => opts.TypeInfoResolverChain.Add(AppJsonContext.Default))
     /// </code>
     /// </remarks>
     public ProsodyClientBuilder ConfigureJsonOptions(Action<System.Text.Json.JsonSerializerOptions> configure)

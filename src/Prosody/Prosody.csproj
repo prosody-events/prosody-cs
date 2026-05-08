@@ -24,8 +24,8 @@
     <!-- Generate XML documentation for IntelliSense -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
-    <!-- Enforce trim annotations: IL2026/IL3050 errors surface any reflection paths not yet annotated -->
-    <IsTrimmable>true</IsTrimmable>
+    <!-- IsAotCompatible implies IsTrimmable, EnableTrimAnalyzer, EnableAotAnalyzer. IL warnings surface as errors in CI lint job. -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

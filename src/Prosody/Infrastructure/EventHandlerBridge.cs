@@ -247,10 +247,10 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
 
     [RequiresUnreferencedCode(
-        "Reads PermanentErrorAttribute from handler methods via reflection. Type.GetInterfaceMap is not supported under trimming; use the constructor that accepts IPermanentErrorClassifier for AOT-safe error classification."
+        "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
     )]
     [RequiresDynamicCode(
-        "Type.GetInterfaceMap is not supported in Native AOT. Use the constructor that accepts IPermanentErrorClassifier for AOT-safe error classification."
+        "GetInterfaceMap requires the handler type's methods to be preserved. Use the constructor that accepts IPermanentErrorClassifier to avoid this requirement."
     )]
     public EventHandlerBridge(IProsodyHandler<TPayload> userHandler, JsonSerializerOptions jsonOptions)
     {
@@ -288,8 +288,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 
         _userHandler = userHandler;
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
-        _isMessagePermanent = classifier.IsMessageErrorPermanent;
-        _isTimerPermanent = classifier.IsTimerErrorPermanent;
+        _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
     }
 
     /// <inheritdoc/>

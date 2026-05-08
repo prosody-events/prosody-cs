@@ -407,6 +407,37 @@ public sealed class EventHandlerBridgeTests
         Assert.Equal(NativeResultCode.PermanentError, result.Code);
     }
 
+    [Fact]
+    public async Task ClassifierOverload_HonorsIPermanentErrorMarker_EvenWhenClassifierReturnsFalse()
+    {
+        // PermanentException implements IPermanentError; classifier returns false for everything.
+        // The bridge must still classify as permanent — IPermanentError takes precedence.
+        var handler = new TypedLambdaHandler<JsonElement>(
+            onMessage: (_, _, _) => throw new PermanentException("permanent via marker")
+        );
+        var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+
+        var result = await HandleMsg(bridge);
+
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
+    [Fact]
+    public async Task ClassifierOverload_HonorsCustomIPermanentErrorMarker()
+    {
+        // CustomPermanentException implements IPermanentError; classifier returns false for everything.
+        var handler = new TypedLambdaHandler<JsonElement>(
+            onMessage: (_, _, _) => throw new CustomPermanentException("custom permanent via marker")
+        );
+        var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+
+        var result = await HandleMsg(bridge);
+
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
     #endregion IPermanentErrorClassifier Tests
 
     #region BridgeCancellationAsync Tests

@@ -286,18 +286,20 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <c>TPayload = <see cref="System.Text.Json.JsonElement"/></c>.
     /// </para>
     /// <para>
-    /// This overload reads <c>PermanentErrorAttribute</c> from handler methods via reflection
-    /// and uses <c>Type.GetInterfaceMap</c> to resolve explicit interface implementations —
-    /// both are incompatible with trimming and Native AOT. For AOT-safe error classification,
-    /// use the <c>SubscribeAsync&lt;TPayload&gt;(IProsodyHandler&lt;TPayload&gt;, IPermanentErrorClassifier)</c>
-    /// overload instead.
+    /// This overload reads <c>PermanentErrorAttribute</c> from handler methods via
+    /// <c>Type.GetInterfaceMap</c> (BCL-annotated and AOT-compatible at the BCL level).
+    /// It is annotated with <c>[RequiresUnreferencedCode]</c>/<c>[RequiresDynamicCode]</c>
+    /// because the trimmer cannot propagate DAM requirements through an interface-typed
+    /// parameter to satisfy call-site annotation requirements. Use the
+    /// <c>SubscribeAsync&lt;TPayload&gt;(IProsodyHandler&lt;TPayload&gt;, IPermanentErrorClassifier)</c>
+    /// overload for explicit, zero-reflection error classification.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(
-        "Reads PermanentErrorAttribute from handler methods via reflection. Type.GetInterfaceMap is not supported under trimming; use SubscribeAsync(handler, classifier) for AOT-safe error classification."
+        "Reads PermanentErrorAttribute from handler methods via reflection. Use SubscribeAsync(handler, classifier) to avoid the reflection path."
     )]
     [RequiresDynamicCode(
-        "Type.GetInterfaceMap is not supported in Native AOT. Use SubscribeAsync(handler, classifier) for AOT-safe error classification."
+        "GetInterfaceMap requires handler type methods to be preserved. Use SubscribeAsync(handler, classifier) to avoid this requirement."
     )]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
@@ -307,7 +309,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler and
-    /// an explicit error classifier (trim-safe; no reflection is used).
+    /// an explicit error classifier (zero reflection; no attribute lookup is performed).
     /// </summary>
     /// <typeparam name="TPayload">The message payload type.</typeparam>
     /// <param name="handler">The event handler to process messages and timers.</param>
@@ -316,8 +318,10 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// Bypasses the reflection-based <c>PermanentErrorAttribute</c> lookup entirely.
     /// </param>
     /// <remarks>
-    /// Use this overload together with a source-generated <c>JsonSerializerContext</c> (via
-    /// <see cref="ClientOptions.ConfigureJsonOptions"/>) for a fully AOT-safe subscribe path.
+    /// Use this overload when you want full control over error classification or want to avoid
+    /// the reflection path entirely. Pair with a source-generated <c>JsonSerializerContext</c>
+    /// (via <see cref="ClientOptions.ConfigureJsonOptions"/>) when building for a fully
+    /// zero-reflection payload deserialization path as well.
     /// </remarks>
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier)
     {

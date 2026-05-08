@@ -28,11 +28,19 @@ internal static class PermanentErrorResolver
     /// <param name="interfaceType">The implemented handler interface type.</param>
     /// <param name="methodName">The method name to inspect.</param>
     /// <returns>The attribute if found; otherwise, <see langword="null"/>.</returns>
-    /// <remarks>Uses reflection; not compatible with trimming or Native AOT.
-    /// Follow-up: replace with a source-generator-based path.</remarks>
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
-    internal static PermanentErrorAttribute? GetAttribute(Type handlerType, Type interfaceType, string methodName) =>
+    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
+    internal static PermanentErrorAttribute? GetAttribute(
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
+        )]
+            Type handlerType,
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
+        )]
+            Type interfaceType,
+        string methodName
+    ) =>
         PermanentErrorHandlerCache.GetOrAdd(
             (handlerType, interfaceType, methodName),
             static key => ResolveAttribute(key.HandlerType, key.InterfaceType, key.MethodName)
@@ -59,13 +67,23 @@ internal static class PermanentErrorResolver
     }
 
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap is not supported in Native AOT.")]
-    private static PermanentErrorAttribute? ResolveAttribute(Type handlerType, Type interfaceType, string methodName)
+    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
+    private static PermanentErrorAttribute? ResolveAttribute(
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
+        )]
+            Type handlerType,
+        [DynamicallyAccessedMembers(
+            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
+        )]
+            Type interfaceType,
+        string methodName
+    )
     {
-        // Resolve through the interface map first. This identifies the concrete method that implements
-        // the interface method, which may carry the attribute even when the name doesn't
-        // match (e.g., explicit implementations like IProsodyHandler.OnMessageAsync), and avoids
-        // selecting the wrong overload when a handler implements both typed and untyped interfaces.
+        // Resolve through the interface map — this finds the concrete method that implements
+        // the interface method, which carries the attribute even for explicit implementations
+        // (e.g. `Task IProsodyHandler<T>.OnMessageAsync(...)`) where the target method's
+        // mangled name doesn't match the interface method name.
         var interfaceMethod = Array.Find(
             interfaceType.GetMethods(),
             m => string.Equals(m.Name, methodName, StringComparison.Ordinal)

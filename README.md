@@ -244,8 +244,8 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `SendAsync<T>(..., JsonTypeInfo<T>, SendOptions, ...)` | Fully trim-clean; explicit metadata bypasses naming-policy assumptions. |
 | `SendAsync<T>(...)` (convenience) | Annotated; suppress `IL2026`/`IL3050` at call site if source-gen resolver is configured. |
 | `new ProsodyClient(options)` / `Build()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
-| `SubscribeAsync<TPayload>(handler, classifier)` | Trim-clean for error classification. Full AOT safety also requires the client's `JsonSerializerOptions` to use a source-gen resolver (via `ConfigureJsonOptions`) for payload deserialization. |
-| `SubscribeAsync<TPayload>(handler)` | Annotated — uses `Type.GetInterfaceMap`, unsupported under NativeAOT. Use the classifier overload for NativeAOT targets. |
+| `SubscribeAsync<TPayload>(handler, classifier)` | Zero reflection for error classification — opt-in when you want full explicit control. Full AOT safety also requires the client's `JsonSerializerOptions` to use a source-gen resolver (via `ConfigureJsonOptions`) for payload deserialization. |
+| `SubscribeAsync<TPayload>(handler)` | Annotated — reads `PermanentErrorAttribute` via `Type.GetInterfaceMap`. The BCL call is AOT-compatible, but the trimmer can't propagate DAM through an interface-typed parameter, so the method carries `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`. |
 
 ### Core
 
