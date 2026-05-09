@@ -13,8 +13,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     {
         await using var ctx = await CreateTestContextAsync();
 
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
@@ -32,11 +32,10 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             TestContext.Current.CancellationToken
         );
 
-        var payload = received.GetPayload<TestPayload>();
         Assert.Multiple(
             () => Assert.Equal(ctx.Topic, received.Topic),
             () => Assert.Equal("test-key", received.Key),
-            () => Assert.Equal("Hello, Kafka!", payload.Content)
+            () => Assert.Equal("Hello, Kafka!", received.Payload?.Content)
         );
     }
 
@@ -45,8 +44,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     {
         await using var ctx = await CreateTestContextAsync();
 
-        var messages = new MessageChannel<Message>();
-        var handler = new TestProsodyHandler(
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (_, msg, _) =>
             {
                 messages.Send(msg);
@@ -78,12 +77,11 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         Assert.Equal(messagesToSend.Length, received.Count);
 
-        // Group by key and verify ordering within each key
         var byKey = received.GroupBy(m => m.Key).ToDictionary(g => g.Key, g => g.ToList());
 
         foreach (var (_, msgs) in byKey)
         {
-            var sequences = msgs.Select(m => m.GetPayload<TestPayload>().Sequence).ToList();
+            var sequences = msgs.Select(m => m.Payload?.Sequence).ToList();
             var sorted = sequences.OrderBy(s => s).ToList();
             Assert.Equal(sorted, sequences);
         }
@@ -100,7 +98,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         var processingAborted = new EventNotifier();
         var wasAborted = false;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (_, _, ct) =>
             {
                 processingStarted.Signal();
@@ -134,5 +132,46 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         var state = await ctx.Client.GetConsumerStateAsync();
         Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task PayloadRoundTrip_HonorsSnakeCaseOverride()
+    {
+        await using var ctx = await CreateTestContextAsync(o =>
+            o.ConfigureJsonOptions = opts =>
+                opts.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower
+        );
+
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
+            onMessage: (_, msg, _) =>
+            {
+                messages.Send(msg);
+                return Task.CompletedTask;
+            }
+        );
+
+        await ctx.Client.SubscribeAsync(handler);
+
+        // MessageContent is a multi-word property: snake_case → "message_content"; camelCase → "messageContent".
+        // This asserts that the snake_case override is actually applied end-to-end and not silently ignored.
+        var testPayload = new TestPayload
+        {
+            Content = "snake-case-test",
+            Sequence = 7,
+            MessageContent = "multi-word-value",
+        };
+        await ctx.Client.SendAsync(ctx.Topic, "sc-key", testPayload, TestContext.Current.CancellationToken);
+
+        var received = await messages.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Multiple(
+            () => Assert.Equal("snake-case-test", received.Payload?.Content),
+            () => Assert.Equal(7, received.Payload?.Sequence),
+            () => Assert.Equal("multi-word-value", received.Payload?.MessageContent)
+        );
     }
 }

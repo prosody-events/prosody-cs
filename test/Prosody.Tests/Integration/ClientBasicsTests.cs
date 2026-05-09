@@ -27,7 +27,7 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
     public async Task SubscribesAndUnsubscribes()
     {
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
-        var handler = new TestProsodyHandler();
+        var handler = new TestProsodyHandler<TestPayload>();
 
         await ctx.Client.SubscribeAsync(handler);
         Assert.Equal(ConsumerState.Running, await ctx.Client.GetConsumerStateAsync());

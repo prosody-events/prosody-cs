@@ -224,7 +224,7 @@ format-rust:
 	cargo +nightly fmt --all
 
 format-csharp:
-	dotnet tool run dotnet-csharpier .
+	dotnet tool run csharpier format .
 
 format: format-rust format-csharp
 	@echo "All code formatted!"
@@ -236,7 +236,7 @@ format-check-toml:
 	taplo check
 
 format-check-csharp:
-	dotnet tool run dotnet-csharpier --check .
+	dotnet tool run csharpier check .
 
 format-check: format-check-rust format-check-toml format-check-csharp
 

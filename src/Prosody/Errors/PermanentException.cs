@@ -22,31 +22,31 @@ namespace Prosody.Errors;
 /// </remarks>
 /// <example>
 /// <code>
-/// public async Task OnMessageAsync(ProsodyContext prosodyContext, Message message, CancellationToken ct)
+/// public async Task OnMessageAsync(ProsodyContext prosodyContext, Message&lt;Order&gt; message, CancellationToken ct)
 /// {
-///     try
+///     var order = message.Payload;
+///     if (order is null)
 ///     {
-///         var order = JsonSerializer.Deserialize&lt;Order&gt;(message.Payload);
-///         await ProcessOrder(order, ct);
+///         // Null payload won't be fixed by retry
+///         throw new PermanentException("Order payload is required");
 ///     }
-///     catch (JsonException ex)
-///     {
-///         // Malformed JSON won't be fixed by retry
-///         throw new PermanentException("Invalid message format", ex);
-///     }
+///     await ProcessOrder(order, ct);
 /// }
 /// </code>
 /// </example>
 public sealed class PermanentException : Exception, IPermanentError
 {
-    /// <inheritdoc/>
+    /// <summary>Initializes a new instance of <see cref="PermanentException"/>.</summary>
     public PermanentException() { }
 
-    /// <inheritdoc/>
+    /// <summary>Initializes a new instance of <see cref="PermanentException"/> with a specified error message.</summary>
+    /// <param name="message">The message that describes the error.</param>
     public PermanentException(string message)
         : base(message) { }
 
-    /// <inheritdoc/>
+    /// <summary>Initializes a new instance of <see cref="PermanentException"/> with a specified error message and a reference to the inner exception that is the cause of this exception.</summary>
+    /// <param name="message">The message that describes the error.</param>
+    /// <param name="innerException">The exception that is the cause of the current exception.</param>
     public PermanentException(string message, Exception innerException)
         : base(message, innerException) { }
 }

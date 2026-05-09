@@ -1,28 +1,27 @@
-using System.Text.Json;
-
 namespace Prosody.Messaging;
 
 /// <summary>
-/// Kafka message data.
+/// Kafka message data with a deserialized JSON payload. All members are safe for concurrent read access.
 /// </summary>
-public sealed class Message
+/// <typeparam name="T">The payload type.</typeparam>
+/// <remarks>
+/// This type is produced by subscriptions through <see cref="IProsodyHandler{TPayload}"/>.
+/// The payload is deserialized once before the handler is invoked.
+/// For topics with dynamic or mixed schemas, use <c>T = <see cref="System.Text.Json.JsonElement"/></c>.
+/// </remarks>
+public sealed class Message<T>
 {
-    private readonly Native.Message _native;
-
-    internal Message(Native.Message native)
+    internal Message(string topic, string key, int partition, long offset, DateTimeOffset timestamp, T? payload)
     {
-        ArgumentNullException.ThrowIfNull(native);
-        _native = native;
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
 
-        // Cache all properties eagerly to avoid repeated FFI crossings.
-        // Each call to a native accessor crosses the FFI boundary (Arc clone +
-        // method dispatch + atomic bookkeeping); primitives are cheap to cache
-        // once and avoid that overhead on repeated access.
-        Topic = native.Topic();
-        Key = native.Key();
-        Partition = native.Partition();
-        Offset = native.Offset();
-        Timestamp = new(native.Timestamp(), TimeSpan.Zero);
+        Topic = topic;
+        Key = key;
+        Partition = partition;
+        Offset = offset;
+        Timestamp = timestamp;
+        Payload = payload;
     }
 
     /// <summary>
@@ -51,14 +50,12 @@ public sealed class Message
     public DateTimeOffset Timestamp { get; }
 
     /// <summary>
-    /// Deserializes the payload to the specified type.
+    /// Gets the deserialized JSON payload.
     /// </summary>
-    /// <typeparam name="T">The type to deserialize to.</typeparam>
-    /// <returns>The deserialized payload.</returns>
-    /// <exception cref="JsonException">If deserialization fails.</exception>
-    public T GetPayload<T>()
-    {
-        return JsonSerializer.Deserialize<T>(_native.Payload())
-            ?? throw new JsonException($"Failed to deserialize payload as {typeof(T).Name}");
-    }
+    /// <remarks>
+    /// The value is <see langword="null"/> when the payload JSON token is <c>null</c> and
+    /// <typeparamref name="T"/> can represent null. For dynamic-schema topics, use
+    /// <c>T = <see cref="System.Text.Json.JsonElement"/></c>.
+    /// </remarks>
+    public T? Payload { get; }
 }

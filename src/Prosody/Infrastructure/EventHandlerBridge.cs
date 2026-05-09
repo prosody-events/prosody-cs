@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
@@ -13,31 +16,19 @@ using NativeResultCode = Prosody.Native.HandlerResultCode;
 namespace Prosody.Infrastructure;
 
 /// <summary>
-/// Bridges the user-facing <see cref="IProsodyHandler"/> interface
-/// to the UniFFI-generated <see cref="NativeHandler"/> interface.
+/// Shared static infrastructure for bridge classes: activity source, logging, handler invocation, and Sentry helpers.
 /// </summary>
-/// <remarks>
-/// This wrapper:
-/// <list type="bullet">
-///   <item>Wraps native types in their public wrapper equivalents</item>
-///   <item>Creates a <see cref="CancellationToken"/> linked to the context's cancellation signal</item>
-///   <item>Classifies exceptions as permanent or transient based on:
-///     <list type="number">
-///       <item><see cref="IPermanentError"/> marker interface (highest priority)</item>
-///       <item><see cref="PermanentErrorAttribute"/> on the handler method</item>
-///       <item>Default: transient (will retry)</item>
-///     </list>
-///   </item>
-/// </list>
-/// </remarks>
-internal sealed class EventHandlerBridge : NativeHandler
+internal static class EventHandlerBridge
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
 
-    private static readonly ActivitySource ActivitySource = new(
+    // follow-up (AOT): Assembly.GetCustomAttribute is trim-unsafe; replace with a
+    // source-generated constant (e.g. ThisAssembly.InformationalVersion via MinVer or
+    // a generated AssemblyInfo property) so the version survives trimming/Native AOT.
+    internal static readonly ActivitySource ActivitySource = new(
         "Prosody",
         typeof(EventHandlerBridge)
             .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
@@ -49,89 +40,26 @@ internal sealed class EventHandlerBridge : NativeHandler
     // fires, so the factory lookup is effectively constant after startup.
     private static ILogger Logger => ProsodyLogging.CreateLogger(_loggerCategory);
 
-    private readonly IProsodyHandler _userHandler;
-    private readonly PermanentErrorAttribute? _onMessageAttribute;
-    private readonly PermanentErrorAttribute? _onTimerAttribute;
-
-    /// <summary>
-    /// Creates a new wrapper around the user's event handler.
-    /// </summary>
-    /// <param name="userHandler">The user's event handler implementation.</param>
-    public EventHandlerBridge(IProsodyHandler userHandler)
-    {
-        ArgumentNullException.ThrowIfNull(userHandler);
-        _userHandler = userHandler;
-
-        // Resolve attributes once at construction time (cached across instances of the same handler type)
-        var handlerType = userHandler.GetType();
-        _onMessageAttribute = PermanentErrorResolver.GetAttribute(handlerType, nameof(IProsodyHandler.OnMessageAsync));
-        _onTimerAttribute = PermanentErrorResolver.GetAttribute(handlerType, nameof(IProsodyHandler.OnTimerAsync));
-    }
-
-    /// <inheritdoc/>
-    public Task<NativeResult> OnMessage(
-        Native.Context context,
-        Native.Message message,
-        Dictionary<string, string> carrier
-    ) => HandleMessageAsync(new ProsodyContext(context), new Message(message), context.OnCancel, carrier);
-
-    /// <inheritdoc/>
-    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
-        HandleTimerAsync(new ProsodyContext(context), new ProsodyTimer(timer), context.OnCancel, carrier);
-
-    /// <summary>
-    /// Core message handling logic, decoupled from native types for testability.
-    /// </summary>
-    internal Task<NativeResult> HandleMessageAsync(
-        ProsodyContext wrappedContext,
-        Message wrappedMessage,
-        Func<Task> onCancel,
-        Dictionary<string, string> carrier
+    internal static Dictionary<string, string> BuildMessageSentryContext(
+        string topic,
+        string key,
+        int partition,
+        long offset
     ) =>
-        InvokeHandlerAsync(
-            ct => _userHandler.OnMessageAsync(wrappedContext, wrappedMessage, ct),
-            _onMessageAttribute,
-            onCancel,
-            carrier,
-            activityName: OnMessageActivityName,
-            eventType: SentryConstants.TagValues.EventTypeMessage,
-            buildSentryContext: SentryIntegration.IsEnabled
-                ? () =>
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["topic"] = wrappedMessage.Topic,
-                        ["key"] = wrappedMessage.Key,
-                        ["partition"] = wrappedMessage.Partition.ToString(CultureInfo.InvariantCulture),
-                        ["offset"] = wrappedMessage.Offset.ToString(CultureInfo.InvariantCulture),
-                    }
-                : null
-        );
+        new(StringComparer.Ordinal)
+        {
+            ["topic"] = topic,
+            ["key"] = key,
+            ["partition"] = partition.ToString(CultureInfo.InvariantCulture),
+            ["offset"] = offset.ToString(CultureInfo.InvariantCulture),
+        };
 
-    /// <summary>
-    /// Core timer handling logic, decoupled from native types for testability.
-    /// </summary>
-    internal Task<NativeResult> HandleTimerAsync(
-        ProsodyContext wrappedContext,
-        ProsodyTimer wrappedTimer,
-        Func<Task> onCancel,
-        Dictionary<string, string> carrier
-    ) =>
-        InvokeHandlerAsync(
-            ct => _userHandler.OnTimerAsync(wrappedContext, wrappedTimer, ct),
-            _onTimerAttribute,
-            onCancel,
-            carrier,
-            activityName: OnTimerActivityName,
-            eventType: SentryConstants.TagValues.EventTypeTimer,
-            buildSentryContext: SentryIntegration.IsEnabled
-                ? () =>
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["key"] = wrappedTimer.Key,
-                        ["time"] = wrappedTimer.Time.ToString(CultureInfo.InvariantCulture),
-                    }
-                : null
-        );
+    internal static Dictionary<string, string> BuildTimerSentryContext(ProsodyTimer timer) =>
+        new(StringComparer.Ordinal)
+        {
+            ["key"] = timer.Key,
+            ["time"] = timer.Time.ToString(CultureInfo.InvariantCulture),
+        };
 
     /// <summary>
     /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
@@ -139,7 +67,7 @@ internal sealed class EventHandlerBridge : NativeHandler
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
-        PermanentErrorAttribute? permanentErrorAttribute,
+        Func<Exception, bool> isPermanentError,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
         string activityName,
@@ -168,7 +96,7 @@ internal sealed class EventHandlerBridge : NativeHandler
             await handler(cts.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null);
         }
-        catch (Exception ex) when (PermanentErrorResolver.IsPermanentError(ex, permanentErrorAttribute))
+        catch (Exception ex) when (isPermanentError(ex))
         {
             RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
@@ -227,7 +155,7 @@ internal sealed class EventHandlerBridge : NativeHandler
 #pragma warning restore CA1031
     }
 
-    private static void RecordExceptionOnActivity(Activity? activity, Exception ex) =>
+    internal static void RecordExceptionOnActivity(Activity? activity, Exception ex) =>
         activity?.SetStatus(ActivityStatusCode.Error, ex.Message).AddException(ex);
 
     /// <summary>
@@ -300,4 +228,155 @@ internal sealed class EventHandlerBridge : NativeHandler
         }
 #pragma warning restore CA1031, RCS1075
     }
+}
+
+/// <summary>
+/// Bridges a typed user-facing <see cref="IProsodyHandler{TPayload}"/> interface
+/// to the UniFFI-generated <see cref="NativeHandler"/> interface.
+/// </summary>
+/// <remarks>
+/// Deserializes the payload once per message, inside the protected handler scope so that
+/// <see cref="JsonException"/> is classified by the error classification logic on
+/// <see cref="IProsodyHandler{TPayload}.OnMessageAsync"/> exactly like any other exception.
+/// </remarks>
+internal sealed class EventHandlerBridge<TPayload> : NativeHandler
+{
+    private readonly IProsodyHandler<TPayload> _userHandler;
+    private readonly Func<Exception, bool> _isMessagePermanent;
+    private readonly Func<Exception, bool> _isTimerPermanent;
+    private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
+
+    [RequiresUnreferencedCode(
+        "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
+    )]
+    [RequiresDynamicCode(
+        "GetInterfaceMap requires the handler type's methods to be preserved. Use the constructor that accepts IPermanentErrorClassifier to avoid this requirement."
+    )]
+    public EventHandlerBridge(IProsodyHandler<TPayload> userHandler, JsonSerializerOptions jsonOptions)
+    {
+        ArgumentNullException.ThrowIfNull(userHandler);
+        ArgumentNullException.ThrowIfNull(jsonOptions);
+
+        _userHandler = userHandler;
+        _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
+
+        var handlerType = userHandler.GetType();
+        var interfaceType = typeof(IProsodyHandler<TPayload>);
+        var onMsgAttr = PermanentErrorResolver.GetAttribute(
+            handlerType,
+            interfaceType,
+            nameof(IProsodyHandler<TPayload>.OnMessageAsync)
+        );
+        var onTimerAttr = PermanentErrorResolver.GetAttribute(
+            handlerType,
+            interfaceType,
+            nameof(IProsodyHandler<TPayload>.OnTimerAsync)
+        );
+        _isMessagePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onMsgAttr);
+        _isTimerPermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onTimerAttr);
+    }
+
+    public EventHandlerBridge(
+        IProsodyHandler<TPayload> userHandler,
+        JsonSerializerOptions jsonOptions,
+        IPermanentErrorClassifier classifier
+    )
+    {
+        ArgumentNullException.ThrowIfNull(userHandler);
+        ArgumentNullException.ThrowIfNull(jsonOptions);
+        ArgumentNullException.ThrowIfNull(classifier);
+
+        _userHandler = userHandler;
+        _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
+        _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
+    }
+
+    /// <inheritdoc/>
+    public Task<NativeResult> OnMessage(
+        Native.Context context,
+        Native.Message message,
+        Dictionary<string, string> carrier
+    )
+    {
+        // Eagerly capture all native fields before any async suspension — each accessor
+        // crosses the FFI boundary and the native message object cannot be accessed after
+        // the handler scope returns to Rust.
+        var topic = message.Topic();
+        var key = message.Key();
+        var partition = message.Partition();
+        var offset = message.Offset();
+        var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
+        var bytes = message.Payload();
+
+        return HandleMessageAsync(
+            new ProsodyContext(context),
+            topic,
+            key,
+            partition,
+            offset,
+            timestamp,
+            bytes,
+            context.OnCancel,
+            carrier
+        );
+    }
+
+    /// <inheritdoc/>
+    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
+        HandleTimerAsync(new ProsodyContext(context), new ProsodyTimer(timer), context.OnCancel, carrier);
+
+    /// <summary>
+    /// Core message handling logic, decoupled from native types for testability.
+    /// Deserialization runs inside the handler closure so <see cref="JsonException"/> is
+    /// classified by the bridge's error classification logic exactly like any other exception.
+    /// </summary>
+    internal Task<NativeResult> HandleMessageAsync(
+        ProsodyContext prosodyContext,
+        string topic,
+        string key,
+        int partition,
+        long offset,
+        DateTimeOffset timestamp,
+        byte[] payload,
+        Func<Task> onCancel,
+        Dictionary<string, string> carrier
+    ) =>
+        EventHandlerBridge.InvokeHandlerAsync(
+            ct =>
+            {
+                var deserialized = JsonSerializer.Deserialize(payload.AsSpan(), _payloadTypeInfo);
+                var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized);
+                return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
+            },
+            _isMessagePermanent,
+            onCancel,
+            carrier,
+            activityName: EventHandlerBridge.OnMessageActivityName,
+            eventType: SentryConstants.TagValues.EventTypeMessage,
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () => EventHandlerBridge.BuildMessageSentryContext(topic, key, partition, offset)
+                : null
+        );
+
+    /// <summary>
+    /// Core timer handling logic, decoupled from native types for testability.
+    /// </summary>
+    internal Task<NativeResult> HandleTimerAsync(
+        ProsodyContext prosodyContext,
+        ProsodyTimer wrappedTimer,
+        Func<Task> onCancel,
+        Dictionary<string, string> carrier
+    ) =>
+        EventHandlerBridge.InvokeHandlerAsync(
+            ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
+            _isTimerPermanent,
+            onCancel,
+            carrier,
+            activityName: EventHandlerBridge.OnTimerActivityName,
+            eventType: SentryConstants.TagValues.EventTypeTimer,
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () => EventHandlerBridge.BuildTimerSentryContext(wrappedTimer)
+                : null
+        );
 }
