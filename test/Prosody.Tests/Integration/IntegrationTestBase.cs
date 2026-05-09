@@ -1,3 +1,4 @@
+using Prosody.Configuration;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
@@ -17,6 +18,9 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     private protected Task<IntegrationTestContext> CreateTestContextAsync() =>
         IntegrationTestContext.CreateAsync(Fixture.Admin);
 
+    private protected Task<IntegrationTestContext> CreateTestContextAsync(Action<ClientOptions> configure) =>
+        IntegrationTestContext.CreateAsync(Fixture.Admin, configure);
+
     protected static void AssertTimerApproximatelyEqual(DateTimeOffset actual, DateTimeOffset expected)
     {
         // Round both times to seconds for comparison (timer precision)
@@ -31,19 +35,20 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     {
         public string Content { get; init; } = "";
         public int Sequence { get; init; }
+        public string MessageContent { get; init; } = "";
     }
 
     /// <summary>
     /// Configurable handler for tests. Pass lambdas for OnMessage/OnTimer callbacks.
     /// </summary>
-    protected sealed class TestProsodyHandler(
-        Func<ProsodyContext, Message, CancellationToken, Task>? onMessage = null,
+    protected sealed class TestProsodyHandler<T>(
+        Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null,
         Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
-    ) : IProsodyHandler
+    ) : IProsodyHandler<T>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
-            Message message,
+            Message<T> message,
             CancellationToken cancellationToken
         ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 

@@ -27,7 +27,12 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
     /// <summary>
     /// Creates a new isolated test context with its own topic and client.
     /// </summary>
-    public static async Task<IntegrationTestContext> CreateAsync(AdminClient sharedAdmin)
+    /// <param name="sharedAdmin">Shared admin client.</param>
+    /// <param name="configure">Optional callback to override client options before construction.</param>
+    public static async Task<IntegrationTestContext> CreateAsync(
+        AdminClient sharedAdmin,
+        Action<ClientOptions>? configure = null
+    )
     {
         var topic = TopicGenerator.GenerateTopicName();
         var groupId = TopicGenerator.GenerateGroupId();
@@ -42,19 +47,19 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
         {
             try
             {
-                client = new ProsodyClient(
-                    new ClientOptions
-                    {
-                        BootstrapServers = [IntegrationTestFixture.BootstrapServers],
-                        GroupId = groupId,
-                        SourceSystem = "test-source",
-                        SubscribedTopics = [topic],
-                        ProbePort = 0,
-                        Mode = ClientMode.Pipeline,
-                        CassandraNodes = [IntegrationTestFixture.CassandraNodes],
-                        CassandraKeyspace = IntegrationTestFixture.CassandraKeyspace,
-                    }
-                );
+                var options = new ClientOptions
+                {
+                    BootstrapServers = [IntegrationTestFixture.BootstrapServers],
+                    GroupId = groupId,
+                    SourceSystem = "test-source",
+                    SubscribedTopics = [topic],
+                    ProbePort = 0,
+                    Mode = ClientMode.Pipeline,
+                    CassandraNodes = [IntegrationTestFixture.CassandraNodes],
+                    CassandraKeyspace = IntegrationTestFixture.CassandraKeyspace,
+                };
+                configure?.Invoke(options);
+                client = new ProsodyClient(options);
                 break;
             }
             catch (Exception ex) when (ex.Message.Contains("topics not found", StringComparison.OrdinalIgnoreCase))

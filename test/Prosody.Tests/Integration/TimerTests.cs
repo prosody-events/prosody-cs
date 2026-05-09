@@ -17,7 +17,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         var timerFired = new MessageChannel<(ProsodyTimer Timer, DateTimeOffset ActualTime)>();
         DateTimeOffset scheduledTime = default;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 scheduledTime = DateTimeOffset.UtcNow.AddSeconds(2);
@@ -63,7 +63,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         int timerCount = 0;
         DateTimeOffset secondScheduledTime = default;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 var firstTime = DateTimeOffset.UtcNow.AddSeconds(4);
@@ -110,7 +110,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         var timerCount = 0;
         DateTimeOffset secondScheduledTime = default;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 var firstTime = DateTimeOffset.UtcNow.AddSeconds(2);
@@ -156,7 +156,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         var messageReceived = new EventNotifier();
         var timerCount = 0;
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 await context.ScheduleAsync(DateTimeOffset.UtcNow.AddSeconds(2));
@@ -197,7 +197,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         DateTimeOffset[] expectedTimes = [];
         DateTimeOffset[] retrievedTimes = [];
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 var now = DateTimeOffset.UtcNow;
@@ -245,7 +245,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         DateTimeOffset scheduledTime = default;
         DateTimeOffset[] retrievedTimes = [];
 
-        var handler = new TestProsodyHandler(
+        var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
             {
                 scheduledTime = DateTimeOffset.UtcNow.AddSeconds(2);

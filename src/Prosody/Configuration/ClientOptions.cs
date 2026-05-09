@@ -404,6 +404,26 @@ public sealed class ClientOptions
     /// </summary>
     public bool? TelemetryEnabled { get; set; }
 
+    // ========================================================================
+    // Serialization options
+    // ========================================================================
+
+    /// <summary>
+    /// Callback applied after library defaults to configure <see cref="System.Text.Json.JsonSerializerOptions"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set programmatically only — not bindable from <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>.
+    /// Library defaults (<see cref="System.Text.Json.JsonSerializerDefaults.Web"/>, <c>JsonStringEnumConverter</c>,
+    /// <c>WhenWritingNull</c>) are applied first; this callback runs after and can override them.
+    /// </para>
+    /// <para>
+    /// To enable AOT/trim-safe serialization, set <c>TypeInfoResolver</c> to a source-generated
+    /// <c>JsonSerializerContext</c> here.
+    /// </para>
+    /// </remarks>
+    public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonOptions { get; set; }
+
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>

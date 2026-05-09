@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Prosody.Configuration;
 
 namespace Prosody;
@@ -289,13 +290,51 @@ public sealed class ProsodyClientBuilder
     }
 
     /// <summary>
+    /// Registers a callback that customizes JSON options after library defaults are applied.
+    /// </summary>
+    /// <param name="configure">
+    /// An action that mutates the <see cref="System.Text.Json.JsonSerializerOptions"/> instance.
+    /// Library defaults (<see cref="System.Text.Json.JsonSerializerDefaults.Web"/>,
+    /// <c>JsonStringEnumConverter</c>, <c>WhenWritingNull</c>) are applied first.
+    /// </param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// Set <c>TypeInfoResolver</c> inside the callback to enable AOT/trim-safe serialization:
+    /// </para>
+    /// <code>
+    /// .ConfigureJsonOptions(opts => opts.TypeInfoResolverChain.Add(AppJsonContext.Default))
+    /// </code>
+    /// </remarks>
+    public ProsodyClientBuilder ConfigureJsonOptions(Action<System.Text.Json.JsonSerializerOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        _options.ConfigureJsonOptions = configure;
+        return this;
+    }
+
+    /// <summary>
     /// Creates a new <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
     /// <returns>A new <see cref="ProsodyClient"/> instance.</returns>
     /// <remarks>
+    /// <para>
     /// This method validates configuration, connects to Kafka, and allocates resources.
     /// The returned client should be disposed when no longer needed.
+    /// </para>
+    /// <para>
+    /// When no <c>TypeInfoResolver</c> is set via <see cref="ConfigureJsonOptions"/>,
+    /// this method auto-installs <c>DefaultJsonTypeInfoResolver</c> (reflection-based).
+    /// To use trim-safe serialization, call <see cref="ConfigureJsonOptions"/> and set
+    /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>Build()</c>.
+    /// </para>
     /// </remarks>
+    [RequiresUnreferencedCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
+    )]
+    [RequiresDynamicCode(
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
+    )]
     public ProsodyClient Build()
     {
         _options.Validate();

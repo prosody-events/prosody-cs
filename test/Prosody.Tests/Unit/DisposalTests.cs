@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Prosody.Configuration;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
@@ -18,11 +19,11 @@ public sealed class DisposalTests
             SubscribedTopics = ["test-topic"],
         };
 
-    private sealed class NoOpHandler : IProsodyHandler
+    private sealed class NoOpHandler : IProsodyHandler<JsonElement>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
-            Message message,
+            Message<JsonElement> message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
