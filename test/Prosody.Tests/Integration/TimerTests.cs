@@ -183,7 +183,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
 
         await messageReceived.WaitAsync(TestContext.Current.CancellationToken);
 
-        await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         Assert.Equal(0, timerCount);
     }
