@@ -350,6 +350,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             // Ignore - already disposed
         }
 
+        // Run GC finalizers for generated wrapper objects (Context, Timer, Message) before
+        // the native client drops. Without this, wrapper finalizers that decrement Rust Arc
+        // refcounts can race with tokio runtime teardown at process exit, causing a SIGSEGV.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
         _native.Dispose();
     }
 

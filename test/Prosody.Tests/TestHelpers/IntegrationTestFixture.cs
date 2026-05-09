@@ -42,6 +42,10 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public ValueTask DisposeAsync()
     {
         Admin?.Dispose();
+        // Flush any lingering generated-binding finalizers before the process exits so that
+        // Rust Arc decrements happen while the native library is still fully loaded.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
         return ValueTask.CompletedTask;
     }
 }
