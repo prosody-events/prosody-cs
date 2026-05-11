@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/prosody-events/prosody-cs/compare/v0.1.3...v0.2.0) (2026-05-11)
+
+
+### Features
+
+* **deps:** upgrade prosody to 0.3.0 ([#19](https://github.com/prosody-events/prosody-cs/issues/19)) ([4ffaded](https://github.com/prosody-events/prosody-cs/commit/4ffadedd67d84aae9395d627c4836fc9ba460603))
+* typed handlers, AOT-aware JSON config, trim-clean send/subscribe overloads ([#11](https://github.com/prosody-events/prosody-cs/issues/11)) ([88ddd2e](https://github.com/prosody-events/prosody-cs/commit/88ddd2ed1fe3e8d2d57a502c39423cbd98bfbac4))
+
+
+### Bug Fixes
+
+* **release:** switch csproj updater to generic to preserve formatting ([#26](https://github.com/prosody-events/prosody-cs/issues/26)) ([39a4366](https://github.com/prosody-events/prosody-cs/commit/39a4366f76a8a70c7c3a1330b53df975b06dce01))
+
+
+### Performance Improvements
+
+* adopt prosody 0.2 binary codec to reduce allocation and re-serialization ([#12](https://github.com/prosody-events/prosody-cs/issues/12)) ([40f21cc](https://github.com/prosody-events/prosody-cs/commit/40f21cc1808ae74e20b104eb037da3631b26a644))
+* **deps:** migrate from jemalloc to mimalloc v3 ([#16](https://github.com/prosody-events/prosody-cs/issues/16)) ([7b0ee24](https://github.com/prosody-events/prosody-cs/commit/7b0ee24db09575131be8852648817f7cb9076610))
+* extract event metadata in C# and remove SendRawAsync ([#14](https://github.com/prosody-events/prosody-cs/issues/14)) ([2131adf](https://github.com/prosody-events/prosody-cs/commit/2131adfb366017b5edad5f98047a058372340694))
+
 ## [0.1.3](https://github.com/prosody-events/prosody-cs/compare/v0.1.2...v0.1.3) (2026-04-22)
 
 
