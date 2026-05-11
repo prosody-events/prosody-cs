@@ -6,9 +6,8 @@
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
-          "type": "xml",
-          "path": "src/Prosody/Prosody.csproj",
-          "xpath": "//Project/PropertyGroup/VersionPrefix"
+          "type": "generic",
+          "path": "src/Prosody/Prosody.csproj"
         },
         {
           "type": "toml",
