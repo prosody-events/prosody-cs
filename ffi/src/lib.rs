@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 //! Prosody FFI bindings for C#.
 //!
 //! This crate provides FFI bindings for the Prosody Kafka client library,
