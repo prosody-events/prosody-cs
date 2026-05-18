@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/prosody-events/prosody-cs/compare/v0.2.0...v0.3.0) (2026-05-18)
+
+
+### Features
+
+* **deps:** upgrade prosody to 0.4.0 ([#27](https://github.com/prosody-events/prosody-cs/issues/27)) ([db62aab](https://github.com/prosody-events/prosody-cs/commit/db62aab66bb7dc032cb56e46751be8eb4d28cfc5))
+
 ## [0.2.0](https://github.com/prosody-events/prosody-cs/compare/v0.1.3...v0.2.0) (2026-05-11)
 
 
