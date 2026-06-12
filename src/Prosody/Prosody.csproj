@@ -23,6 +23,12 @@
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
+    <!-- SourceLink (built into .NET 8+ SDK) + symbol package -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
     <!-- Generate XML documentation for IntelliSense -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
