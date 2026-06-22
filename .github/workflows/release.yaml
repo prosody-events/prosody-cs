@@ -207,19 +207,25 @@ jobs:
       - name: Generate C# bindings
         run: make bindgen
 
+      - name: Verify generated bindings match committed source
+        run: git diff --exit-code src/Prosody/Generated/
+
       - name: Pack NuGet package
         run: |
           dotnet pack src/Prosody/Prosody.csproj \
             -c Release \
             -p:PackageVersion=${{ needs.release-please.outputs.version }} \
             -p:ContinuePackingAfterGeneratingNuspec=true \
+            -p:ContinuousIntegrationBuild=true \
             -o ./packages
 
       - name: Upload NuGet package
         uses: actions/upload-artifact@v7
         with:
           name: nuget-package
-          path: packages/*.nupkg
+          path: |
+            packages/*.nupkg
+            packages/*.snupkg
           if-no-files-found: error
 
   test:
