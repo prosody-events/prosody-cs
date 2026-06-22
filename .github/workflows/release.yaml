@@ -33,7 +33,7 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Release Please Action
         id: release
         uses: googleapis/release-please-action@v5
@@ -85,7 +85,7 @@ jobs:
             lib_ext: .dylib
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies (Linux)
         if: runner.os == 'Linux'
@@ -139,7 +139,7 @@ jobs:
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
@@ -238,7 +238,7 @@ jobs:
         dotnet: ["8.0", "9.0", "10.0"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download NuGet package
         uses: actions/download-artifact@v8
