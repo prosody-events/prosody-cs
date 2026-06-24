@@ -117,7 +117,7 @@ jobs:
           PROSODY_CASSANDRA_KEYSPACE: prosody_test
 
   dotnet-lint:
-    name: .NET Lint
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
