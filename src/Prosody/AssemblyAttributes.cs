@@ -12,5 +12,4 @@ using System.Runtime.InteropServices;
 // retained for the secure OS-level fallback (System32 + user dirs) for any transitive
 // native dependencies.
 // https://learn.microsoft.com/en-us/dotnet/core/compatibility/interop/10.0/native-library-search
-[assembly: DefaultDllImportSearchPaths(
-    DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.SafeDirectories)]
