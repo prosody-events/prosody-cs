@@ -89,6 +89,11 @@ dotnet_naming_style.camel_case_with_underscore.required_prefix = _
 # ConfigureAwait not needed: consumers are .NET 8+ apps without SynchronizationContext
 dotnet_diagnostic.CA2007.severity = none
 
+# CA5393: AssemblyDirectory is required for net10 single-file/AOT to probe the
+# app-local prosody_ffi native library; permit it while still flagging the
+# genuinely-unsafe ApplicationDirectory / UseDllDirectoryForDependencies bits.
+dotnet_code_quality.CA5393.unsafe_DllImportSearchPath_bits = 768
+
 # ==============================================================================
 # Meziantou.Analyzer
 # ==============================================================================
@@ -159,3 +164,6 @@ dotnet_diagnostic.MA0076.severity = none
 # Exclude generated code from all analyzers
 [src/Prosody/Generated/**]
 generated_code = true
+# CS1587: stray XML doc comments emitted by uniffi-bindgen-cs; compiler diagnostic
+# not governed by generated_code, so suppress it explicitly (generated code only).
+dotnet_diagnostic.CS1587.severity = none

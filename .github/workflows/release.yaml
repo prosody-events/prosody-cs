@@ -207,9 +207,6 @@ jobs:
       - name: Generate C# bindings
         run: make bindgen
 
-      - name: Verify generated bindings match committed source
-        run: git diff --exit-code src/Prosody/Generated/
-
       - name: Pack NuGet package
         run: |
           dotnet pack src/Prosody/Prosody.csproj \

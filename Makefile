@@ -8,7 +8,7 @@
 #   make format     - Format all code
 #   make clean      - Clean build artifacts
 
-.PHONY: setup build build-ffi build-ffi-release build-ci bindgen bindgen-release patch-generated-bindings test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
+.PHONY: setup build build-ffi build-ffi-release build-ci bindgen bindgen-release test lint lint-rust lint-csharp format format-rust format-csharp format-check format-check-rust format-check-toml format-check-csharp clean help copy-native-to-test-output pack
 
 # ==============================================================================
 # Platform Detection
@@ -144,8 +144,6 @@ bindgen: $(CDYLIB)
 	@rm -f "$(BINDINGS_DIR)"/*.cs
 	uniffi-bindgen-cs --library "$(CDYLIB)" --config uniffi.toml --out-dir "$(BINDINGS_DIR)"
 	@mv "$(BINDINGS_DIR)/prosody_ffi.cs" "$(BINDINGS_DIR)/ProsodyFfi.cs"
-	@# Add pragma to suppress P/Invoke warnings in generated code
-	@$(MAKE) --no-print-directory patch-generated-bindings
 	@echo "C# bindings generated in $(BINDINGS_DIR)"
 
 bindgen-release: $(CDYLIB_RELEASE)
@@ -153,27 +151,7 @@ bindgen-release: $(CDYLIB_RELEASE)
 	@rm -f "$(BINDINGS_DIR)"/*.cs
 	uniffi-bindgen-cs --library "$(CDYLIB_RELEASE)" --config uniffi.toml --out-dir "$(BINDINGS_DIR)"
 	@mv "$(BINDINGS_DIR)/prosody_ffi.cs" "$(BINDINGS_DIR)/ProsodyFfi.cs"
-	@# Add pragma to suppress P/Invoke warnings in generated code
-	@$(MAKE) --no-print-directory patch-generated-bindings
 	@echo "C# bindings generated in $(BINDINGS_DIR)"
-
-# Patch generated bindings to suppress warnings that can't be fixed in generated code
-# CA5392: P/Invoke methods should use DefaultDllImportSearchPaths
-# CS1587: XML comment is not placed on a valid language element
-patch-generated-bindings:
-	@for f in "$(BINDINGS_DIR)"/*.cs; do \
-		if [ -f "$$f" ]; then \
-			tmp=$$(mktemp); \
-			head -5 "$$f" > "$$tmp"; \
-			echo "" >> "$$tmp"; \
-			echo "#pragma warning disable CA5392, CS1587" >> "$$tmp"; \
-			echo "" >> "$$tmp"; \
-			tail -n +6 "$$f" >> "$$tmp"; \
-			echo "" >> "$$tmp"; \
-			echo "#pragma warning restore CA5392, CS1587" >> "$$tmp"; \
-			mv "$$tmp" "$$f"; \
-		fi; \
-	done
 
 # Build everything (FFI + bindings + .NET + copy native lib to test output)
 build: build-ffi bindgen
