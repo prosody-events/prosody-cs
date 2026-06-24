@@ -80,7 +80,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Install uniffi-bindgen-cs
         uses: baptiste0928/cargo-install@v3
@@ -137,7 +137,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Install uniffi-bindgen-cs
         uses: baptiste0928/cargo-install@v3
@@ -186,7 +186,7 @@ jobs:
           crate: taplo-cli
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -215,7 +215,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-udeps
         uses: baptiste0928/cargo-install@v3
@@ -241,7 +241,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Build documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
@@ -264,7 +264,7 @@ jobs:
           components: clippy
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
         run: make lint-rust
