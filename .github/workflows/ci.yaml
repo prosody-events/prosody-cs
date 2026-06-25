@@ -116,8 +116,8 @@ jobs:
           PROSODY_CASSANDRA_NODES: localhost:9042
           PROSODY_CASSANDRA_KEYSPACE: prosody_test
 
-  lint:
-    name: Lint
+  dotnet-lint:
+    name: .NET Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
