@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.1
         with:
           packages: cmake libcurl4-openssl-dev
           version: 1.0
@@ -86,8 +86,8 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: uniffi-bindgen-cs
-          git: https://github.com/hadronzoo/uniffi-bindgen-cs.git
-          branch: fix/issue-152-pascalcase-record-properties
+          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
+          tag: v0.11.0+v0.31.0
 
       - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
         run: dotnet tool install -g csharpier
@@ -96,7 +96,7 @@ jobs:
         run: dotnet tool restore
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.1
         with:
           packages: cmake libcurl4-openssl-dev
           version: 1.0
@@ -143,8 +143,8 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: uniffi-bindgen-cs
-          git: https://github.com/hadronzoo/uniffi-bindgen-cs.git
-          branch: fix/issue-152-pascalcase-record-properties
+          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
+          tag: v0.11.0+v0.31.0
 
       - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
         run: dotnet tool install -g csharpier
@@ -153,7 +153,7 @@ jobs:
         run: dotnet tool restore
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
@@ -206,7 +206,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.1
         with:
           packages: cmake libcurl4-openssl-dev
           version: 1.0
@@ -232,7 +232,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.1
         with:
           packages: cmake libcurl4-openssl-dev
           version: 1.0
@@ -253,7 +253,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@latest
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.1
         with:
           packages: cmake libcurl4-openssl-dev
           version: 1.0

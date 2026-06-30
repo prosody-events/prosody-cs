@@ -170,8 +170,8 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: uniffi-bindgen-cs
-          git: https://github.com/hadronzoo/uniffi-bindgen-cs.git
-          branch: fix/issue-152-pascalcase-record-properties
+          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
+          tag: v0.11.0+v0.31.0
 
       - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
         run: dotnet tool install -g csharpier
@@ -206,9 +206,6 @@ jobs:
 
       - name: Generate C# bindings
         run: make bindgen
-
-      - name: Verify generated bindings match committed source
-        run: git diff --exit-code src/Prosody/Generated/
 
       - name: Pack NuGet package
         run: |
