@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/prosody-events/prosody-cs/compare/v0.3.0...v0.3.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **release:** enable SourceLink with snupkg symbol package ([#36](https://github.com/prosody-events/prosody-cs/issues/36)) ([30fd7cc](https://github.com/prosody-events/prosody-cs/commit/30fd7cce7a2843cce99ce22a2710a704b987f745))
+
 ## [0.3.0](https://github.com/prosody-events/prosody-cs/compare/v0.2.0...v0.3.0) (2026-05-18)
 
 
