@@ -470,11 +470,12 @@ fn with_keyset<KC, V>(
 ///
 /// JSON collections monomorphize over the
 /// [`BinaryPayload`](prosody::codec::BinaryPayload) passthrough codec (Rust
-/// never parses the JSON bytes); message collections monomorphize over
-/// `KafkaLoader<JsonBinaryCodec>`, the consumer's own codec. Both claim the
-/// shared `"json"` format id, so a collection registered by any
-/// client validates against the same frozen identity the erased vend path
-/// asserts.
+/// never parses the JSON bytes) and claim the shared `"json"` format id.
+/// Message collections monomorphize over `KafkaLoader<JsonBinaryCodec>`, the
+/// consumer's own codec, but their stored identity is loader-independent (the
+/// message-ref codec and resolver carry the fixed `"message-ref"` identifiers),
+/// so registering with this loader matches the identity the erased vend path
+/// asserts using the session's own loader.
 ///
 /// # Errors
 ///

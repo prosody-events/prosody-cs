@@ -246,7 +246,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
-        let handle = self.inner.value_state(&name).map_err(FfiError::from)?;
+        let handle = self.inner.value_state(&name)?;
         Ok(Arc::new(ValueStateHandle {
             name,
             state: ValueStateVariant::Json(handle),
@@ -265,7 +265,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
-        let handle = self.inner.map_state(&name).map_err(FfiError::from)?;
+        let handle = self.inner.map_state(&name)?;
         Ok(Arc::new(MapStateHandle {
             name,
             state: MapStateVariant::Json(handle),
@@ -284,7 +284,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
-        let handle = self.inner.deque_state(&name).map_err(FfiError::from)?;
+        let handle = self.inner.deque_state(&name)?;
         Ok(Arc::new(DequeStateHandle {
             name,
             state: DequeStateVariant::Json(handle),
@@ -303,10 +303,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn message_value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
-        let handle = self
-            .inner
-            .message_value_state(&name)
-            .map_err(FfiError::from)?;
+        let handle = self.inner.message_value_state(&name)?;
         Ok(Arc::new(ValueStateHandle {
             name,
             state: ValueStateVariant::Message(handle),
@@ -325,10 +322,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn message_map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
-        let handle = self
-            .inner
-            .message_map_state(&name)
-            .map_err(FfiError::from)?;
+        let handle = self.inner.message_map_state(&name)?;
         Ok(Arc::new(MapStateHandle {
             name,
             state: MapStateVariant::Message(handle),
@@ -347,10 +341,7 @@ impl Context {
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
     pub fn message_deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
-        let handle = self
-            .inner
-            .message_deque_state(&name)
-            .map_err(FfiError::from)?;
+        let handle = self.inner.message_deque_state(&name)?;
         Ok(Arc::new(DequeStateHandle {
             name,
             state: DequeStateVariant::Message(handle),

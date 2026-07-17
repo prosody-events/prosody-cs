@@ -192,6 +192,21 @@ fn reject_null(payload: &BinaryPayload, collection: &str, advice: &str) -> Resul
     Ok(())
 }
 
+/// Wraps a JSON payload as the [`StateItem::Json`] transport variant.
+fn json_item(payload: BinaryPayload) -> StateItem {
+    StateItem::Json {
+        bytes: payload.bytes,
+    }
+}
+
+/// Wraps a resolved Kafka message as the [`StateItem::MessageItem`] transport
+/// variant.
+fn message_item(message: ConsumerMessage<BinaryPayload>) -> StateItem {
+    StateItem::MessageItem {
+        message: Arc::new(Message::new(message)),
+    }
+}
+
 /// Erased single-value state handle, vended per event.
 ///
 /// Wraps the boxed erased value handle plus the propagator used to open each
@@ -225,21 +240,13 @@ impl ValueStateHandle {
                 .get()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|payload| StateItem::Json {
-                        bytes: payload.bytes,
-                    })
-                })
+                .map(|item| item.map(json_item))
                 .map_err(FfiError::from),
             ValueStateVariant::Message(handle) => handle
                 .get()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|message| StateItem::MessageItem {
-                        message: Arc::new(Message::new(message)),
-                    })
-                })
+                .map(|item| item.map(message_item))
                 .map_err(FfiError::from),
         }
     }
@@ -371,21 +378,13 @@ impl MapStateHandle {
                 .get(key)
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|payload| StateItem::Json {
-                        bytes: payload.bytes,
-                    })
-                })
+                .map(|item| item.map(json_item))
                 .map_err(FfiError::from),
             MapStateVariant::Message(handle) => handle
                 .get(key)
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|message| StateItem::MessageItem {
-                        message: Arc::new(Message::new(message)),
-                    })
-                })
+                .map(|item| item.map(message_item))
                 .map_err(FfiError::from),
         }
     }
@@ -406,16 +405,7 @@ impl MapStateHandle {
                 .get_many(keys)
                 .with_context(context)
                 .await
-                .map(|items| {
-                    items
-                        .into_iter()
-                        .map(|item| {
-                            item.map(|payload| StateItem::Json {
-                                bytes: payload.bytes,
-                            })
-                        })
-                        .collect()
-                })
+                .map(|items| items.into_iter().map(|item| item.map(json_item)).collect())
                 .map_err(FfiError::from),
             MapStateVariant::Message(handle) => handle
                 .get_many(keys)
@@ -424,11 +414,7 @@ impl MapStateHandle {
                 .map(|items| {
                     items
                         .into_iter()
-                        .map(|item| {
-                            item.map(|message| StateItem::MessageItem {
-                                message: Arc::new(Message::new(message)),
-                            })
-                        })
+                        .map(|item| item.map(message_item))
                         .collect()
                 })
                 .map_err(FfiError::from),
@@ -571,6 +557,8 @@ impl MapStateHandle {
     }
 
     /// Discards the buffered uncommitted operations.
+    ///
+    /// Infallible: rolling back a terminated session is a no-op.
     pub async fn rollback(&self, carrier: HashMap<String, String>) {
         let context = self.propagator.extract(&carrier);
         match &self.state {
@@ -642,21 +630,13 @@ impl DequeStateHandle {
                 .get(index)
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|payload| StateItem::Json {
-                        bytes: payload.bytes,
-                    })
-                })
+                .map(|item| item.map(json_item))
                 .map_err(FfiError::from),
             DequeStateVariant::Message(handle) => handle
                 .get(index)
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|message| StateItem::MessageItem {
-                        message: Arc::new(Message::new(message)),
-                    })
-                })
+                .map(|item| item.map(message_item))
                 .map_err(FfiError::from),
         }
     }
@@ -791,21 +771,13 @@ impl DequeStateHandle {
                 .pop_front()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|payload| StateItem::Json {
-                        bytes: payload.bytes,
-                    })
-                })
+                .map(|item| item.map(json_item))
                 .map_err(FfiError::from),
             DequeStateVariant::Message(handle) => handle
                 .pop_front()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|message| StateItem::MessageItem {
-                        message: Arc::new(Message::new(message)),
-                    })
-                })
+                .map(|item| item.map(message_item))
                 .map_err(FfiError::from),
         }
     }
@@ -826,21 +798,13 @@ impl DequeStateHandle {
                 .pop_back()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|payload| StateItem::Json {
-                        bytes: payload.bytes,
-                    })
-                })
+                .map(|item| item.map(json_item))
                 .map_err(FfiError::from),
             DequeStateVariant::Message(handle) => handle
                 .pop_back()
                 .with_context(context)
                 .await
-                .map(|item| {
-                    item.map(|message| StateItem::MessageItem {
-                        message: Arc::new(Message::new(message)),
-                    })
-                })
+                .map(|item| item.map(message_item))
                 .map_err(FfiError::from),
         }
     }
@@ -901,6 +865,8 @@ impl DequeStateHandle {
     }
 
     /// Discards the buffered uncommitted operations.
+    ///
+    /// Infallible: rolling back a terminated session is a no-op.
     pub async fn rollback(&self, carrier: HashMap<String, String>) {
         let context = self.propagator.extract(&carrier);
         match &self.state {
