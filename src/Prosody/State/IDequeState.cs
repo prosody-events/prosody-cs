@@ -3,8 +3,17 @@ namespace Prosody.State;
 /// <summary>
 /// A typed handle over a deque keyed-state collection, bound for the current handler invocation.
 /// </summary>
-/// <typeparam name="T">The stored element type.</typeparam>
-public interface IDequeState<T>
+/// <remarks>
+/// The handle is directly enumerable: <c>await foreach (var element in deque)</c> iterates the live
+/// elements front-to-back — equivalent to <see cref="EnumerateAsync"/> with
+/// <see cref="ScanDirection.Forward"/>. Each enumeration opens a fresh cursor.
+/// </remarks>
+/// <typeparam name="T">
+/// The stored element type. Constrained to <c>notnull</c>: JSON <see langword="null"/> is not a
+/// storable value.
+/// </typeparam>
+public interface IDequeState<T> : IAsyncEnumerable<T>
+    where T : notnull
 {
     /// <summary>
     /// Appends an element at the back. Writing <see langword="null"/> is a caller mistake rejected
@@ -43,7 +52,11 @@ public interface IDequeState<T>
     /// <summary>Counts the elements.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
     /// <returns>The number of elements.</returns>
-    Task<long> CountAsync(CancellationToken cancellationToken = default);
+    /// <exception cref="OverflowException">
+    /// Thrown in the practically-unreachable case that the deque holds more than
+    /// <see cref="int.MaxValue"/> elements.
+    /// </exception>
+    Task<int> CountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Determines whether the deque is empty.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

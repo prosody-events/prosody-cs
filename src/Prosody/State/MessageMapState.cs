@@ -32,7 +32,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     }
 
     public Task<IReadOnlyList<StateValue<Message<TPayload>>>> GetManyAsync(
-        IReadOnlyList<string> keys,
+        IEnumerable<string> keys,
         CancellationToken cancellationToken = default
     )
     {
@@ -84,6 +84,10 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         );
         return new StateScanSequence<KeyValuePair<string, Message<TPayload>>>(cursor, Transform, cancellationToken);
     }
+
+    public IAsyncEnumerator<KeyValuePair<string, Message<TPayload>>> GetAsyncEnumerator(
+        CancellationToken cancellationToken = default
+    ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);

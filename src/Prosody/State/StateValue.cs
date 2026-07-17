@@ -17,6 +17,7 @@ namespace Prosody.State;
 /// </para>
 /// </remarks>
 public readonly struct StateValue<T> : IEquatable<StateValue<T>>
+    where T : notnull
 {
     private readonly T _value;
 
@@ -30,7 +31,6 @@ public readonly struct StateValue<T> : IEquatable<StateValue<T>>
     /// Gets a value indicating whether a value is present. When <see langword="false"/>,
     /// the collection held no value at the requested position (never written, cleared, or removed).
     /// </summary>
-    [MemberNotNullWhen(true, nameof(Value))]
     public bool HasValue { get; }
 
     /// <summary>
@@ -41,15 +41,27 @@ public readonly struct StateValue<T> : IEquatable<StateValue<T>>
         HasValue
             ? _value
             : throw new InvalidOperationException(
-                "StateValue has no value; check HasValue or use ValueOr before reading Value."
+                "StateValue has no value; check HasValue, TryGetValue, or GetValueOrDefault before reading Value."
             );
 
     /// <summary>
     /// Returns the stored value when present, otherwise the supplied fallback.
     /// </summary>
-    /// <param name="fallback">The value to return when no value is present.</param>
-    /// <returns>The stored value, or <paramref name="fallback"/> when absent.</returns>
-    public T ValueOr(T fallback) => HasValue ? _value : fallback;
+    /// <param name="defaultValue">The value to return when no value is present.</param>
+    /// <returns>The stored value, or <paramref name="defaultValue"/> when absent.</returns>
+    /// <remarks>Mirrors <see cref="System.Nullable{T}.GetValueOrDefault(T)"/>.</remarks>
+    public T GetValueOrDefault(T defaultValue) => HasValue ? _value : defaultValue;
+
+    /// <summary>
+    /// Gets the stored value when present.
+    /// </summary>
+    /// <param name="value">When this method returns <see langword="true"/>, the stored value; otherwise the default.</param>
+    /// <returns><see langword="true"/> when a value is present; otherwise <see langword="false"/>.</returns>
+    public bool TryGetValue([MaybeNullWhen(false)] out T value)
+    {
+        value = _value;
+        return HasValue;
+    }
 
     /// <summary>Represents the absent value.</summary>
     internal static StateValue<T> None => default;

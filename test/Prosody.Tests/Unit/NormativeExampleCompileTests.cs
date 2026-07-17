@@ -68,12 +68,12 @@ public sealed class NormativeExampleCompileTests
         )
         {
             IValueState<Cart> c = prosodyContext.State(CartDef);
-            var current = (await c.GetAsync(cancellationToken)).ValueOr(new Cart([]));
+            var current = (await c.GetAsync(cancellationToken)).GetValueOrDefault(new Cart([]));
             await c.SetAsync(current with { Items = [.. current.Items, message.Payload!.OrderId] }, cancellationToken);
 
             IMapState<decimal> t = prosodyContext.State(TotalsDef);
             await t.SetAsync(message.Key, message.Payload.Total, cancellationToken);
-            await foreach (var (key, total) in t.EnumerateAsync(cancellationToken: cancellationToken))
+            await foreach (var (key, total) in t.WithCancellation(cancellationToken))
             {
                 _ = key;
                 _ = total;
@@ -81,10 +81,9 @@ public sealed class NormativeExampleCompileTests
 
             IDequeState<Message<OrderEvent>> b = prosodyContext.State(BacklogDef);
             await b.PushBackAsync(message, cancellationToken);
-            StateValue<Message<OrderEvent>> oldest = await b.GetAsync(0, cancellationToken);
-            if (oldest.HasValue)
+            if ((await b.GetAsync(0, cancellationToken)).TryGetValue(out var oldest))
             {
-                _ = oldest.Value.Payload!.OrderId;
+                _ = oldest.Payload!.OrderId;
             }
         }
 

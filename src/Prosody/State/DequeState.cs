@@ -8,6 +8,7 @@ namespace Prosody.State;
 /// </summary>
 /// <typeparam name="T">The stored element type.</typeparam>
 internal sealed class DequeState<T> : IDequeState<T>
+    where T : notnull
 {
     private readonly Native.IDequeStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
@@ -73,9 +74,9 @@ internal sealed class DequeState<T> : IDequeState<T>
         );
     }
 
-    public Task<long> CountAsync(CancellationToken cancellationToken = default) =>
+    public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(
-            async () => (long)await _handle.Len(StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async () => checked((int)await _handle.Len(StateInterop.CreateCarrier()).ConfigureAwait(false)),
             cancellationToken
         );
 
@@ -93,6 +94,9 @@ internal sealed class DequeState<T> : IDequeState<T>
         );
         return new StateScanSequence<T>(cursor, Transform, cancellationToken);
     }
+
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
+        EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);

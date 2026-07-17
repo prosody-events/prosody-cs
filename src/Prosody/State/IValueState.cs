@@ -5,8 +5,13 @@ namespace Prosody.State;
 /// invocation. Operations are buffered against the current attempt and become durable at
 /// <see cref="CommitAsync"/> or at the end of a successful handler.
 /// </summary>
-/// <typeparam name="T">The stored value type.</typeparam>
+/// <typeparam name="T">
+/// The stored value type. Constrained to <c>notnull</c>: JSON <see langword="null"/> is not a
+/// storable value, so the item type must be non-nullable (a nullable value type such as
+/// <c>int?</c> is rejected at compile time).
+/// </typeparam>
 public interface IValueState<T>
+    where T : notnull
 {
     /// <summary>Reads the current value.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

@@ -322,10 +322,10 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
                     new MissingVsDefaultObservation
                     {
                         DecStoredHasValue = decStored.HasValue,
-                        DecStored = decStored.ValueOr(-1m),
+                        DecStored = decStored.GetValueOrDefault(-1m),
                         DecAbsentHasValue = decAbsent.HasValue,
                         BoolStoredHasValue = boolStored.HasValue,
-                        BoolStored = boolStored.ValueOr(true),
+                        BoolStored = boolStored.GetValueOrDefault(true),
                         BoolAbsentHasValue = boolAbsent.HasValue,
                     }
                 );

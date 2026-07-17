@@ -8,6 +8,7 @@ namespace Prosody.State;
 /// </summary>
 /// <typeparam name="TValue">The stored value type.</typeparam>
 internal sealed class MapState<TValue> : IMapState<TValue>
+    where TValue : notnull
 {
     private readonly Native.IMapStateHandle _handle;
     private readonly JsonTypeInfo<TValue> _typeInfo;
@@ -32,7 +33,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     }
 
     public Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(
-        IReadOnlyList<string> keys,
+        IEnumerable<string> keys,
         CancellationToken cancellationToken = default
     )
     {
@@ -84,6 +85,10 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         );
         return new StateScanSequence<KeyValuePair<string, TValue>>(cursor, Transform, cancellationToken);
     }
+
+    public IAsyncEnumerator<KeyValuePair<string, TValue>> GetAsyncEnumerator(
+        CancellationToken cancellationToken = default
+    ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);

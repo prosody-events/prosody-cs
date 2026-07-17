@@ -85,8 +85,8 @@ public abstract record StateDefinition
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
     /// <returns>A validated definition.</returns>
-    public static ValueStateDefinition<T> Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null) =>
-        new(name, ttl, readUncommitted);
+    public static ValueStateDefinition<T> Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)
+        where T : notnull => new(name, ttl, readUncommitted);
 
     /// <summary>
     /// Declares a string-keyed ordered-map JSON collection.
@@ -102,7 +102,8 @@ public abstract record StateDefinition
         TimeSpan? ttl = null,
         bool? readUncommitted = null,
         int? keysetLimit = null
-    ) => new(name, ttl, readUncommitted, keysetLimit);
+    )
+        where TValue : notnull => new(name, ttl, readUncommitted, keysetLimit);
 
     /// <summary>
     /// Declares a deque JSON collection.
@@ -112,8 +113,8 @@ public abstract record StateDefinition
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
     /// <returns>A validated definition.</returns>
-    public static DequeStateDefinition<T> Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null) =>
-        new(name, ttl, readUncommitted);
+    public static DequeStateDefinition<T> Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)
+        where T : notnull => new(name, ttl, readUncommitted);
 
     /// <summary>
     /// Declares a single-value message collection storing the full Kafka message.

@@ -16,8 +16,26 @@ public sealed class StateValueTests
 
         Assert.Multiple(
             () => Assert.False(value.HasValue),
-            () => Assert.Equal(7m, value.ValueOr(7m)),
+            () => Assert.Equal(7m, value.GetValueOrDefault(7m)),
             () => Assert.Throws<InvalidOperationException>(() => _ = value.Value)
+        );
+    }
+
+    [Fact]
+    public void TryGetValue_MatchesPresence()
+    {
+        var absent = StateInterop.JsonToValue<decimal>(null, TestJson.TypeInfo<decimal>());
+        using var item = new Native.StateItem.Json("42"u8.ToArray());
+        var present = StateInterop.JsonToValue<decimal>(item, TestJson.TypeInfo<decimal>());
+
+        Assert.Multiple(
+            () => Assert.False(absent.TryGetValue(out _)),
+            () => Assert.True(present.TryGetValue(out var got)),
+            () =>
+            {
+                Assert.True(present.TryGetValue(out var got));
+                Assert.Equal(42m, got);
+            }
         );
     }
 

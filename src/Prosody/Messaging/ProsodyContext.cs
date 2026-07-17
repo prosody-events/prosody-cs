@@ -92,6 +92,7 @@ public sealed class ProsodyContext
     /// <param name="definition">The collection definition. Must be registered on the client.</param>
     /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
     public IValueState<T> State<T>(ValueStateDefinition<T> definition)
+        where T : notnull
     {
         ArgumentNullException.ThrowIfNull(definition);
         return GetOrAddHandle(
@@ -110,6 +111,7 @@ public sealed class ProsodyContext
     /// <param name="definition">The collection definition. Must be registered on the client.</param>
     /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
     public IMapState<TValue> State<TValue>(MapStateDefinition<TValue> definition)
+        where TValue : notnull
     {
         ArgumentNullException.ThrowIfNull(definition);
         return GetOrAddHandle(
@@ -128,6 +130,7 @@ public sealed class ProsodyContext
     /// <param name="definition">The collection definition. Must be registered on the client.</param>
     /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
     public IDequeState<T> State<T>(DequeStateDefinition<T> definition)
+        where T : notnull
     {
         ArgumentNullException.ThrowIfNull(definition);
         return GetOrAddHandle(

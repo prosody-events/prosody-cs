@@ -75,7 +75,7 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
                         Count = await deque.CountAsync(ct),
                         IsEmpty = await deque.IsEmptyAsync(ct),
                         Get0HasValue = get0.HasValue,
-                        Get0 = get0.ValueOr(""),
+                        Get0 = get0.GetValueOrDefault(""),
                     }
                 );
             }
@@ -119,9 +119,9 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
                     new DequeObservation
                     {
                         PopFrontHasValue = front.HasValue,
-                        PopFront = front.ValueOr(""),
+                        PopFront = front.GetValueOrDefault(""),
                         PopBackHasValue = back.HasValue,
-                        PopBack = back.ValueOr(""),
+                        PopBack = back.GetValueOrDefault(""),
                     }
                 );
             }

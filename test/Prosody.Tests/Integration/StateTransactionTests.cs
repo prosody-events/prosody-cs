@@ -72,7 +72,7 @@ public sealed class StateTransactionTests(IntegrationTestFixture fixture) : Inte
                     {
                         Attempt = current,
                         HasValue = got.HasValue,
-                        Value = got.ValueOr(new CartState()).V,
+                        Value = got.GetValueOrDefault(new CartState()).V,
                     }
                 );
             }
@@ -172,11 +172,11 @@ public sealed class StateTransactionTests(IntegrationTestFixture fixture) : Inte
                         new MapRollbackObservation
                         {
                             BeforeKeptHasValue = beforeKept.HasValue,
-                            BeforeKept = beforeKept.ValueOr(-1),
+                            BeforeKept = beforeKept.GetValueOrDefault(-1),
                             BeforeDroppedHasValue = beforeDropped.HasValue,
-                            BeforeDropped = beforeDropped.ValueOr(-1),
+                            BeforeDropped = beforeDropped.GetValueOrDefault(-1),
                             AfterKeptHasValue = afterKept.HasValue,
-                            AfterKept = afterKept.ValueOr(-1),
+                            AfterKept = afterKept.GetValueOrDefault(-1),
                             AfterDroppedHasValue = afterDropped.HasValue,
                         }
                     );

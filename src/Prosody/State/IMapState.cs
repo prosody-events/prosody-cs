@@ -4,8 +4,17 @@ namespace Prosody.State;
 /// A typed handle over a string-keyed ordered-map keyed-state collection, bound for the current
 /// handler invocation. Map keys are always <see cref="string"/>.
 /// </summary>
-/// <typeparam name="TValue">The stored value type.</typeparam>
-public interface IMapState<TValue>
+/// <remarks>
+/// The handle is directly enumerable: <c>await foreach (var (key, value) in map)</c> iterates the
+/// live entries forward, in key order — equivalent to <see cref="EnumerateAsync"/> with
+/// <see cref="ScanDirection.Forward"/>. Each enumeration opens a fresh cursor.
+/// </remarks>
+/// <typeparam name="TValue">
+/// The stored value type. Constrained to <c>notnull</c>: JSON <see langword="null"/> is not a
+/// storable value.
+/// </typeparam>
+public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValue>>
+    where TValue : notnull
 {
     /// <summary>Reads the value for <paramref name="key"/>.</summary>
     /// <param name="key">The map key.</param>
@@ -18,11 +27,14 @@ public interface IMapState<TValue>
     /// <c>result[i]</c> answers <c>keys[i]</c>, an absent key reads as an absent
     /// <see cref="StateValue{T}"/>, and a repeated key is answered at each position.
     /// </summary>
-    /// <param name="keys">The keys to read, in order.</param>
+    /// <param name="keys">The keys to read. Enumerated once, synchronously, before the batch dispatches.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>One result per requested key, in the requested order.</returns>
+    /// <returns>
+    /// One result per requested key, in the requested order: the count equals the number of keys,
+    /// <c>result[i]</c> answers the i-th key, and an empty input yields an empty (non-null) list.
+    /// </returns>
     Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(
-        IReadOnlyList<string> keys,
+        IEnumerable<string> keys,
         CancellationToken cancellationToken = default
     );
 

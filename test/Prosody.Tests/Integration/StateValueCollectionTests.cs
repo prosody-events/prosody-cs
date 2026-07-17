@@ -43,7 +43,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
                     {
                         Sequence = 2,
                         HasValue = got.HasValue,
-                        Value = got.ValueOr(new CartState()).V,
+                        Value = got.GetValueOrDefault(new CartState()).V,
                     }
                 );
             }

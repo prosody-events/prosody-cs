@@ -73,9 +73,9 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
         );
     }
 
-    public Task<long> CountAsync(CancellationToken cancellationToken = default) =>
+    public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(
-            async () => (long)await _handle.Len(StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async () => checked((int)await _handle.Len(StateInterop.CreateCarrier()).ConfigureAwait(false)),
             cancellationToken
         );
 
@@ -93,6 +93,9 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
         );
         return new StateScanSequence<Message<TPayload>>(cursor, Transform, cancellationToken);
     }
+
+    public IAsyncEnumerator<Message<TPayload>> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
+        EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);

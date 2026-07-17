@@ -7,6 +7,7 @@ namespace Prosody.State;
 /// </summary>
 /// <typeparam name="T">The stored value type.</typeparam>
 internal sealed class ValueState<T> : IValueState<T>
+    where T : notnull
 {
     private readonly Native.IValueStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;

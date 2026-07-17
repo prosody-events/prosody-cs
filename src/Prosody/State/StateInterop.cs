@@ -135,6 +135,7 @@ internal static class StateInterop
 
     /// <summary>Projects a native JSON state item into an optional typed value.</summary>
     internal static StateValue<T> JsonToValue<T>(Native.StateItem? item, JsonTypeInfo<T> typeInfo)
+        where T : notnull
     {
         switch (item)
         {

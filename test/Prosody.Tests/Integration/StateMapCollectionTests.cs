@@ -204,7 +204,7 @@ public sealed class StateMapCollectionTests(IntegrationTestFixture fixture) : In
                     new MapObservation
                     {
                         Presence = [.. results.Select(r => r.HasValue)],
-                        Values = [.. results.Select(r => r.ValueOr(-1))],
+                        Values = [.. results.Select(r => r.GetValueOrDefault(-1))],
                     }
                 );
             }

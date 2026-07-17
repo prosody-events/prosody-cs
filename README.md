@@ -717,22 +717,21 @@ public sealed class OrderHandler(
     )
     {
         IValueState<Cart> c = context.State(cart);
-        Cart current = (await c.GetAsync(cancellationToken)).ValueOr(new Cart([]));
+        Cart current = (await c.GetAsync(cancellationToken)).GetValueOrDefault(new Cart([]));
         await c.SetAsync(current with { Items = [.. current.Items, message.Payload!.OrderId] }, cancellationToken);
 
         IMapState<decimal> t = context.State(totals);
         await t.SetAsync(message.Key, message.Payload.Total, cancellationToken);
-        await foreach (var (key, total) in t.EnumerateAsync(cancellationToken: cancellationToken))
+        await foreach (var (key, total) in t.WithCancellation(cancellationToken)) // forward scan; the handle is IAsyncEnumerable
         {
             // key: string, total: decimal
         }
 
         IDequeState<Message<OrderEvent>> b = context.State(backlog);
         await b.PushBackAsync(message, cancellationToken);
-        StateValue<Message<OrderEvent>> oldest = await b.GetAsync(0, cancellationToken);
-        if (oldest.HasValue)
+        if ((await b.GetAsync(0, cancellationToken)).TryGetValue(out var oldest))
         {
-            Console.WriteLine(oldest.Value.Payload!.OrderId);
+            Console.WriteLine(oldest.Payload!.OrderId);
         }
     }
 
@@ -809,9 +808,9 @@ use — this is a schema conflict across deploys, not a C# object-reference chec
 - `PushFrontAsync(item)`: prepends at the front. Writing `null` is rejected.
 - `PopFrontAsync()` → `StateValue<T>`: removes and returns the front element, absent when empty.
 - `PopBackAsync()` → `StateValue<T>`: removes and returns the back element, absent when empty.
-- `CountAsync()` → `long`: number of live elements.
+- `CountAsync()` → `int`: number of live elements.
 - `IsEmptyAsync()` → `bool`: whether the deque holds no live elements.
-- `GetAsync(index)` → `StateValue<T>`: reads the element at front-relative, zero-based `index`, absent past the end. `index` must be non-negative; a negative or out-of-range value is a caller mistake, rejected with a `TransientStateException` (it retries and stays visible rather than discarding the message).
+- `GetAsync(index)` → `StateValue<T>`: reads the element at front-relative, zero-based `index`. A nonnegative index past the end is absent (`HasValue == false`); a negative `index` is a caller mistake, rejected with a `TransientStateException` (it retries and stays visible rather than discarding the message).
 - `EnumerateAsync(direction)` → `IAsyncEnumerable<T>`: see [Scan Iteration](#scan-iteration).
 - `CommitAsync()` / `RollbackAsync()`.
 
@@ -820,6 +819,11 @@ use — this is a schema conflict across deploys, not a C# object-reference chec
 Maps and deques expose `EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken
 cancellationToken = default)`, returning an `IAsyncEnumerable<...>` (map: `KeyValuePair<string, TValue>`; deque: `T`)
 driven with `await foreach`. `direction` is `ScanDirection.Forward` (default) or `ScanDirection.Backward`.
+
+`IMapState<TValue>` and `IDequeState<T>` also implement `IAsyncEnumerable<...>` directly, so a forward scan needs no
+method call — `await foreach (var (key, value) in context.State(totals))` is shorthand for `EnumerateAsync()` with
+`ScanDirection.Forward`. Use `EnumerateAsync(ScanDirection.Backward)` for a reverse scan. Each enumeration opens a fresh
+cursor.
 
 Iterators are attempt-scoped: they are valid only within the invocation that opened them. Exiting an `await foreach` loop
 early — via `break`, a thrown exception, or token cancellation — closes the underlying native cursor promptly through
@@ -865,9 +869,12 @@ applied/no-op return — do not expect one.
   first pull; with tracking disabled (`keysetLimit` 0) or overflowed, iteration is a live ordered scan that can observe
   the handler's own later mutations. A deque's index window snapshots at the first pull. Values always read live;
   absent or expired entries are skipped; the first error terminates the iterator.
-- **Absence is `StateValue<T>`.** A real optional (`HasValue` / `Value` / `ValueOr`), because a CLR `T?` cannot tell an
-  absent value from a stored `default(T)` such as `0` or `false`.
-- **JSON `null` is not storable.** Writing it is rejected (transient) — use `ClearAsync` / `RemoveAsync` to delete.
+- **Absence is `StateValue<T>`.** A real optional (`HasValue` / `Value` / `GetValueOrDefault(fallback)` /
+  `TryGetValue(out value)`), because a CLR `T?` cannot tell an absent value from a stored `default(T)` such as `0` or
+  `false`.
+- **JSON `null` is not storable.** The item type is constrained to `notnull`, so a nullable item type (for example
+  `int?`) is a compile-time error; writing a runtime `null` is rejected (transient) — use `ClearAsync` / `RemoveAsync`
+  to delete. (Message collections keep a nullable *payload*: the item type is the non-null `Message<TPayload>`.)
 - **Two categories, never terminal.** Keyed-state errors are exactly `Permanent` or `Transient` and are never terminal.
 
 ### Error Handling
@@ -1544,7 +1551,10 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageDequeDefinition<TPayload>`
 
-`IValueState<T>`:
+The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
+a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+
+`IValueState<T> where T : notnull`:
 
 - `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
 - `Task SetAsync(T value, CancellationToken cancellationToken = default)`
@@ -1552,10 +1562,10 @@ Definition factories (each returns an immutable, validated record used both in `
 - `Task CommitAsync(CancellationToken cancellationToken = default)`
 - `Task RollbackAsync(CancellationToken cancellationToken = default)`
 
-`IMapState<TValue>` (keys are `string`):
+`IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValue>>` (keys are `string`, `TValue : notnull`):
 
 - `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
-- `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IReadOnlyList<string> keys, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
 - `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
 - `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
@@ -1563,24 +1573,25 @@ Definition factories (each returns an immutable, validated record used both in `
 - `Task CommitAsync(CancellationToken cancellationToken = default)`
 - `Task RollbackAsync(CancellationToken cancellationToken = default)`
 
-`IDequeState<T>`:
+`IDequeState<T> : IAsyncEnumerable<T>` (`T : notnull`):
 
 - `Task PushBackAsync(T value, CancellationToken cancellationToken = default)`
 - `Task PushFrontAsync(T value, CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
-- `Task<long> CountAsync(CancellationToken cancellationToken = default)`
+- `Task<int> CountAsync(CancellationToken cancellationToken = default)`
 - `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
 - `Task CommitAsync(CancellationToken cancellationToken = default)`
 - `Task RollbackAsync(CancellationToken cancellationToken = default)`
 
-`StateValue<T>` (a `readonly struct` optional read result):
+`StateValue<T>` (a `readonly struct` optional read result, `T : notnull`):
 
 - `bool HasValue { get; }`: whether a value is present.
 - `T Value { get; }`: the stored value; throws `InvalidOperationException` when absent.
-- `T ValueOr(T fallback)`: the stored value when present, otherwise `fallback`.
+- `T GetValueOrDefault(T defaultValue)`: the stored value when present, otherwise `defaultValue` (mirrors `Nullable<T>`).
+- `bool TryGetValue(out T value)`: the familiar `Try` pattern — `true` with the value when present, `false` otherwise.
 
 `ScanDirection`: `Forward` (ascending) or `Backward` (descending).
 

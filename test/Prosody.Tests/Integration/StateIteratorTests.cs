@@ -54,7 +54,7 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
                     // A follow-up op wedges (times out) if the early break failed to release the gate.
                     await map.SetAsync("after", 99, ct);
                     var after = await map.GetAsync("after", ct);
-                    observations.Send(new IteratorObservation { FollowUpOk = after.ValueOr(-1) == 99 });
+                    observations.Send(new IteratorObservation { FollowUpOk = after.GetValueOrDefault(-1) == 99 });
                 }
                 catch (StateException ex)
                 {
@@ -125,7 +125,11 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
                     await map.SetAsync("after", 99, ct);
                     var after = await map.GetAsync("after", ct);
                     observations.Send(
-                        new IteratorObservation { Cancelled = cancelled, FollowUpOk = after.ValueOr(-1) == 99 }
+                        new IteratorObservation
+                        {
+                            Cancelled = cancelled,
+                            FollowUpOk = after.GetValueOrDefault(-1) == 99,
+                        }
                     );
                 }
                 catch (StateException ex)
