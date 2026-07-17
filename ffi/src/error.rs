@@ -14,7 +14,7 @@ use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
 use prosody::codec::{BinaryCodecError, JsonExtractError};
-use prosody::consumer::event_context::BoxEventContextError;
+use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
 use prosody::loader::KafkaLoaderConfigError;
@@ -111,6 +111,43 @@ pub enum FfiError {
     /// Indicates that an async task did not complete successfully.
     #[error("task join failed: {0:#}")]
     Join(#[from] JoinError),
+
+    /// A permanent keyed-state failure that must not be retried.
+    ///
+    /// Recovered structurally from the erased seam's
+    /// [`ErasedCategory::Permanent`]: configuration or deployment mistakes
+    /// (unregistered name, identity mismatch, duplicate name, invalid TTL). The
+    /// `flat_error` attribute generates a distinct `FfiException` subclass, so
+    /// the C# layer recovers the category from the exception type, never by
+    /// parsing the message.
+    #[error("permanent state error: {0}")]
+    PermanentState(String),
+
+    /// A transient keyed-state failure that may succeed on retry.
+    ///
+    /// Recovered structurally from the erased seam's
+    /// [`ErasedCategory::Transient`], and the classification every caller/input
+    /// mistake the glue detects folds into (null or unrepresentable writes,
+    /// wrong item shapes, invalid indices) so a data-dependent handler bug
+    /// retries rather than silently committing the offset and losing the
+    /// message.
+    #[error("transient state error: {0}")]
+    TransientState(String),
+}
+
+/// Recovers the state-error category structurally from [`ErasedStateError`].
+///
+/// The category is read from [`ErasedStateError::category`] — never by parsing
+/// the message — and mapped to the matching flat variant. The match is
+/// exhaustive over [`ErasedCategory`], which has no `Terminal`, so a state
+/// error is never surfaced as terminal.
+impl From<ErasedStateError> for FfiError {
+    fn from(error: ErasedStateError) -> Self {
+        match error.category() {
+            ErasedCategory::Permanent => Self::PermanentState(error.message().to_owned()),
+            ErasedCategory::Transient => Self::TransientState(error.message().to_owned()),
+        }
+    }
 }
 
 /// Represents errors from C# event handler callbacks.

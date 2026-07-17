@@ -36,6 +36,8 @@
 //! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
 //! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
 //! - [`message`]: Kafka message wrapper for C# consumption
+//! - [`state`]: Keyed-state handles, cursor, and item types over the erased
+//!   seam
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
 
@@ -55,6 +57,7 @@ pub mod error;
 pub mod handler;
 pub mod logging;
 pub mod message;
+pub mod state;
 pub mod timer;
 pub mod types;
 
@@ -79,8 +82,14 @@ pub use context::Context;
 pub use error::FfiError;
 pub use handler::{EventHandler, HandlerResultCode};
 pub use message::Message;
+pub use state::{
+    DequeStateHandle, MapStateHandle, ScanDirection, StateCursor, StateItem, StateScanItem,
+    ValueStateHandle,
+};
 pub use timer::Timer;
-pub use types::{ClientMode, ClientOptions, ConsumerState};
+pub use types::{
+    ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,
+};
 
 // Initialize UniFFI scaffolding (proc-macro approach, no UDL file required).
 uniffi::setup_scaffolding!();

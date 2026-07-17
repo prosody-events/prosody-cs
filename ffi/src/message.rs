@@ -34,6 +34,16 @@ impl Message {
     pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
         Self { inner }
     }
+
+    /// Clones the wrapped consumer message for a keyed-state message write.
+    ///
+    /// [`ConsumerMessage`] is cheaply cloneable (it shares its value and
+    /// processing state through `Arc`), so a message-collection write clones
+    /// the inner message rather than reconstructing it field by field.
+    #[must_use]
+    pub(crate) fn consumer_message(&self) -> ConsumerMessage<BinaryPayload> {
+        self.inner.clone()
+    }
 }
 
 #[uniffi::export]
