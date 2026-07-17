@@ -45,6 +45,20 @@ public sealed class ClientOptionsValidatorStateTests
     }
 
     [Fact]
+    public void StateCacheDir_Empty_Fails()
+    {
+        var options = BaseOptions();
+        options.StateCacheDir = "";
+
+        var result = _validator.Validate(name: null, options);
+
+        Assert.Multiple(
+            () => Assert.True(result.Failed),
+            () => Assert.Contains("StateCacheDir", result.FailureMessage, StringComparison.Ordinal)
+        );
+    }
+
+    [Fact]
     public void RecoveryDelay_Fractional_Fails()
     {
         var options = BaseOptions();

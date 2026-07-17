@@ -25,6 +25,19 @@ public sealed class StateDefinitionTests
     }
 
     [Fact]
+    public void Value_WhitespaceName_Throws()
+    {
+        Assert.Throws<ArgumentException>(() => StateDefinition.Value<int>("   "));
+    }
+
+    [Fact]
+    public void Value_PaddedName_IsTrimmed()
+    {
+        var definition = StateDefinition.Value<int>(" cart ");
+        Assert.Equal("cart", definition.Name);
+    }
+
+    [Fact]
     public void Map_EmptyName_Throws()
     {
         Assert.Throws<ArgumentException>(() => StateDefinition.Map<int>(string.Empty));

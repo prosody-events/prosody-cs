@@ -55,6 +55,43 @@ public sealed class NullWriteRejectionTests
     }
 
     [Fact]
+    public async Task Deque_PushNull_ThrowsNullValueException_TransientCategory_StoreUntouched()
+    {
+        var handle = new FakeDequeStateHandle();
+        var state = new DequeState<string>(handle, TypeInfo<string>());
+
+        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
+            state.PushBackAsync(null!, TestContext.Current.CancellationToken)
+        );
+
+        Assert.Multiple(
+            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
+            () => Assert.Equal(0, handle.PushBackJsonCalls)
+        );
+    }
+
+    [Fact]
+    public async Task Value_SetUnrepresentable_ThrowsTransient_StoreUntouched()
+    {
+        var handle = new FakeValueStateHandle();
+        var state = new ValueState<Cyclic>(handle, TypeInfo<Cyclic>());
+
+        // A self-referencing graph throws JsonException at serialize time (cycle detected).
+        var value = new Cyclic();
+        value.Self = value;
+
+        var exception = await Assert.ThrowsAsync<TransientStateException>(() =>
+            state.SetAsync(value, TestContext.Current.CancellationToken)
+        );
+
+        Assert.Multiple(
+            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
+            () => Assert.IsType<JsonException>(exception.InnerException),
+            () => Assert.Equal(0, handle.SetJsonCalls)
+        );
+    }
+
+    [Fact]
     public void NullValueException_IsTransient_NotPermanent()
     {
         // Typed as the base so the `is IPermanentError` check is a runtime test the falsification
@@ -66,5 +103,11 @@ public sealed class NullWriteRejectionTests
             () => Assert.False(exception is IPermanentError),
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category)
         );
+    }
+
+    /// <summary>A non-null value whose self-reference is unrepresentable, throwing at serialize time.</summary>
+    private sealed class Cyclic
+    {
+        public Cyclic? Self { get; set; }
     }
 }

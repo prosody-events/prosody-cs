@@ -35,10 +35,12 @@ public abstract record StateDefinition
         int? keysetLimit
     )
     {
-        if (string.IsNullOrEmpty(name))
+        if (string.IsNullOrWhiteSpace(name))
         {
             throw new ArgumentException("State collection name must be non-empty.", nameof(name));
         }
+
+        name = name.Trim();
 
         if (ttl is { } t)
         {

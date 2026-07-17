@@ -10,6 +10,7 @@ namespace Prosody.Tests.TestHelpers;
 internal sealed class FakeStateCursor : Native.IStateCursor
 {
     private readonly Queue<Native.StateScanItem[]?> _chunks;
+    private readonly object _maxLock = new();
     private int _activePulls;
 
     internal FakeStateCursor(params Native.StateScanItem[]?[] chunks)
@@ -45,9 +46,12 @@ internal sealed class FakeStateCursor : Native.IStateCursor
     {
         NextChunkCalls++;
         var active = Interlocked.Increment(ref _activePulls);
-        if (active > MaxActivePulls)
+        lock (_maxLock)
         {
-            MaxActivePulls = active;
+            if (active > MaxActivePulls)
+            {
+                MaxActivePulls = active;
+            }
         }
 
         PullStarted.TrySetResult();

@@ -115,7 +115,16 @@ internal static class StateInterop
             );
         }
 
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
+        byte[] bytes;
+        try
+        {
+            bytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
+        }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException)
+        {
+            throw new TransientStateException($"Cannot serialize the value for a keyed-state write. {remediation}", ex);
+        }
+
         if (IsJsonNullToken(bytes))
         {
             throw new NullValueException($"Cannot write a value that serializes to JSON null. {remediation}");

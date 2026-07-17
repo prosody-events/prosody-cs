@@ -13,12 +13,6 @@ public sealed class ProsodyContext
     private readonly JsonSerializerOptions? _jsonOptions;
     private readonly Dictionary<string, object>? _stateHandles;
 
-    internal ProsodyContext(Native.Context native)
-    {
-        ArgumentNullException.ThrowIfNull(native);
-        _native = native;
-    }
-
     internal ProsodyContext(Native.Context native, JsonSerializerOptions jsonOptions)
     {
         ArgumentNullException.ThrowIfNull(native);

@@ -56,6 +56,11 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
     private static void CheckStateCollections(ClientOptions options, List<string> failures)
     {
+        if (options.StateCacheDir is { Length: 0 })
+        {
+            failures.Add("StateCacheDir must not be empty when set.");
+        }
+
         var recoveryDelay = options.StateRecoveryDelay;
         if (recoveryDelay is { } delay && !IsWholeSecondsAtLeastOne(delay))
         {
