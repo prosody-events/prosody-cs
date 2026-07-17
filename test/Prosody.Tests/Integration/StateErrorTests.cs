@@ -5,8 +5,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for the keyed-state error taxonomy against real Kafka and Cassandra (appendix-1
-/// items 8 and 9): unregistered-name and identity-mismatch are permanent, rethrown permanent/transient
+/// Integration tests for the keyed-state error taxonomy against real Kafka and Cassandra:
+/// unregistered-name and identity-mismatch are permanent, rethrown permanent/transient
 /// state errors classify correctly through the existing bridge, no state error surfaces terminal, null
 /// writes reject transient with the store untouched, and missing is distinguished from a stored
 /// default.

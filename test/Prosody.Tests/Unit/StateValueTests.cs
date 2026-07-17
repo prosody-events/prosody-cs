@@ -1,6 +1,5 @@
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.State;
+using Prosody.Tests.TestHelpers;
 using Native = Prosody.Native;
 
 namespace Prosody.Tests.Unit;
@@ -10,17 +9,10 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class StateValueTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
-    private static JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-
     [Fact]
     public void Absent_HasNoValue()
     {
-        var value = StateInterop.JsonToValue<decimal>(null, TypeInfo<decimal>());
+        var value = StateInterop.JsonToValue<decimal>(null, TestJson.TypeInfo<decimal>());
 
         Assert.Multiple(
             () => Assert.False(value.HasValue),
@@ -34,7 +26,7 @@ public sealed class StateValueTests
     {
         using var item = new Native.StateItem.Json("0"u8.ToArray());
 
-        var value = StateInterop.JsonToValue<decimal>(item, TypeInfo<decimal>());
+        var value = StateInterop.JsonToValue<decimal>(item, TestJson.TypeInfo<decimal>());
 
         Assert.Multiple(() => Assert.True(value.HasValue), () => Assert.Equal(0m, value.Value));
     }
@@ -44,7 +36,7 @@ public sealed class StateValueTests
     {
         using var item = new Native.StateItem.Json("false"u8.ToArray());
 
-        var value = StateInterop.JsonToValue<bool>(item, TypeInfo<bool>());
+        var value = StateInterop.JsonToValue<bool>(item, TestJson.TypeInfo<bool>());
 
         Assert.Multiple(() => Assert.True(value.HasValue), () => Assert.False(value.Value));
     }

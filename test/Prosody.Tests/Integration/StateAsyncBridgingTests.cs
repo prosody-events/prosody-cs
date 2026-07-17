@@ -3,7 +3,7 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration test for async bridging against real Kafka and Cassandra (appendix-1 item 13): while
+/// Integration test for async bridging against real Kafka and Cassandra: while
 /// one handler is blocked awaiting a state op, a handler for a different key on the same partition
 /// makes progress — proving a blocked state op yields the runtime rather than serializing dispatch.
 /// Mirrors the JS reference C12.

@@ -4,8 +4,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for scan-iterator lifecycle against real Kafka and Cassandra (appendix-1
-/// item 7): early break and mid-scan cancellation both close the cursor so a follow-up op on the same
+/// Integration tests for scan-iterator lifecycle against real Kafka and Cassandra:
+/// early break and mid-scan cancellation both close the cursor so a follow-up op on the same
 /// collection succeeds, and an enumeration leaked past the handler is terminated. The strong
 /// close-exactly-once and blocked-pull assertions live in the fake-cursor unit suite
 /// (<c>StateScanSequenceTests</c>).

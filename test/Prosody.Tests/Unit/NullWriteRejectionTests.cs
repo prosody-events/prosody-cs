@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.Errors;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
@@ -12,18 +11,11 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class NullWriteRejectionTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
-    private static JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-
     [Fact]
     public async Task Value_SetNull_ThrowsNullValueException_TransientCategory_StoreUntouched()
     {
         var handle = new FakeValueStateHandle();
-        var state = new ValueState<string>(handle, TypeInfo<string>());
+        var state = new ValueState<string>(handle, TestJson.TypeInfo<string>());
 
         var exception = await Assert.ThrowsAsync<NullValueException>(() =>
             state.SetAsync(null!, TestContext.Current.CancellationToken)
@@ -41,7 +33,7 @@ public sealed class NullWriteRejectionTests
     public async Task Map_SetNull_ThrowsNullValueException_NamesRemoveAsync_StoreUntouched()
     {
         var handle = new FakeMapStateHandle();
-        var state = new MapState<string>(handle, TypeInfo<string>());
+        var state = new MapState<string>(handle, TestJson.TypeInfo<string>());
 
         var exception = await Assert.ThrowsAsync<NullValueException>(() =>
             state.SetAsync("k", null!, TestContext.Current.CancellationToken)
@@ -58,7 +50,7 @@ public sealed class NullWriteRejectionTests
     public async Task Deque_PushNull_ThrowsNullValueException_TransientCategory_StoreUntouched()
     {
         var handle = new FakeDequeStateHandle();
-        var state = new DequeState<string>(handle, TypeInfo<string>());
+        var state = new DequeState<string>(handle, TestJson.TypeInfo<string>());
 
         var exception = await Assert.ThrowsAsync<NullValueException>(() =>
             state.PushBackAsync(null!, TestContext.Current.CancellationToken)
@@ -74,7 +66,7 @@ public sealed class NullWriteRejectionTests
     public async Task Value_SetUnrepresentable_ThrowsTransient_StoreUntouched()
     {
         var handle = new FakeValueStateHandle();
-        var state = new ValueState<Cyclic>(handle, TypeInfo<Cyclic>());
+        var state = new ValueState<Cyclic>(handle, TestJson.TypeInfo<Cyclic>());
 
         // A self-referencing graph throws JsonException at serialize time (cycle detected).
         var value = new Cyclic();

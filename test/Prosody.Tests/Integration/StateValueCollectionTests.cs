@@ -5,8 +5,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for the value keyed-state collection against real Kafka and Cassandra
-/// (appendix-1 item 1), plus the source-generated JSON path. Two events on the same key exercise
+/// Integration tests for the value keyed-state collection against real Kafka and Cassandra,
+/// plus the source-generated JSON path. Two events on the same key exercise
 /// write-then-read across handler invocations. The passthrough-codec scalar/array pins live in
 /// <see cref="StateDequeCollectionTests"/> because they must read through a durable scan, not a
 /// cached point read, to actually exercise the codec's decode.
@@ -263,7 +263,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
     {
         // In-process tracing smoke (GREEN-IS-CORRECT, mirrors JS C11): the handler activity is
         // Current while a state op runs, so the core collection span parents to it. Full core-span
-        // topology is collector-delegated (02-lgtm-trace-audit.md) and not observable here. A listener
+        // topology is collector-delegated and not observable here. A listener
         // must be present or ActivitySource.StartActivity returns null and no activity is created.
         using var listener = new ActivityListener
         {

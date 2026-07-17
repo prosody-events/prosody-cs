@@ -6,10 +6,10 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for the deque keyed-state collection against real Kafka and Cassandra
-/// (appendix-1 item 3): push front/back, index/count/empty, pop front/back, scan both directions, and
+/// Integration tests for the deque keyed-state collection against real Kafka and Cassandra:
+/// push front/back, index/count/empty, pop front/back, scan both directions, and
 /// empty-deque behavior. A write event and a read event on the same key exercise cross-invocation
-/// visibility. The scalar/array round-trip pins (appendix-1 codec honesty) also live here: a bare
+/// visibility. The scalar/array codec-honesty round-trip pins also live here: a bare
 /// scalar/array stored as a deque item and read back by a fresh client after a consumer restart, so
 /// the item travels the full serialize -> durable -> recover -> deserialize path rather than being
 /// served from an in-session materialized cell. The "an envelope-coupled codec rejects a bare

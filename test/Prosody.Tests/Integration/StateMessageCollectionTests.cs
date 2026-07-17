@@ -5,8 +5,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for message-flavoured keyed-state collections against real Kafka and Cassandra
-/// (appendix-1 item 4): the handled message is recorded in event 1 and read/scanned back in event 2
+/// Integration tests for message-flavoured keyed-state collections against real Kafka and Cassandra:
+/// the handled message is recorded in event 1 and read/scanned back in event 2
 /// with topic, partition, offset, key, and payload equal to the original. <see cref="Message{T}"/>
 /// has no record equality, so fields are compared individually.
 /// </summary>

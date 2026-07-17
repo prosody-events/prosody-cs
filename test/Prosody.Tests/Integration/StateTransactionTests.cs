@@ -5,8 +5,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for keyed-state transactional semantics against real Kafka and Cassandra
-/// (appendix-1 items 5 and 6): the committed floor survives a failed attempt and a rollback, and a
+/// Integration tests for keyed-state transactional semantics against real Kafka and Cassandra:
+/// the committed floor survives a failed attempt and a rollback, and a
 /// handle/context/read leaked past its attempt (failed or successful) fails with the terminated
 /// transient error and has no store effect. Attempt fencing is owned entirely by core.
 /// </summary>

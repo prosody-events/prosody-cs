@@ -4,8 +4,8 @@ using Prosody.Tests.TestHelpers;
 namespace Prosody.Tests.Integration;
 
 /// <summary>
-/// Integration tests for the ordered-map keyed-state collection against real Kafka and Cassandra
-/// (appendix-1 item 2): forward/backward scan order, remove, unicode keys, and positional
+/// Integration tests for the ordered-map keyed-state collection against real Kafka and Cassandra:
+/// forward/backward scan order, remove, unicode keys, and positional
 /// <c>GetManyAsync</c>. A write event and a read event on the same key exercise cross-invocation
 /// visibility.
 /// </summary>

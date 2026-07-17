@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
@@ -21,11 +20,6 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
 {
     private readonly List<Activity> _activities = [];
     private readonly ActivityListener _listener;
-
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
 
     private static readonly ProsodyContext AnyContext = new();
     private static readonly ProsodyTimer AnyTimer = new("t", default);
@@ -51,7 +45,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnMessage_CreatesActivityNamed_on_message()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -64,7 +58,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnTimer_CreatesActivityNamed_on_timer()
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -77,7 +71,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnMessage_LeavesStatusUnset_OnSuccess()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -90,7 +84,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnMessage_SetsStatusToError_OnTransientException()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => throw new InvalidOperationException("boom"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -103,7 +97,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnMessage_SetsStatusToError_OnPermanentException()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => throw new PermanentException("nope"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -117,7 +111,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     {
         var thrown = new InvalidOperationException("boom");
         var handler = new LambdaHandler(onMessage: (_, _, _) => throw thrown);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -133,7 +127,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnMessage_LeavesStatusUnset_OnOperationCanceledException()
     {
         var handler = new LambdaHandler(onMessage: (_, _, _) => throw new OperationCanceledException("shutdown"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         await HandleMsgAsync(bridge);
 
@@ -146,7 +140,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     public async Task OnTimer_SetsStatusToError_OnException()
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => throw new InvalidOperationException("timer boom"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
         await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Activity activity = Assert.Single(_activities);

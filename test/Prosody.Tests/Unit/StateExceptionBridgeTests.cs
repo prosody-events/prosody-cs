@@ -1,8 +1,8 @@
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
 using Prosody.State;
+using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResult = Prosody.Native.HandlerResult;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
@@ -15,11 +15,6 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class StateExceptionBridgeTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
     private static readonly ProsodyContext AnyContext = new();
     private static readonly byte[] AnyJson = "null"u8.ToArray();
 
@@ -40,7 +35,7 @@ public sealed class StateExceptionBridgeTests
     public async Task PermanentStateException_FromHandler_ClassifiesPermanent()
     {
         var handler = new LambdaHandler((_, _, _) => throw new PermanentStateException("permanent state"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -51,7 +46,7 @@ public sealed class StateExceptionBridgeTests
     public async Task TransientStateException_FromHandler_ClassifiesTransient()
     {
         var handler = new LambdaHandler((_, _, _) => throw new TransientStateException("transient state"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -62,7 +57,7 @@ public sealed class StateExceptionBridgeTests
     public async Task NullValueException_FromHandler_ClassifiesTransient()
     {
         var handler = new LambdaHandler((_, _, _) => throw new NullValueException("null write"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 

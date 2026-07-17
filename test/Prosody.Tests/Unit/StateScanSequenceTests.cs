@@ -62,7 +62,7 @@ public sealed class StateScanSequenceTests
     [Fact]
     public async Task CancellationBeforeMoveNext_ClosesOnDispose_ExactlyOnce()
     {
-        // The cancellation clause of appendix-1 item 7: a cancelled scan closes the cursor exactly
+        // The cancellation clause of the scan-iterator contract: a cancelled scan closes the cursor exactly
         // once. MoveNextAsync observes the token and throws OperationCanceledException without
         // closing; the close happens when the enumerator is disposed (as the await foreach's finally
         // does). A native-close skip in DisposeAsync drops CloseCalls to 0 and fails this.

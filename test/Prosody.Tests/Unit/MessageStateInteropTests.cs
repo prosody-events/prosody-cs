@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.Messaging;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
@@ -13,18 +11,11 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class MessageStateInteropTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
-    private static JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-
     [Fact]
     public async Task Set_NullMessage_ThrowsNullValueException_TransientCategory_StoreUntouched()
     {
         var handle = new FakeValueStateHandle();
-        var state = new MessageValueState<int>(handle, TypeInfo<int>());
+        var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
 
         var exception = await Assert.ThrowsAsync<NullValueException>(() =>
             state.SetAsync(null!, TestContext.Current.CancellationToken)
@@ -40,7 +31,7 @@ public sealed class MessageStateInteropTests
     public async Task Set_MessageWithoutNativeHandle_ThrowsTransient_StoreUntouched()
     {
         var handle = new FakeValueStateHandle();
-        var state = new MessageValueState<int>(handle, TypeInfo<int>());
+        var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
 
         // A hand-constructed message carries no native handle, so it cannot be written back.
         var message = new Message<int>("topic", "key", 0, 0, DateTimeOffset.UtcNow, 5);

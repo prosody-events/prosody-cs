@@ -6,7 +6,7 @@ namespace Prosody.Tests.TestHelpers;
 /// <summary>
 /// Shared keyed-state definitions and payload records for the integration suite. Mirrors the JS
 /// reference <c>STATE_DEFS</c> — one of every kind × payload — plus the scalar/array/source-gen and
-/// missing-vs-default pins the C# checklist adds.
+/// missing-vs-default pins the C# suite adds.
 /// </summary>
 /// <remarks>
 /// Fixed names are safe because <see cref="IntegrationTestContext"/> mints a unique group id per

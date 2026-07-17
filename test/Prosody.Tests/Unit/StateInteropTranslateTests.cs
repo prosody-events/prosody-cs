@@ -1,6 +1,5 @@
-using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.State;
+using Prosody.Tests.TestHelpers;
 using Native = Prosody.Native;
 
 namespace Prosody.Tests.Unit;
@@ -12,18 +11,11 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class StateInteropTranslateTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
-
-    private static JsonTypeInfo<T> TypeInfo<T>() => (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-
     [Fact]
     public async Task NativePermanentFailure_SurfacesAsPermanentStateException()
     {
         var handle = new PermanentFaultingValueStateHandle();
-        var state = new ValueState<int>(handle, TypeInfo<int>());
+        var state = new ValueState<int>(handle, TestJson.TypeInfo<int>());
 
         var exception = await Assert.ThrowsAsync<PermanentStateException>(() =>
             state.CommitAsync(TestContext.Current.CancellationToken)

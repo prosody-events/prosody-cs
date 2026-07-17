@@ -41,7 +41,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ScheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.Schedule(time.UtcDateTime, carrier);
     }
 
@@ -51,7 +51,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.ClearAndSchedule(time.UtcDateTime, carrier);
     }
 
@@ -61,7 +61,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time of the timer to unschedule (UTC).</param>
     public Task UnscheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.Unschedule(time.UtcDateTime, carrier);
     }
 
@@ -70,7 +70,7 @@ public sealed class ProsodyContext
     /// </summary>
     public Task ClearScheduledAsync()
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.ClearScheduled(carrier);
     }
 
@@ -80,7 +80,7 @@ public sealed class ProsodyContext
     /// <returns>An array of scheduled times (UTC).</returns>
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         DateTime[] times = await _native.Scheduled(carrier).ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
@@ -211,6 +211,4 @@ public sealed class ProsodyContext
         _stateHandles[cacheKey] = handle;
         return handle;
     }
-
-    private static Dictionary<string, string> CreateCarrier() => StateInterop.CreateCarrier();
 }
