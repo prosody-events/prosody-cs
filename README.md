@@ -9,6 +9,7 @@ strategies, and integrated OpenTelemetry support for distributed tracing.
 - **Kafka Consumer**: Per-key ordering with cross-key concurrency, offset management, consumer groups
 - **Kafka Producer**: Idempotent delivery with configurable retries
 - **Timer System**: Persistent scheduled execution backed by Cassandra or in-memory store
+- **Keyed State**: Per-key persistent state (value/map/deque) with transactional, at-least-once semantics
 - **Quality of Service**: Fair scheduling limits concurrency and prevents failures from starving fresh traffic. Pipeline mode adds deferred retry and monopolization detection
 - **Distributed Tracing**: OpenTelemetry integration for tracing message flow across services
 - **Error Monitoring**: Optional Sentry integration for automatic handler exception reporting
@@ -350,6 +351,30 @@ Lifecycle event emission to a Kafka topic (message dispatched, succeeded, failed
 | `TelemetryTopic` / `PROSODY_TELEMETRY_TOPIC` | Kafka topic for telemetry events | prosody.telemetry-events |
 | `TelemetryEnabled` / `PROSODY_TELEMETRY_ENABLED` | Enable telemetry event emission | true |
 
+### Keyed State
+
+Register keyed-state collections before you subscribe, via `ProsodyClientBuilder.WithStateCollections(...)` or
+`ClientOptions.StateCollections`. Persistence is backed by Cassandra and is not needed when `Mock = true`. See the
+[Keyed State](#keyed-state-1) feature section for handler usage; the client-level knobs and per-collection fields are
+below. Where an option and an environment variable are paired, an explicitly set option wins; otherwise the environment
+variable applies, then the default.
+
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
+| `StateCacheDir` / `PROSODY_FJALL_CACHE_DIR` | Root directory for the local committed-value cache; each live client needs its own directory. | per-client temp dir |
+| `StateRecoveryDelay` / `PROSODY_KEYED_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
+
+Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
+documented in the [Definitions](#definitions) subsection). The factory parameters map to these per-collection fields:
+
+| Option | Applies to | Description | Default |
+|---|---|---|---|
+| `name` | all | Collection name; non-empty and unique within the client. | (required) |
+| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
+| `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
+| `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
+
 ## Liveness and Readiness Probes
 
 Prosody includes a built-in probe server for consumer-based applications that provides health check endpoints. The probe
@@ -650,6 +675,227 @@ await using var client = ProsodyClientBuilder.Create()
     .WithMock(true)  // No Cassandra required in mock mode
     .Build();
 ```
+
+## Keyed State
+
+Prosody supports keyed state: per-key data that a handler reads and writes and that survives across events. State is
+partitioned by the message key, so each key has a single writer at a time, and by default writes settle atomically with
+the event — a handler that throws leaves no partial state. Values are either JSON payloads or the full Kafka
+`Message<TPayload>` the handler received. Register collections on the client before subscribing, then bind them inside
+the handler with `context.State(definition)`:
+
+```csharp
+using Prosody;
+using Prosody.State;
+
+public sealed record Cart(List<string> Items);
+public sealed record OrderEvent(string OrderId, decimal Total);
+
+// Declare each collection once and reuse the object for registration and binding.
+var cart = StateDefinition.Value<Cart>("cart", ttl: TimeSpan.FromDays(30));
+var totals = StateDefinition.Map<decimal>("totals"); // keys are always string
+var backlog = StateDefinition.MessageDeque<OrderEvent>("backlog");
+
+await using var client = ProsodyClientBuilder.Create()
+    .WithGroupId("orders")
+    .WithSubscribedTopics("orders")
+    .WithStateCollections(cart, totals, backlog)
+    .Build();
+
+await client.SubscribeAsync(new OrderHandler(cart, totals, backlog));
+
+public sealed class OrderHandler(
+    ValueStateDefinition<Cart> cart,
+    MapStateDefinition<decimal> totals,
+    MessageDequeDefinition<OrderEvent> backlog
+) : IProsodyHandler<OrderEvent>
+{
+    public async Task OnMessageAsync(
+        ProsodyContext context,
+        Message<OrderEvent> message,
+        CancellationToken cancellationToken
+    )
+    {
+        IValueState<Cart> c = context.State(cart);
+        Cart current = (await c.GetAsync(cancellationToken)).ValueOr(new Cart([]));
+        await c.SetAsync(current with { Items = [.. current.Items, message.Payload!.OrderId] }, cancellationToken);
+
+        IMapState<decimal> t = context.State(totals);
+        await t.SetAsync(message.Key, message.Payload.Total, cancellationToken);
+        await foreach (var (key, total) in t.EnumerateAsync(cancellationToken: cancellationToken))
+        {
+            // key: string, total: decimal
+        }
+
+        IDequeState<Message<OrderEvent>> b = context.State(backlog);
+        await b.PushBackAsync(message, cancellationToken);
+        StateValue<Message<OrderEvent>> oldest = await b.GetAsync(0, cancellationToken);
+        if (oldest.HasValue)
+        {
+            Console.WriteLine(oldest.Value.Payload!.OrderId);
+        }
+    }
+
+    public Task OnTimerAsync(ProsodyContext context, ProsodyTimer timer, CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+}
+```
+
+### Definitions
+
+A `StateDefinition` factory declares one collection and returns an immutable, validated record carrying its name, kind,
+and payload flavour. Reference that definition both when registering (`WithStateCollections`) and when binding
+(`context.State`) — declare each collection once and reuse it. Reuse is a convenience, not a requirement: a binding
+matches a definition to a registered collection by its name and schema identity, not by object reference, so a
+structurally equal definition also works. Three kinds, each with a JSON variant (values are your JSON payload) and a
+message variant (values are the full Kafka `Message<TPayload>`):
+
+- `StateDefinition.Value<T>(name, ttl?, readUncommitted?)`: single value. Vends `IValueState<T>`.
+- `StateDefinition.Map<TValue>(name, ttl?, readUncommitted?, keysetLimit?)`: ordered map with **string** keys. Vends `IMapState<TValue>`.
+- `StateDefinition.Deque<T>(name, ttl?, readUncommitted?)`: double-ended queue. Vends `IDequeState<T>`.
+- `StateDefinition.MessageValue<TPayload>(name, ttl?, readUncommitted?)`: single value holding a `Message<TPayload>`. Vends `IValueState<Message<TPayload>>`.
+- `StateDefinition.MessageMap<TPayload>(name, ttl?, readUncommitted?, keysetLimit?)`: ordered map of `Message<TPayload>` (string keys). Vends `IMapState<Message<TPayload>>`.
+- `StateDefinition.MessageDeque<TPayload>(name, ttl?, readUncommitted?)`: deque of `Message<TPayload>`. Vends `IDequeState<Message<TPayload>>`.
+
+`ttl` and `readUncommitted` apply to every kind; `keysetLimit` applies to maps only. The type parameter is
+annotation-level only: payloads cross the boundary as plain JSON with no runtime shape validation, so the parameter
+guides your C# typing but does not enforce a shape at runtime. `name`, `ttl`, and `keysetLimit` bounds are validated
+when the definition is constructed; name uniqueness and the TTL-exceeds-recovery-delay rule are validated when the client
+options are validated.
+
+### Registration
+
+Pass the definitions to `WithStateCollections(...)` before `Build()` (or set `ClientOptions.StateCollections`
+programmatically), then subscribe. Collection names must be unique within a client — duplicate names are rejected.
+Keyed state needs Cassandra unless the client runs with `Mock = true`. See the
+[Keyed State configuration](#keyed-state) subsection for the client-level knobs and per-collection fields.
+
+Under dependency injection, set the collections in the `configure` callback (they are programmatic, not
+IConfiguration-bindable):
+
+```csharp
+builder.Services.AddProsodyClient(options => options.StateCollections = [cart, totals, backlog]);
+```
+
+### State Handles
+
+`context.State(definition)` vends a typed handle bound to the collection for the current event attempt. The handle — and
+any iterator it opens — is valid only within the handler invocation that created it; there is no post-handler read
+window. Repeated `State(definition)` calls within one invocation return the same cached handle. Binding an unregistered
+name throws a `PermanentStateException`; so does a definition whose kind or payload disagrees with what was durably
+registered under that name in the consumer group (the collection's stored schema identity, which core validates at first
+use — this is a schema conflict across deploys, not a C# object-reference check).
+
+`IValueState<T>`:
+
+- `GetAsync()` → `StateValue<T>`: reads the current value, absent when none.
+- `SetAsync(value)`: buffers a write. Writing `null` is rejected — call `ClearAsync`.
+- `ClearAsync()`: deletes the stored value.
+- `CommitAsync()` / `RollbackAsync()`: see [Commit and Rollback](#commit-and-rollback).
+
+`IMapState<TValue>` (keys are always `string`):
+
+- `GetAsync(key)` → `StateValue<TValue>`: reads the value for `key`, absent when the key is absent.
+- `GetManyAsync(keys)` → `IReadOnlyList<StateValue<TValue>>`: reads several keys in one isolated batch, returning one entry per key in the same order (`result[i]` answers `keys[i]`); a missing key is absent, and a repeated key is answered at each spot. The whole read happens as one step, so no other change to this event's state slips in partway through.
+- `SetAsync(key, value)`: inserts or overwrites. Writing `null` is rejected — call `RemoveAsync`.
+- `RemoveAsync(key)`: removes `key`. **Deliberate convention: returns nothing, not a "was present" flag** — surfacing that boolean would force a hidden read on every remove.
+- `ClearAsync()`: removes every entry.
+- `EnumerateAsync(direction)` → `IAsyncEnumerable<KeyValuePair<string, TValue>>`: see [Scan Iteration](#scan-iteration).
+- `CommitAsync()` / `RollbackAsync()`.
+
+`IDequeState<T>`:
+
+- `PushBackAsync(item)`: appends at the back. Writing `null` is rejected.
+- `PushFrontAsync(item)`: prepends at the front. Writing `null` is rejected.
+- `PopFrontAsync()` → `StateValue<T>`: removes and returns the front element, absent when empty.
+- `PopBackAsync()` → `StateValue<T>`: removes and returns the back element, absent when empty.
+- `CountAsync()` → `long`: number of live elements.
+- `IsEmptyAsync()` → `bool`: whether the deque holds no live elements.
+- `GetAsync(index)` → `StateValue<T>`: reads the element at front-relative, zero-based `index`, absent past the end. `index` must be non-negative; a negative or out-of-range value is a caller mistake, rejected with a `TransientStateException` (it retries and stays visible rather than discarding the message).
+- `EnumerateAsync(direction)` → `IAsyncEnumerable<T>`: see [Scan Iteration](#scan-iteration).
+- `CommitAsync()` / `RollbackAsync()`.
+
+### Scan Iteration
+
+Maps and deques expose `EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken
+cancellationToken = default)`, returning an `IAsyncEnumerable<...>` (map: `KeyValuePair<string, TValue>`; deque: `T`)
+driven with `await foreach`. `direction` is `ScanDirection.Forward` (default) or `ScanDirection.Backward`.
+
+Iterators are attempt-scoped: they are valid only within the invocation that opened them. Exiting an `await foreach` loop
+early — via `break`, a thrown exception, or token cancellation — closes the underlying native cursor promptly through
+`IAsyncEnumerator<T>.DisposeAsync`, which the `await foreach` guarantees:
+
+```csharp
+await foreach (var (key, total) in context.State(totals).EnumerateAsync(ScanDirection.Backward, cancellationToken))
+{
+    if (total > 1000m)
+    {
+        break; // early exit disposes the enumerator and closes the cursor
+    }
+}
+```
+
+The cancellation token is observed at entry and between chunk pulls; an already-dispatched native pull is awaited to
+completion and its result discarded.
+
+### Commit and Rollback
+
+Every handle exposes `CommitAsync()` and `RollbackAsync()`, both returning `Task`. By default a handler's writes are
+buffered and settle atomically when the event completes; commit and rollback are the explicit mid-handler escape hatch.
+
+- `CommitAsync()` durably flushes this collection's buffered operations mid-handler. It is at-least-once: the flush
+  becomes visible even if the event later fails and is redelivered, and it establishes a floor that a later
+  `RollbackAsync()` cannot cross.
+- `RollbackAsync()` discards this collection's buffered uncommitted operations back to the last committed floor. It is
+  infallible.
+
+Both return a plain `Task` with no value. The erased core seam deliberately drops the store outcome, so there is **no**
+applied/no-op return — do not expect one.
+
+### Semantics
+
+- **Per-key single writer.** State is keyed by the message key; only one handler invocation writes a given key at a time.
+- **Transactional by default.** A handler's writes settle atomically with the event. A handler that throws leaves no
+  partial state (unless you opted a collection into `readUncommitted`, or flushed explicitly with `CommitAsync()`).
+- **At-least-once.** Redelivery re-runs the handler; reads reflect committed prior attempts. Keep handlers idempotent.
+- **Attempt-scoped and fenced.** The context, the handles it vends, and any iterators those handles open are valid only
+  within the handler invocation that created them; there is no post-handler read window. Fencing is owned entirely by
+  core — the client carries no fencing logic.
+- **Scan consistency is arm-dependent.** With keyset tracking active (the default), a map's membership snapshots at the
+  first pull; with tracking disabled (`keysetLimit` 0) or overflowed, iteration is a live ordered scan that can observe
+  the handler's own later mutations. A deque's index window snapshots at the first pull. Values always read live;
+  absent or expired entries are skipped; the first error terminates the iterator.
+- **Absence is `StateValue<T>`.** A real optional (`HasValue` / `Value` / `ValueOr`), because a CLR `T?` cannot tell an
+  absent value from a stored `default(T)` such as `0` or `false`.
+- **JSON `null` is not storable.** Writing it is rejected (transient) — use `ClearAsync` / `RemoveAsync` to delete.
+- **Two categories, never terminal.** Keyed-state errors are exactly `Permanent` or `Transient` and are never terminal.
+
+### Error Handling
+
+Keyed-state failures surface as structured exceptions that flow through the same handler-error bridge as everything else.
+The category is carried as the exception **type**, never parsed from the message:
+
+- `TransientStateException` (does not implement `IPermanentError`): the default. A temporary store read/write failure
+  (for example a timeout), **and every caller mistake** — a rejected `null`/unrepresentable write (surfaced as the more
+  specific `NullValueException`; use `ClearAsync` / `RemoveAsync` instead), a wrong item shape, an out-of-range deque
+  index, or an invalid scan direction. Caller mistakes are transient on purpose: a permanent error would commit the
+  offset and silently lose the message, so a data-dependent handler bug retries and stays visible (logs, metrics, lag)
+  until you fix it.
+- `PermanentStateException` (implements `IPermanentError`): reserved for failures a retry genuinely cannot resolve within
+  the running process — an unregistered or identity-mismatched collection, or a duplicate registration or invalid
+  name/TTL. A handler may also throw one explicitly to declare its own failure permanent.
+
+Because they subclass the existing error hierarchy, rethrowing them from a handler classifies the event exactly like a
+plain `PermanentException` or a plain transient error. Inspect `StateException.Category` (or catch the concrete type) to
+branch on the category.
+
+### AOT and Trimming
+
+Keyed-state (de)serialization mirrors the message payload path exactly: it resolves a `JsonTypeInfo<T>` from the
+client's `JsonSerializerOptions`. For trim or AOT builds, the source-generated `JsonSerializerContext` registered via
+`ConfigureJsonOptions` must include every state item type — the value/map/deque element types, and for message
+collections the `Message<TPayload>` payload types — exactly as it must include message payload types. See the
+[AOT / Trim-safe Usage](#aot--trim-safe-usage) section for how to register a source-generated context.
 
 ## OpenTelemetry Tracing
 
@@ -1195,6 +1441,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
 - `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
 - `ConfigureJsonOptions(Action<JsonSerializerOptions> configure)`: Override JSON serialization options (runs after defaults are applied)
+- `WithStateCollections(params StateDefinition[] definitions)`: Register keyed-state collections before subscribe
 
 **Build:**
 - `ProsodyClient Build()`: Validates configuration and creates a new ProsodyClient.
@@ -1251,6 +1498,10 @@ Represents the context of message processing:
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
 
+Keyed-state binding:
+
+- `State(definition)`: Binds a registered collection for the current attempt, returning `IValueState<T>` / `IMapState<TValue>` / `IDequeState<T>` (message definitions vend `*State<Message<TPayload>>`). Throws `PermanentStateException` for an unregistered name or a kind/payload identity mismatch. See the [Keyed State](#keyed-state-2) API reference below.
+
 Timer scheduling methods:
 
 - `Task ScheduleAsync(DateTimeOffset time)`: Schedules a timer to fire at the specified time
@@ -1281,6 +1532,65 @@ Enum representing the operating mode:
 - `Pipeline`: Default mode, retry indefinitely with defer and monopolization detection
 - `LowLatency`: Few retries then dead letter (requires FailureTopic)
 - `BestEffort`: Log failures, no retries
+
+### Keyed State
+
+Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
+
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
+- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
+- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageDequeDefinition<TPayload>`
+
+`IValueState<T>`:
+
+- `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
+- `Task SetAsync(T value, CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`IMapState<TValue>` (keys are `string`):
+
+- `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IReadOnlyList<string> keys, CancellationToken cancellationToken = default)`
+- `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
+- `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`IDequeState<T>`:
+
+- `Task PushBackAsync(T value, CancellationToken cancellationToken = default)`
+- `Task PushFrontAsync(T value, CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
+- `Task<long> CountAsync(CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`StateValue<T>` (a `readonly struct` optional read result):
+
+- `bool HasValue { get; }`: whether a value is present.
+- `T Value { get; }`: the stored value; throws `InvalidOperationException` when absent.
+- `T ValueOr(T fallback)`: the stored value when present, otherwise `fallback`.
+
+`ScanDirection`: `Forward` (ascending) or `Backward` (descending).
+
+Errors:
+
+- `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
+- `TransientStateException : StateException`: the default — a temporary store read/write failure, or any caller mistake (a `null`/unrepresentable write, item-shape mismatch, out-of-range index, invalid scan direction), classified transient so it retries rather than discarding the message.
+- `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
+- `PermanentStateException : StateException, IPermanentError`: reserved for failures a retry cannot resolve in-process (unregistered/identity-mismatched collection, duplicate/invalid name or TTL), or one a handler throws explicitly.
+- `StateErrorCategory`: `Permanent` or `Transient`.
 
 ## License
 
