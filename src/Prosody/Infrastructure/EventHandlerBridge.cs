@@ -245,6 +245,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly Func<Exception, bool> _isMessagePermanent;
     private readonly Func<Exception, bool> _isTimerPermanent;
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
+    private readonly JsonSerializerOptions _jsonOptions;
 
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
@@ -258,6 +259,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(jsonOptions);
 
         _userHandler = userHandler;
+        _jsonOptions = jsonOptions;
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
 
         var handlerType = userHandler.GetType();
@@ -287,6 +289,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(classifier);
 
         _userHandler = userHandler;
+        _jsonOptions = jsonOptions;
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
@@ -310,7 +313,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var bytes = message.Payload();
 
         return HandleMessageAsync(
-            new ProsodyContext(context),
+            new ProsodyContext(context, _jsonOptions),
             topic,
             key,
             partition,
@@ -318,13 +321,14 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             timestamp,
             bytes,
             context.OnCancel,
-            carrier
+            carrier,
+            message
         );
     }
 
     /// <inheritdoc/>
     public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
-        HandleTimerAsync(new ProsodyContext(context), new ProsodyTimer(timer), context.OnCancel, carrier);
+        HandleTimerAsync(new ProsodyContext(context, _jsonOptions), new ProsodyTimer(timer), context.OnCancel, carrier);
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
@@ -340,13 +344,14 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         DateTimeOffset timestamp,
         byte[] payload,
         Func<Task> onCancel,
-        Dictionary<string, string> carrier
+        Dictionary<string, string> carrier,
+        Native.Message? nativeMessage = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct =>
             {
                 var deserialized = JsonSerializer.Deserialize(payload.AsSpan(), _payloadTypeInfo);
-                var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized);
+                var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized, nativeMessage);
                 return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
             },
             _isMessagePermanent,

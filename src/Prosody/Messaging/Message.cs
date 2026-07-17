@@ -12,6 +12,17 @@ namespace Prosody.Messaging;
 public sealed class Message<T>
 {
     internal Message(string topic, string key, int partition, long offset, DateTimeOffset timestamp, T? payload)
+        : this(topic, key, partition, offset, timestamp, payload, nativeHandle: null) { }
+
+    internal Message(
+        string topic,
+        string key,
+        int partition,
+        long offset,
+        DateTimeOffset timestamp,
+        T? payload,
+        Native.Message? nativeHandle
+    )
     {
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);
@@ -22,7 +33,14 @@ public sealed class Message<T>
         Offset = offset;
         Timestamp = timestamp;
         Payload = payload;
+        NativeHandle = nativeHandle;
     }
+
+    /// <summary>
+    /// The native message handle, retained so a received message can be written back to a
+    /// message-flavoured keyed-state collection. Never exposed on the public surface.
+    /// </summary>
+    internal Native.Message? NativeHandle { get; }
 
     /// <summary>
     /// Gets the topic name.

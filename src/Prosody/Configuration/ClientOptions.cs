@@ -1,3 +1,5 @@
+using Prosody.State;
+
 namespace Prosody.Configuration;
 
 /// <summary>
@@ -425,6 +427,35 @@ public sealed class ClientOptions
     /// </remarks>
     public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonOptions { get; set; }
 
+    // ========================================================================
+    // Keyed-state options
+    // ========================================================================
+
+    /// <summary>
+    /// The keyed-state collections to register, declared with <see cref="StateDefinition"/> factories.
+    /// </summary>
+    /// <remarks>
+    /// Set programmatically only — not bindable from
+    /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Prefer
+    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Names must be non-empty and unique
+    /// within the set; each definition is validated at construction and again when the options are validated.
+    /// </remarks>
+    public StateDefinition[]? StateCollections { get; set; }
+
+    /// <summary>
+    /// Root directory for the local keyed-state cache. Each live client needs its own directory.
+    /// Falls back to <c>PROSODY_FJALL_CACHE_DIR</c>, then a per-client temporary directory.
+    /// Must not be an empty string when set.
+    /// </summary>
+    public string? StateCacheDir { get; set; }
+
+    /// <summary>
+    /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
+    /// TTL must strictly exceed this. Falls back to <c>PROSODY_KEYED_STATE_RECOVERY_DELAY</c>, then to
+    /// 30 seconds. Must be a whole number of seconds of at least one when set.
+    /// </summary>
+    public TimeSpan? StateRecoveryDelay { get; set; }
+
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
@@ -452,6 +483,7 @@ public sealed class ClientOptions
         clone.SubscribedTopics = CloneArray(clone.SubscribedTopics);
         clone.AllowedEvents = CloneArray(clone.AllowedEvents);
         clone.CassandraNodes = CloneArray(clone.CassandraNodes);
+        clone.StateCollections = CloneArray(clone.StateCollections);
         return clone;
     }
 
@@ -532,6 +564,11 @@ public sealed class ClientOptions
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
             MessageSpans: ToNativeSpanRelation(MessageSpans),
-            TimerSpans: ToNativeSpanRelation(TimerSpans)
+            TimerSpans: ToNativeSpanRelation(TimerSpans),
+            StateCollections: StateCollections is null
+                ? null
+                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
+            StateCacheDir: StateCacheDir,
+            StateRecoveryDelay: StateRecoveryDelay
         );
 }
