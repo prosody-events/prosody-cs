@@ -22,6 +22,17 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
     [Fact(Timeout = 60_000)]
     public async Task EarlyBreak_LeavesCollectionUsable()
     {
+        // End-to-end usability smoke: breaking out of a real scan disposes the enumerator, which
+        // closes the native cursor, and a follow-up op on the same collection still succeeds. Whether
+        // the close ran *exactly once* is asserted against the fake-cursor spy in the unit suite
+        // (StateScanSequenceTests.EarlyBreak_ClosesExactlyOnce): the core cursor never holds a
+        // per-collection gate across a yield, so a silently-skipped native close has no effect a
+        // follow-up op can observe here — only the spy's close-count catches that regression.
+        //
+        // FALSIFICATION TARGET: make CloseOrThrowAsync in StateScanSequence.DisposeAsync throw (e.g.
+        // wrap _cursor.Close() to `throw new Native.FfiException.TransientState("x")`). The dispose
+        // that runs at the break surfaces a StateException out of the await foreach, the handler's
+        // catch sets obs.Error, and Assert.Null(obs.Error) fails (RED).
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var observations = new MessageChannel<IteratorObservation>();
 
@@ -71,6 +82,16 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
     [Fact(Timeout = 60_000)]
     public async Task CancellationDuringScan_LeavesCollectionUsable()
     {
+        // End-to-end usability smoke: cancelling mid-scan unwinds the await foreach (disposing the
+        // enumerator, which closes the native cursor) and a follow-up op still succeeds. As with
+        // EarlyBreak_LeavesCollectionUsable, close-exactly-once is a spy assertion in the unit suite
+        // (StateScanSequenceTests.CancellationBeforeMoveNext_ClosesOnDispose_ExactlyOnce), because a
+        // skipped native close has no follow-up-observable effect against the real cursor.
+        //
+        // FALSIFICATION TARGET: make CloseOrThrowAsync in StateScanSequence.DisposeAsync throw. The
+        // dispose in the await foreach's finally replaces the in-flight OperationCanceledException
+        // with a StateException, so obs.Error is set (and obs.Cancelled stays false) and the
+        // assertions fail (RED).
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var observations = new MessageChannel<IteratorObservation>();
 

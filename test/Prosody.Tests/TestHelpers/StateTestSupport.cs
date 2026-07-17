@@ -22,11 +22,18 @@ internal static class StateTestSupport
     /// <summary>A JSON single-value collection of a rich object payload (unicode/number/bool/array/nested null).</summary>
     public static readonly ValueStateDefinition<RichState> Rich = StateDefinition.Value<RichState>("rich");
 
-    /// <summary>A JSON single-value collection of a bare scalar (passthrough-codec pin).</summary>
-    public static readonly ValueStateDefinition<int> ScalarInt = StateDefinition.Value<int>("scalarInt");
+    /// <summary>
+    /// A deque collection of a bare scalar (scalar/array round-trip pin). Read back by a fresh client
+    /// after a consumer restart so the item travels the full serialize/durable/recover/deserialize
+    /// path rather than being served from an in-session materialized cell.
+    /// </summary>
+    public static readonly DequeStateDefinition<int> ScalarDeque = StateDefinition.Deque<int>("scalarDeque");
 
-    /// <summary>A JSON single-value collection of a bare array (passthrough-codec pin).</summary>
-    public static readonly ValueStateDefinition<int[]> ScalarArray = StateDefinition.Value<int[]>("scalarArr");
+    /// <summary>
+    /// A deque collection of a bare array (scalar/array round-trip pin). Exercised the same way as
+    /// <see cref="ScalarDeque"/>.
+    /// </summary>
+    public static readonly DequeStateDefinition<int[]> ArrayDeque = StateDefinition.Deque<int[]>("arrayDeque");
 
     /// <summary>A string-keyed ordered-map collection of an integer value.</summary>
     public static readonly MapStateDefinition<int> Totals = StateDefinition.Map<int>("totals", keysetLimit: 256);
@@ -57,8 +64,8 @@ internal static class StateTestSupport
     [
         Cart,
         Rich,
-        ScalarInt,
-        ScalarArray,
+        ScalarDeque,
+        ArrayDeque,
         Totals,
         DecMap,
         Backlog,

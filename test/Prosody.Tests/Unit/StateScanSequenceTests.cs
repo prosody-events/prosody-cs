@@ -60,6 +60,25 @@ public sealed class StateScanSequenceTests
     }
 
     [Fact]
+    public async Task CancellationBeforeMoveNext_ClosesOnDispose_ExactlyOnce()
+    {
+        // The cancellation clause of appendix-1 item 7: a cancelled scan closes the cursor exactly
+        // once. MoveNextAsync observes the token and throws OperationCanceledException without
+        // closing; the close happens when the enumerator is disposed (as the await foreach's finally
+        // does). A native-close skip in DisposeAsync drops CloseCalls to 0 and fails this.
+        using var cts = new CancellationTokenSource();
+        var cursor = new FakeStateCursor(Chunk("a", "b"));
+        var sequence = new StateScanSequence<string>(cursor, Decode, cts.Token);
+        var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
+
+        await cts.CancelAsync();
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync());
+        await enumerator.DisposeAsync();
+
+        Assert.Equal(1, cursor.CloseCalls);
+    }
+
+    [Fact]
     public async Task ReadyChunk_FlattensWithoutPerItemPulls()
     {
         var cursor = new FakeStateCursor(Chunk("a", "b", "c"));

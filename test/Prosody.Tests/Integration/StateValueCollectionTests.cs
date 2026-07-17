@@ -6,8 +6,10 @@ namespace Prosody.Tests.Integration;
 
 /// <summary>
 /// Integration tests for the value keyed-state collection against real Kafka and Cassandra
-/// (appendix-1 item 1), plus the passthrough-codec scalar/array pins and the source-generated JSON
-/// path. Two events on the same key exercise write-then-read across handler invocations.
+/// (appendix-1 item 1), plus the source-generated JSON path. Two events on the same key exercise
+/// write-then-read across handler invocations. The passthrough-codec scalar/array pins live in
+/// <see cref="StateDequeCollectionTests"/> because they must read through a durable scan, not a
+/// cached point read, to actually exercise the codec's decode.
 /// </summary>
 public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
@@ -202,94 +204,6 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
             () => Assert.Equal(written.Items, got.Items),
             () => Assert.Null(got.Nested)
         );
-    }
-
-    [Fact(Timeout = 60_000)]
-    public async Task Value_TopLevelScalar_RoundTrips()
-    {
-        await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
-        var readBack = new MessageChannel<int>();
-
-        var handler = new TestProsodyHandler<TestPayload>(
-            onMessage: async (context, msg, ct) =>
-            {
-                var scalar = context.State(StateTestSupport.ScalarInt);
-                if (msg.Payload?.Sequence == 1)
-                {
-                    await scalar.SetAsync(42, ct);
-                    return;
-                }
-
-                var got = await scalar.GetAsync(ct);
-                readBack.Send(got.ValueOr(-1));
-            }
-        );
-
-        await ctx.Client.SubscribeAsync(handler);
-        var key = TopicGenerator.GenerateKey();
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 1 },
-            TestContext.Current.CancellationToken
-        );
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 2 },
-            TestContext.Current.CancellationToken
-        );
-
-        var got = await readBack.ReceiveAsync(
-            IntegrationTestFixture.DefaultTimeout,
-            TestContext.Current.CancellationToken
-        );
-
-        Assert.Equal(42, got);
-    }
-
-    [Fact(Timeout = 60_000)]
-    public async Task Value_TopLevelArray_RoundTrips()
-    {
-        await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
-        var readBack = new MessageChannel<int[]>();
-
-        var handler = new TestProsodyHandler<TestPayload>(
-            onMessage: async (context, msg, ct) =>
-            {
-                var array = context.State(StateTestSupport.ScalarArray);
-                if (msg.Payload?.Sequence == 1)
-                {
-                    await array.SetAsync([1, 2, 3], ct);
-                    return;
-                }
-
-                var got = await array.GetAsync(ct);
-                readBack.Send(got.ValueOr([]));
-            }
-        );
-
-        await ctx.Client.SubscribeAsync(handler);
-        var key = TopicGenerator.GenerateKey();
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 1 },
-            TestContext.Current.CancellationToken
-        );
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 2 },
-            TestContext.Current.CancellationToken
-        );
-
-        var got = await readBack.ReceiveAsync(
-            IntegrationTestFixture.DefaultTimeout,
-            TestContext.Current.CancellationToken
-        );
-
-        Assert.Equal([1, 2, 3], got);
     }
 
     [Fact(Timeout = 60_000)]
