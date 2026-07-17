@@ -10,11 +10,15 @@
 //! - Builder fields are only set when the corresponding option is `Some`
 //! - `None` values allow builder defaults and environment variable fallbacks to
 //!   apply
-//! - All functions are infallible; validation happens when builders are
-//!   finalized
+//! - Most functions are infallible; validation happens when builders are
+//!   finalized. The exceptions finalize a nested sub-configuration eagerly:
+//!   [`build_consumer_config`] builds the Kafka loader tuning and
+//!   [`build_dedup_config`] converts the deduplication cache capacity, both of
+//!   which can reject invalid caller input.
 
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::consumer::ConsumerConfigurationBuilder;
+use prosody::consumer::KeyedStateConfiguration;
 use prosody::consumer::SpanRelation as ProsodySpanRelation;
 use prosody::consumer::middleware::deduplication::DeduplicationConfigurationBuilder;
 use prosody::consumer::middleware::defer::DeferConfigurationBuilder;
@@ -25,12 +29,15 @@ use prosody::consumer::middleware::timeout::TimeoutConfigurationBuilder;
 use prosody::consumer::middleware::topic::FailureTopicConfigurationBuilder;
 use prosody::high_level::ConsumerBuilders;
 use prosody::high_level::mode::Mode;
+use prosody::loader::KafkaLoaderConfiguration;
 use prosody::producer::ProducerConfigurationBuilder;
 use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
-    TelemetryEmitterConfigurationBuilderError,
 };
+use std::num::NonZeroUsize;
+use validator::{ValidationError, ValidationErrors};
 
+use crate::error::FfiError;
 use crate::types::{ClientMode, ClientOptions, SpanRelation};
 
 /// Creates a producer configuration builder from client options.
@@ -71,8 +78,15 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 /// - `None`: Use builder default (typically enabled with auto-assigned port)
 /// - `Some(0)`: Explicitly disable the probe endpoint
 /// - `Some(1..=65535)`: Use the specified port number
-#[must_use]
-pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBuilder {
+///
+/// # Errors
+///
+/// Returns [`FfiError::LoaderConfig`] if the deferred-retry loader tuning
+/// derived from `defer_cache_size`, `defer_seek_timeout`, or
+/// `defer_discard_threshold` fails validation.
+pub fn build_consumer_config(
+    options: &ClientOptions,
+) -> Result<ConsumerConfigurationBuilder, FfiError> {
     let mut builder = ConsumerConfigurationBuilder::default();
 
     if let Some(servers) = &options.bootstrap_servers {
@@ -141,7 +155,31 @@ pub fn build_consumer_config(options: &ClientOptions) -> ConsumerConfigurationBu
         });
     }
 
-    builder
+    // The deferred-retry message loader tuning is consumer-wide in the current
+    // core API. Only build and attach it when the caller supplied at least one
+    // loader knob, so the default configuration keeps environment fallbacks.
+    if options.defer_cache_size.is_some()
+        || options.defer_seek_timeout.is_some()
+        || options.defer_discard_threshold.is_some()
+    {
+        let mut loader = KafkaLoaderConfiguration::builder();
+
+        if let Some(cache_size) = options.defer_cache_size {
+            loader.cache_size(cache_size as usize);
+        }
+
+        if let Some(seek_timeout) = options.defer_seek_timeout {
+            loader.seek_timeout(seek_timeout);
+        }
+
+        if let Some(discard_threshold) = options.defer_discard_threshold {
+            loader.discard_threshold(i64::from(discard_threshold));
+        }
+
+        builder.loader(loader.build()?);
+    }
+
+    Ok(builder)
 }
 
 /// Creates a retry configuration builder from client options.
@@ -268,20 +306,8 @@ pub fn build_defer_config(options: &ClientOptions) -> DeferConfigurationBuilder 
         builder.failure_window(failure_window);
     }
 
-    if let Some(cache_size) = options.defer_cache_size {
-        builder.cache_size(cache_size as usize);
-    }
-
     if let Some(store_cache_size) = options.defer_store_cache_size {
         builder.store_cache_size(store_cache_size as usize);
-    }
-
-    if let Some(seek_timeout) = options.defer_seek_timeout {
-        builder.seek_timeout(seek_timeout);
-    }
-
-    if let Some(discard_threshold) = options.defer_discard_threshold {
-        builder.discard_threshold(i64::from(discard_threshold));
     }
 
     builder
@@ -306,12 +332,27 @@ pub fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurationBuil
 ///
 /// Configures the deduplication middleware including the global shared cache
 /// capacity, version string for cache-busting, and Cassandra TTL.
-#[must_use]
-pub fn build_dedup_config(options: &ClientOptions) -> DeduplicationConfigurationBuilder {
+///
+/// # Errors
+///
+/// Returns [`FfiError::Validation`] if `idempotence_cache_size` is set to zero;
+/// the current core API models the deduplication cache capacity as a non-zero
+/// value, so a zero capacity is rejected rather than silently ignored.
+pub fn build_dedup_config(
+    options: &ClientOptions,
+) -> Result<DeduplicationConfigurationBuilder, FfiError> {
     let mut builder = DeduplicationConfigurationBuilder::default();
 
     if let Some(cache_capacity) = options.idempotence_cache_size {
-        builder.cache_capacity(cache_capacity as usize);
+        let cache_capacity = NonZeroUsize::new(cache_capacity as usize).ok_or_else(|| {
+            let mut errors = ValidationErrors::new();
+            errors.add(
+                "idempotence_cache_size",
+                ValidationError::new("idempotence_cache_size_must_be_non_zero"),
+            );
+            FfiError::Validation(errors)
+        })?;
+        builder.cache_capacity(cache_capacity);
     }
 
     if let Some(version) = &options.idempotence_version {
@@ -322,7 +363,7 @@ pub fn build_dedup_config(options: &ClientOptions) -> DeduplicationConfiguration
         builder.ttl(ttl);
     }
 
-    builder
+    Ok(builder)
 }
 
 /// Creates a telemetry emitter configuration builder from client options.
@@ -354,21 +395,22 @@ pub fn build_telemetry_emitter_config(
 ///
 /// # Errors
 ///
-/// Returns [`TelemetryEmitterConfigurationBuilderError`] if the telemetry
-/// emitter configuration cannot be built, which occurs when an environment
-/// variable (e.g. `PROSODY_TELEMETRY_ENABLED`) contains an invalid value.
-pub fn build_consumer_builders(
-    options: &ClientOptions,
-) -> Result<ConsumerBuilders, TelemetryEmitterConfigurationBuilderError> {
+/// Returns an [`FfiError`] if any eagerly-finalized configuration fails
+/// validation: the Kafka loader tuning ([`FfiError::LoaderConfig`]), the
+/// deduplication cache capacity ([`FfiError::Validation`]), or the telemetry
+/// emitter configuration ([`FfiError::TelemetryConfig`], e.g. when an
+/// environment variable such as `PROSODY_TELEMETRY_ENABLED` is invalid).
+pub fn build_consumer_builders(options: &ClientOptions) -> Result<ConsumerBuilders, FfiError> {
     Ok(ConsumerBuilders {
-        consumer: build_consumer_config(options),
+        consumer: build_consumer_config(options)?,
         retry: build_retry_config(options),
         failure_topic: build_failure_topic_config(options),
         scheduler: build_scheduler_config(options),
         monopolization: build_monopolization_config(options),
         defer: build_defer_config(options),
         timeout: build_timeout_config(options),
-        dedup: build_dedup_config(options),
+        dedup: build_dedup_config(options)?,
+        keyed_state: KeyedStateConfiguration::default(),
         emitter: build_telemetry_emitter_config(options).build()?,
     })
 }

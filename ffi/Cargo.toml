@@ -29,6 +29,7 @@ tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 uniffi = { workspace = true, features = ["tokio"] }
+validator.workspace = true
 
 [dev-dependencies]
 color-eyre.workspace = true

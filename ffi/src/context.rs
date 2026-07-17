@@ -15,6 +15,7 @@ use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
@@ -31,7 +32,7 @@ use crate::error::FfiError;
 /// context propagation, allowing traces to span across service boundaries.
 #[derive(uniffi::Object)]
 pub struct Context {
-    inner: BoxEventContext,
+    inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -42,7 +43,10 @@ pub struct Context {
 impl Context {
     /// Creates a new context wrapping the given event context and propagator.
     #[must_use]
-    pub fn new(inner: BoxEventContext, propagator: Arc<TextMapCompositePropagator>) -> Self {
+    pub fn new(
+        inner: BoxEventContext<BinaryPayload>,
+        propagator: Arc<TextMapCompositePropagator>,
+    ) -> Self {
         Self { inner, propagator }
     }
 }

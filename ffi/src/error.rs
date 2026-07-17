@@ -17,6 +17,7 @@ use prosody::codec::{BinaryCodecError, JsonExtractError};
 use prosody::consumer::event_context::BoxEventContextError;
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
+use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
@@ -70,6 +71,14 @@ pub enum FfiError {
     /// is not a valid boolean).
     #[error("telemetry configuration build failed: {0:#}")]
     TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
+
+    /// A Kafka message loader configuration could not be finalized.
+    ///
+    /// Occurs when the deferred-retry loader tuning derived from
+    /// `defer_cache_size`, `defer_seek_timeout`, or `defer_discard_threshold`
+    /// fails validation (e.g. a zero cache size).
+    #[error("loader configuration build failed: {0:#}")]
+    LoaderConfig(#[from] KafkaLoaderConfigError),
 
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
