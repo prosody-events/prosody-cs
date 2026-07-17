@@ -31,6 +31,7 @@ public sealed class StateTransactionTests(IntegrationTestFixture fixture) : Inte
         public bool BeforeKeptHasValue { get; init; }
         public int BeforeKept { get; init; }
         public bool BeforeDroppedHasValue { get; init; }
+        public int BeforeDropped { get; init; }
         public bool AfterKeptHasValue { get; init; }
         public int AfterKept { get; init; }
         public bool AfterDroppedHasValue { get; init; }
@@ -173,6 +174,7 @@ public sealed class StateTransactionTests(IntegrationTestFixture fixture) : Inte
                             BeforeKeptHasValue = beforeKept.HasValue,
                             BeforeKept = beforeKept.ValueOr(-1),
                             BeforeDroppedHasValue = beforeDropped.HasValue,
+                            BeforeDropped = beforeDropped.ValueOr(-1),
                             AfterKeptHasValue = afterKept.HasValue,
                             AfterKept = afterKept.ValueOr(-1),
                             AfterDroppedHasValue = afterDropped.HasValue,
@@ -203,6 +205,7 @@ public sealed class StateTransactionTests(IntegrationTestFixture fixture) : Inte
             () => Assert.Null(obs.Error),
             () => Assert.Equal(2, obs.BeforeKept),
             () => Assert.True(obs.BeforeDroppedHasValue),
+            () => Assert.Equal(9, obs.BeforeDropped),
             () => Assert.Equal(1, obs.AfterKept),
             () => Assert.False(obs.AfterDroppedHasValue)
         );

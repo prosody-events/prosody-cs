@@ -166,20 +166,7 @@ public sealed class StateMapCollectionTests(IntegrationTestFixture fixture) : In
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
-        var key = TopicGenerator.GenerateKey();
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 1 },
-            TestContext.Current.CancellationToken
-        );
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 2 },
-            TestContext.Current.CancellationToken
-        );
+        await RunSeededAsync(ctx, handler);
 
         var obs = await observations.ReceiveAsync(
             IntegrationTestFixture.DefaultTimeout,
@@ -223,20 +210,7 @@ public sealed class StateMapCollectionTests(IntegrationTestFixture fixture) : In
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
-        var key = TopicGenerator.GenerateKey();
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 1 },
-            TestContext.Current.CancellationToken
-        );
-        await ctx.Client.SendAsync(
-            ctx.Topic,
-            key,
-            new TestPayload { Sequence = 2 },
-            TestContext.Current.CancellationToken
-        );
+        await RunSeededAsync(ctx, handler);
 
         var obs = await observations.ReceiveAsync(
             IntegrationTestFixture.DefaultTimeout,

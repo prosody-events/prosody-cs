@@ -232,6 +232,51 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
         );
     }
 
+    [Fact(Timeout = 60_000)]
+    public async Task Deque_GetNegativeIndex_ThrowsTransient()
+    {
+        // A negative index is a caller mistake: it must classify TRANSIENT (recovered from the
+        // exception TYPE, not the message) so a data-dependent handler bug retries rather than
+        // committing the offset and silently losing the message. Asserting the exact "transient"
+        // discriminant also pins that it is NOT misclassified permanent.
+        await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
+        var observations = new MessageChannel<string>();
+
+        var handler = new TestProsodyHandler<TestPayload>(
+            onMessage: async (context, msg, ct) =>
+            {
+                var deque = context.State(StateTestSupport.Backlog);
+                if (msg.Payload?.Sequence == 1)
+                {
+                    await deque.PushBackAsync("a", ct);
+                    return;
+                }
+
+                try
+                {
+                    await deque.GetAsync(-1, ct);
+                    observations.Send("no-throw");
+                }
+                catch (PermanentStateException)
+                {
+                    observations.Send("permanent");
+                }
+                catch (TransientStateException)
+                {
+                    observations.Send("transient");
+                }
+            }
+        );
+
+        await SeedAndSendAsync(ctx, handler);
+        var obs = await observations.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal("transient", obs);
+    }
+
     /// <summary>
     /// Drives the write half of the two-phase cold-recovery codec pin: run 1 (<paramref name="write"/>)
     /// pushes and commits items on <paramref name="key"/>, then the writer unsubscribes; a fresh
@@ -385,7 +430,14 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
                 IntegrationTestFixture.DefaultTimeout,
                 TestContext.Current.CancellationToken
             );
-            Assert.Multiple(() => Assert.Equal([1, 2, 3], got[0]), () => Assert.Equal([4, 5], got[1]));
+            Assert.Equal(
+                (int[][])
+                    [
+                        [1, 2, 3],
+                        [4, 5],
+                    ],
+                got
+            );
         }
         finally
         {

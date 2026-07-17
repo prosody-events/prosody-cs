@@ -188,7 +188,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var originals = new MessageChannel<MsgFields>();
         var getBacks = new MessageChannel<MsgFields>();
-        var scanBacks = new MessageChannel<MsgFields>();
+        var scanBacks = new MessageChannel<List<MsgFields>>();
 
         var handler = new TestProsodyHandler<StateMessagePayload>(
             onMessage: async (context, msg, ct) =>
@@ -208,10 +208,13 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
 
                 var got = await log.GetAsync(0, ct);
                 getBacks.Send(MsgFields.From(got.Value));
+                var scanned = new List<MsgFields>();
                 await foreach (var element in log.EnumerateAsync(ScanDirection.Forward, ct))
                 {
-                    scanBacks.Send(MsgFields.From(element));
+                    scanned.Add(MsgFields.From(element));
                 }
+
+                scanBacks.Send(scanned);
             }
         );
 
@@ -231,7 +234,8 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
             TestContext.Current.CancellationToken
         );
 
+        var onlyScanned = Assert.Single(scanBack);
         AssertDistinguishableCoordinates(original);
-        Assert.Multiple(() => AssertSameMessage(original, getBack), () => AssertSameMessage(original, scanBack));
+        Assert.Multiple(() => AssertSameMessage(original, getBack), () => AssertSameMessage(original, onlyScanned));
     }
 }

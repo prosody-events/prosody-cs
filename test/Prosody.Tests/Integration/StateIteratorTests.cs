@@ -158,6 +158,10 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
     [Fact(Timeout = 60_000)]
     public async Task PostHandlerEnumeration_Terminated()
     {
+        // FALSIFICATION TARGET: a MoveNextAsync leaked past the opening attempt must throw
+        // TransientStateException. Make StateScanSequence.MoveNextAsync swallow the terminated-cursor
+        // error (or have the cursor keep yielding past teardown) and the
+        // Assert.ThrowsAsync<TransientStateException> at the end goes green-when-it-should-be-red.
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         IAsyncEnumerator<KeyValuePair<string, int>>? leaked = null;
         var events = new MessageChannel<string>();
