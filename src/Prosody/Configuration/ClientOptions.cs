@@ -108,7 +108,8 @@ public sealed class ClientOptions
     public uint? MaxUncommitted { get; set; }
 
     /// <summary>
-    /// Global shared cache capacity across all partitions for deduplication. Set to 0 to disable.
+    /// Global shared cache capacity across all partitions for deduplication. Deduplication is always
+    /// active; this value must be greater than 0. A value of 0 is rejected when the client is built.
     /// Falls back to <c>PROSODY_IDEMPOTENCE_CACHE_SIZE</c> environment variable.
     /// Default: 8192.
     /// </summary>

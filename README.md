@@ -272,7 +272,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
-| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for deduplication. Set to 0 to disable the entire deduplication middleware (both in-memory and persistent tiers) | 8192 |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for deduplicating messages. Must be greater than 0 (a value of 0 is rejected) | 8192 |
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
@@ -304,10 +304,10 @@ When a handler fails, retry with exponential backoff:
 | `DeferMaxDelay` / `PROSODY_DEFER_MAX_DELAY` | Never wait longer than this | 24h |
 | `DeferFailureThreshold` / `PROSODY_DEFER_FAILURE_THRESHOLD` | Disable deferral when failure rate exceeds this | 0.9 |
 | `DeferFailureWindow` / `PROSODY_DEFER_FAILURE_WINDOW` | Measure failure rate over this time window | 5m |
-| `DeferCacheSize` / `PROSODY_DEFER_CACHE_SIZE` | Track this many deferred keys in memory | 1024 |
+| `DeferCacheSize` / `PROSODY_LOADER_CACHE_SIZE` | Track this many deferred keys in memory | 1024 |
 | `DeferStoreCacheSize` / `PROSODY_DEFER_STORE_CACHE_SIZE` | Maximum deferred store cache entries per Cassandra defer store | 8192 |
-| `DeferSeekTimeout` / `PROSODY_DEFER_SEEK_TIMEOUT` | Timeout when loading deferred messages | 30s |
-| `DeferDiscardThreshold` / `PROSODY_DEFER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100 |
+| `DeferSeekTimeout` / `PROSODY_LOADER_SEEK_TIMEOUT` | Timeout when loading deferred messages | 30s |
+| `DeferDiscardThreshold` / `PROSODY_LOADER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100 |
 
 ### Monopolization Detection (Pipeline Mode)
 
@@ -541,20 +541,15 @@ Deduplication uses a global in-memory cache shared across all partitions, which 
 the same process. For cross-restart deduplication, a Cassandra-backed persistent store is used when Cassandra is
 configured.
 
-The entire deduplication middleware (both in-memory and persistent tiers) can be disabled by setting `IdempotenceCacheSize = 0`:
+Deduplication is always active. `IdempotenceCacheSize` must be greater than `0`; a value of `0` (via either the
+option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The cache capacity can be tuned:
 
 ```csharp
 await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .Configure(options => options.IdempotenceCacheSize = 0)       // Disable deduplication
+    .Configure(options => options.IdempotenceCacheSize = 16384)   // Tune the shared cache capacity
     .Build();
-```
-
-Or via environment variable:
-
-```bash
-PROSODY_IDEMPOTENCE_CACHE_SIZE=0
 ```
 
 To invalidate all previously recorded dedup entries and force reprocessing, change the version string:
