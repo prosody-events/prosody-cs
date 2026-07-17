@@ -20,12 +20,20 @@ internal sealed class FakeValueStateHandle : Native.IValueStateHandle
     /// <summary>The item returned by <c>Get</c>.</summary>
     public Native.StateItem? GetResult { get; set; }
 
-    public Task<Native.StateItem?> Get(Dictionary<string, string> carrier) => Task.FromResult(GetResult);
+    /// <summary>The trace-propagation carrier of the most recent operation.</summary>
+    public Dictionary<string, string>? LastCarrier { get; private set; }
+
+    public Task<Native.StateItem?> Get(Dictionary<string, string> carrier)
+    {
+        LastCarrier = carrier;
+        return Task.FromResult(GetResult);
+    }
 
     public Task SetJson(byte[] bytes, Dictionary<string, string> carrier)
     {
         SetJsonCalls++;
         LastSetBytes = bytes;
+        LastCarrier = carrier;
         return Task.CompletedTask;
     }
 

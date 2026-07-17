@@ -42,9 +42,13 @@ internal sealed class FakeStateCursor : Native.IStateCursor
     /// <summary>When set, <c>Close</c> invokes this (for example to fault the close).</summary>
     public Func<Task>? CloseBehavior { get; set; }
 
+    /// <summary>The trace-propagation carrier of the most recent pull.</summary>
+    public Dictionary<string, string>? LastCarrier { get; private set; }
+
     public async Task<Native.StateScanItem[]?> NextChunk(Dictionary<string, string> carrier)
     {
         NextChunkCalls++;
+        LastCarrier = carrier;
         var active = Interlocked.Increment(ref _activePulls);
         lock (_maxLock)
         {
