@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/prosody-events/prosody-cs/compare/v0.3.1...v0.4.0)
+
+
+### Features
+
+* **state:** add `IMapState.ContainsKeyAsync`, a cheap key-presence check that reads the cell through this event's writes without decoding the value or running the message resolver.
+* **state:** add `IMapState.EnumerateKeysAsync`, key-only iteration that skips every value decode and the message resolver (a message-backed map enumerates keys with zero Kafka fetches).
+* **state:** add `IDequeState.PeekFrontAsync` / `PeekBackAsync`, endpoint reads without a length round trip and safe on an empty deque.
+* **state:** add `IDequeState.ClearAsync`, matching the clear already available on values and maps.
+* **state:** add an optional `capacity` to `StateDefinition.Deque` / `MessageDeque`, a positive bound enforced lazily on push. Runtime-only — never persisted, not part of identity, and changeable across deploys.
+
+These are additive to the public `IMapState<T>` / `IDequeState<T>` interfaces. Those interfaces are not external-implementation targets (handles are vended only by `context.State`), so a minor bump is the correct signal.
+
 ## [0.3.1](https://github.com/prosody-events/prosody-cs/compare/v0.3.0...v0.3.1) (2026-06-30)
 
 
