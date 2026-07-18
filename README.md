@@ -1631,10 +1631,10 @@ Definition factories (each returns an immutable, validated record used both in `
 
 - `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `ValueStateDefinition<T>`
 - `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MapStateDefinition<TValue>`
-- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `DequeStateDefinition<T>`
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
-- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageDequeDefinition<TPayload>`
+- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
 The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
 a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
@@ -1651,10 +1651,12 @@ a compile-time error. Message collections leave the payload nullable — their i
 
 - `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
 - `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
+- `Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)`
 - `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
 - `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateKeysAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
 - `Task CommitAsync(CancellationToken cancellationToken = default)`
 - `Task RollbackAsync(CancellationToken cancellationToken = default)`
 
@@ -1664,6 +1666,8 @@ a compile-time error. Message collections leave the payload nullable — their i
 - `Task PushFrontAsync(T value, CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
 - `Task<int> CountAsync(CancellationToken cancellationToken = default)`
 - `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
