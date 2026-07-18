@@ -115,6 +115,17 @@ pub enum StateScanItem {
         /// The resolved Kafka message.
         message: Arc<Message>,
     },
+    /// A map entry key decoded without reading or resolving its value.
+    ///
+    /// Named `MapKey` rather than `Key`: a uniffi variant `Key` carrying a
+    /// field `key` generates a nested C# type `StateScanItem.Key` with a
+    /// property `Key`, which is CS0542 (a member may not share its enclosing
+    /// type's name). `MapKey` sidesteps the collision, exactly as
+    /// [`StateItem::MessageItem`] avoids a bare `Message`.
+    MapKey {
+        /// The entry's key.
+        key: String,
+    },
 }
 
 /// A carrier map consumed by value while extracting its OpenTelemetry context.
@@ -167,6 +178,8 @@ enum CursorVariant {
     DequeMessage(BoxStateCursor<ConsumerMessage<BinaryPayload>>),
     /// A map message scan yielding `(key, message)` entries.
     MapMessage(BoxStateCursor<(String, ConsumerMessage<BinaryPayload>)>),
+    /// A map key-only scan yielding decoded keys, payload-agnostic.
+    MapKeys(BoxStateCursor<String>),
 }
 
 /// Builds a transient state error for a caller-caused condition the glue
@@ -419,6 +432,60 @@ impl MapStateHandle {
                 })
                 .map_err(FfiError::from),
         }
+    }
+
+    /// Reads whether a stored cell exists for `key`, through this event's dirty
+    /// overlay, without decoding the value or running the resolver.
+    ///
+    /// Presence is payload-agnostic, so both variants delegate to the same
+    /// erased primitive: a message-backed map can answer `true` even when the
+    /// referenced Kafka message can no longer be fetched. Cheaper than a full
+    /// read, but not free — a cache miss still touches the store.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error carrying the erased category if the read fails.
+    pub async fn contains_key(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        match &self.state {
+            MapStateVariant::Json(handle) => handle.contains_key(key).with_context(context).await,
+            MapStateVariant::Message(handle) => {
+                handle.contains_key(key).with_context(context).await
+            }
+        }
+        .map_err(FfiError::from)
+    }
+
+    /// Opens a demand-driven cursor over the live entry keys in key order,
+    /// skipping every value decode and the resolver.
+    ///
+    /// Synchronous — it performs no I/O. Mirrors [`Self::scan`], but yields
+    /// bare keys: both variants build the same payload-agnostic key cursor,
+    /// so a message-backed map enumerates keys with zero Kafka fetches. The
+    /// extracted C# context is active while core constructs its stream
+    /// span.
+    #[must_use]
+    pub fn scan_keys(
+        &self,
+        direction: ScanDirection,
+        carrier: HashMap<String, String>,
+    ) -> Arc<StateCursor> {
+        let context = OwnedCarrier(carrier).into_context(&self.propagator);
+        let _guard = context.attach();
+        let cursor = match &self.state {
+            MapStateVariant::Json(handle) => CursorVariant::MapKeys(handle.keys(direction.into())),
+            MapStateVariant::Message(handle) => {
+                CursorVariant::MapKeys(handle.keys(direction.into()))
+            }
+        };
+        Arc::new(StateCursor {
+            cursor,
+            propagator: Arc::clone(&self.propagator),
+        })
     }
 
     /// Inserts or overwrites `key` with a JSON document.
@@ -809,6 +876,66 @@ impl DequeStateHandle {
         }
     }
 
+    /// Reads the front element without a length round trip.
+    ///
+    /// An endpoint-slot read — exactly `get(0)` minus the length read. Under a
+    /// TTL an expired front slot yields `None` even when live interior elements
+    /// remain; a peek never searches inward.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error carrying the erased category if the read fails.
+    pub async fn peek_front(
+        &self,
+        carrier: HashMap<String, String>,
+    ) -> Result<Option<StateItem>, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        match &self.state {
+            DequeStateVariant::Json(handle) => handle
+                .peek_front()
+                .with_context(context)
+                .await
+                .map(|item| item.map(json_item))
+                .map_err(FfiError::from),
+            DequeStateVariant::Message(handle) => handle
+                .peek_front()
+                .with_context(context)
+                .await
+                .map(|item| item.map(message_item))
+                .map_err(FfiError::from),
+        }
+    }
+
+    /// Reads the back element without a length round trip.
+    ///
+    /// An endpoint-slot read — exactly `get(len - 1)` minus the length read,
+    /// and safe on an empty deque (returns `None`). TTL-hole semantics
+    /// match [`Self::peek_front`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error carrying the erased category if the read fails.
+    pub async fn peek_back(
+        &self,
+        carrier: HashMap<String, String>,
+    ) -> Result<Option<StateItem>, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        match &self.state {
+            DequeStateVariant::Json(handle) => handle
+                .peek_back()
+                .with_context(context)
+                .await
+                .map(|item| item.map(json_item))
+                .map_err(FfiError::from),
+            DequeStateVariant::Message(handle) => handle
+                .peek_back()
+                .with_context(context)
+                .await
+                .map(|item| item.map(message_item))
+                .map_err(FfiError::from),
+        }
+    }
+
     /// Removes every element.
     ///
     /// # Errors
@@ -970,6 +1097,18 @@ impl StateCursor {
                     })
                 })
                 .map_err(FfiError::from),
+            CursorVariant::MapKeys(cursor) => cursor
+                .next_ready_chunk(SCAN_READY_CHUNK_SIZE)
+                .with_context(context)
+                .await
+                .map(|chunk| {
+                    chunk.map(|keys| {
+                        keys.into_iter()
+                            .map(|key| StateScanItem::MapKey { key })
+                            .collect()
+                    })
+                })
+                .map_err(FfiError::from),
         }
     }
 
@@ -983,6 +1122,7 @@ impl StateCursor {
             CursorVariant::MapJson(cursor) => cursor.close().await,
             CursorVariant::DequeMessage(cursor) => cursor.close().await,
             CursorVariant::MapMessage(cursor) => cursor.close().await,
+            CursorVariant::MapKeys(cursor) => cursor.close().await,
         }
     }
 }

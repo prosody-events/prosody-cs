@@ -5,5 +5,13 @@ namespace Prosody.State;
 public sealed record MessageMapDefinition<TPayload> : StateDefinition
 {
     internal MessageMapDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? keysetLimit)
-        : base(name, Native.StateKind.Map, Native.StatePayload.Message, ttl, readUncommitted, keysetLimit) { }
+        : base(
+            name,
+            Native.StateKind.Map,
+            Native.StatePayload.Message,
+            ttl,
+            readUncommitted,
+            keysetLimit,
+            capacity: null
+        ) { }
 }

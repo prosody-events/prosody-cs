@@ -160,4 +160,58 @@ public sealed class StateDefinitionTests
             () => Assert.Equal(8u, native.KeysetLimit)
         );
     }
+
+    [Fact]
+    public void Deque_Capacity_Zero_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Deque<int>("d", capacity: 0));
+    }
+
+    [Fact]
+    public void MessageDeque_Capacity_Zero_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.MessageDeque<int>("d", capacity: 0));
+    }
+
+    [Fact]
+    public void Deque_Capacity_Positive_Ok()
+    {
+        var definition = StateDefinition.Deque<int>("d", capacity: 3);
+        Assert.Equal("d", definition.Name);
+    }
+
+    [Fact]
+    public void ToNative_Deque_MapsCapacity()
+    {
+        var native = StateDefinition.Deque<int>("d", capacity: 100).ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal(Native.StateKind.Deque, native.Kind),
+            () => Assert.Equal(100u, native.Capacity)
+        );
+    }
+
+    [Fact]
+    public void ToNative_Deque_NoCapacity_IsNull()
+    {
+        Assert.Null(StateDefinition.Deque<int>("d").ToNative().Capacity);
+    }
+
+    [Fact]
+    public void Deque_Capacity_IsNotIdentity()
+    {
+        // A bounded and an unbounded same-name deque carry identical registration identity: capacity
+        // is runtime-only and not part of (name, kind, payload). This pins the C#-observable half of
+        // that contract; core owns the cross-restart mutability/convergence property tests.
+        var bounded = StateDefinition.Deque<int>("d", capacity: 5).ToNative();
+        var unbounded = StateDefinition.Deque<int>("d").ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal(bounded.Name, unbounded.Name),
+            () => Assert.Equal(bounded.Kind, unbounded.Kind),
+            () => Assert.Equal(bounded.Payload, unbounded.Payload),
+            () => Assert.Equal(5u, bounded.Capacity),
+            () => Assert.Null(unbounded.Capacity)
+        );
+    }
 }

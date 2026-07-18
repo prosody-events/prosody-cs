@@ -57,6 +57,29 @@ internal sealed class DequeState<T> : IDequeState<T>
             cancellationToken
         );
 
+    public Task ClearAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+
+    public Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(
+            async () =>
+                StateInterop.JsonToValue(
+                    await _handle.PeekFront(StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+
+    public Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(
+            async () =>
+                StateInterop.JsonToValue(
+                    await _handle.PeekBack(StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+
     public Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
         if (index < 0)

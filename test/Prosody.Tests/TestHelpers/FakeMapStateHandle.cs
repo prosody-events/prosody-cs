@@ -20,10 +20,18 @@ internal sealed class FakeMapStateHandle : Native.IMapStateHandle
     /// <summary>The item returned by <c>Get</c>.</summary>
     public Native.StateItem? GetResult { get; set; }
 
+    /// <summary>The value returned by <c>ContainsKey</c>.</summary>
+    public bool ContainsKeyResult { get; set; }
+
     public Task<Native.StateItem?> Get(string key, Dictionary<string, string> carrier) => Task.FromResult(GetResult);
 
     public Task<Native.StateItem?[]> GetMany(string[] keys, Dictionary<string, string> carrier) =>
         Task.FromResult(new Native.StateItem?[keys.Length]);
+
+    public Task<bool> ContainsKey(string key, Dictionary<string, string> carrier) => Task.FromResult(ContainsKeyResult);
+
+    public Native.StateCursor ScanKeys(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
+        throw new NotSupportedException("FakeMapStateHandle does not support key scanning.");
 
     public Task SetJson(string key, byte[] bytes, Dictionary<string, string> carrier)
     {

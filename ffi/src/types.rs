@@ -137,6 +137,12 @@ pub struct StateCollectionConfig {
     /// disables ordered-scan tracking). Invalid on value or deque collections.
     #[uniffi(default = None)]
     pub keyset_limit: Option<u32>,
+
+    /// Optional deque-only capacity bound (positive). Runtime-only — never
+    /// persisted, not part of identity; enforced lazily on push. Invalid on
+    /// value or map collections.
+    #[uniffi(default = None)]
+    pub capacity: Option<u32>,
 }
 
 /// Configuration options for the Prosody client.

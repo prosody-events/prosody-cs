@@ -39,6 +39,12 @@ internal sealed class FakeDequeStateHandle : Native.IDequeStateHandle
     public Task<Native.StateItem?> Get(ulong index, Dictionary<string, string> carrier) =>
         Task.FromResult<Native.StateItem?>(null);
 
+    public Task<Native.StateItem?> PeekFront(Dictionary<string, string> carrier) =>
+        Task.FromResult<Native.StateItem?>(null);
+
+    public Task<Native.StateItem?> PeekBack(Dictionary<string, string> carrier) =>
+        Task.FromResult<Native.StateItem?>(null);
+
     public Task<ulong> Len(Dictionary<string, string> carrier) => Task.FromResult(0UL);
 
     public Task<bool> IsEmpty(Dictionary<string, string> carrier) => Task.FromResult(true);

@@ -133,6 +133,16 @@ internal static class StateInterop
         return bytes;
     }
 
+    /// <summary>
+    /// Projects a native key-only scan item into its key string. A wrong-shape item classifies
+    /// transient — matching the four value-bearing <c>Transform</c> methods — so the message retries
+    /// rather than being silently dropped.
+    /// </summary>
+    internal static string ItemKey(Native.StateScanItem item) =>
+        item is Native.StateScanItem.MapKey key
+            ? key.Key
+            : throw new TransientStateException("State scan item shape mismatch: expected a map key.");
+
     /// <summary>Projects a native JSON state item into an optional typed value.</summary>
     internal static StateValue<T> JsonToValue<T>(Native.StateItem? item, JsonTypeInfo<T> typeInfo)
         where T : notnull

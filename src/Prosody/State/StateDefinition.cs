@@ -14,8 +14,9 @@ namespace Prosody.State;
 /// </para>
 /// <para>
 /// Per-definition rules (name non-empty; TTL whole seconds in <c>1..=630_720_000</c>; keyset limit
-/// in <c>0..=4096</c>) are enforced here at construction; set-level rules (name uniqueness, TTL
-/// exceeding the recovery delay) are enforced when the client options are validated.
+/// in <c>0..=4096</c>; deque capacity positive) are enforced here at construction; set-level rules
+/// (name uniqueness, TTL exceeding the recovery delay) are enforced when the client options are
+/// validated. Capacity is runtime-only — enforced lazily on push and changeable on a later deploy.
 /// </para>
 /// </remarks>
 public abstract record StateDefinition
@@ -32,7 +33,8 @@ public abstract record StateDefinition
         Native.StatePayload payload,
         TimeSpan? ttl,
         bool? readUncommitted,
-        int? keysetLimit
+        int? keysetLimit,
+        int? capacity
     )
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -56,12 +58,18 @@ public abstract record StateDefinition
             );
         }
 
+        if (capacity is { } cap && cap < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(capacity), cap, "Capacity must be a positive integer.");
+        }
+
         Name = name;
         Kind = kind;
         Payload = payload;
         Ttl = ttl;
         ReadUncommitted = readUncommitted;
         KeysetLimit = keysetLimit;
+        Capacity = capacity;
     }
 
     /// <summary>Gets the collection name. Non-empty and unique within the client's definition set.</summary>
@@ -76,6 +84,8 @@ public abstract record StateDefinition
     internal bool? ReadUncommitted { get; }
 
     internal int? KeysetLimit { get; }
+
+    internal int? Capacity { get; }
 
     /// <summary>
     /// Declares a single-value JSON collection.
@@ -112,9 +122,19 @@ public abstract record StateDefinition
     /// <param name="name">The collection name.</param>
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
+    /// <param name="capacity">
+    /// Optional maximum window size (positive), enforced lazily on push: each push evicts from the far
+    /// end toward the bound. Runtime-only — never persisted, not part of identity, and freely changed
+    /// across redeploys, so a shrunk deque reports its old length until the next push trims it.
+    /// </param>
     /// <returns>A validated definition.</returns>
-    public static DequeStateDefinition<T> Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)
-        where T : notnull => new(name, ttl, readUncommitted);
+    public static DequeStateDefinition<T> Deque<T>(
+        string name,
+        TimeSpan? ttl = null,
+        bool? readUncommitted = null,
+        int? capacity = null
+    )
+        where T : notnull => new(name, ttl, readUncommitted, capacity);
 
     /// <summary>
     /// Declares a single-value message collection storing the full Kafka message.
@@ -153,15 +173,28 @@ public abstract record StateDefinition
     /// <param name="name">The collection name.</param>
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
+    /// <param name="capacity">
+    /// Optional maximum window size (positive), enforced lazily on push. Runtime-only — never
+    /// persisted and freely changed across redeploys. See <see cref="Deque{T}"/>.
+    /// </param>
     /// <returns>A validated definition.</returns>
     public static MessageDequeDefinition<TPayload> MessageDeque<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null
-    ) => new(name, ttl, readUncommitted);
+        bool? readUncommitted = null,
+        int? capacity = null
+    ) => new(name, ttl, readUncommitted, capacity);
 
     internal Native.StateCollectionConfig ToNative() =>
-        new(Name, Kind, Payload, Ttl, ReadUncommitted, KeysetLimit is { } k ? (uint)k : null);
+        new(
+            Name,
+            Kind,
+            Payload,
+            Ttl,
+            ReadUncommitted,
+            KeysetLimit is { } k ? (uint)k : null,
+            Capacity is { } c ? (uint)c : null
+        );
 
     private static void ValidateTtl(TimeSpan ttl)
     {

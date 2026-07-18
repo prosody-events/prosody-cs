@@ -56,6 +56,29 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
             cancellationToken
         );
 
+    public Task ClearAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+
+    public Task<StateValue<Message<TPayload>>> PeekFrontAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(
+            async () =>
+                MessageInterop.MessageToValue(
+                    await _handle.PeekFront(StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+
+    public Task<StateValue<Message<TPayload>>> PeekBackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(
+            async () =>
+                MessageInterop.MessageToValue(
+                    await _handle.PeekBack(StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+
     public Task<StateValue<Message<TPayload>>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
         if (index < 0)

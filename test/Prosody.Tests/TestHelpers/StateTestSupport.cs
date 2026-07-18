@@ -47,6 +47,12 @@ internal static class StateTestSupport
     /// <summary>A deque collection of a bool element (missing-vs-default pin).</summary>
     public static readonly DequeStateDefinition<bool> BoolDeque = StateDefinition.Deque<bool>("boolDeque");
 
+    /// <summary>A capacity-3 deque of an integer element: the lazy push-only eviction pin.</summary>
+    public static readonly DequeStateDefinition<int> BoundedDeque = StateDefinition.Deque<int>(
+        "boundedDeque",
+        capacity: 3
+    );
+
     /// <summary>A single-value message collection.</summary>
     public static readonly MessageValueDefinition<StateMessagePayload> LastMsg =
         StateDefinition.MessageValue<StateMessagePayload>("lastMsg");
@@ -70,6 +76,7 @@ internal static class StateTestSupport
         DecMap,
         Backlog,
         BoolDeque,
+        BoundedDeque,
         LastMsg,
         MsgIndex,
         MsgLog,

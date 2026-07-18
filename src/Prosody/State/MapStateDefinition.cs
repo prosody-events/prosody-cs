@@ -6,5 +6,6 @@ public sealed record MapStateDefinition<TValue> : StateDefinition
     where TValue : notnull
 {
     internal MapStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? keysetLimit)
-        : base(name, Native.StateKind.Map, Native.StatePayload.Json, ttl, readUncommitted, keysetLimit) { }
+        : base(name, Native.StateKind.Map, Native.StatePayload.Json, ttl, readUncommitted, keysetLimit, capacity: null)
+    { }
 }

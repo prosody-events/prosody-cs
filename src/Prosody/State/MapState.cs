@@ -65,6 +65,12 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         );
     }
 
+    public Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(() => _handle.ContainsKey(key, StateInterop.CreateCarrier()), cancellationToken);
+    }
+
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -73,6 +79,18 @@ internal sealed class MapState<TValue> : IMapState<TValue>
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+
+    public IAsyncEnumerable<string> EnumerateKeysAsync(
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var cursor = StateInterop.RunSync(() =>
+            _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        );
+        return new StateScanSequence<string>(cursor, StateInterop.ItemKey, cancellationToken);
+    }
 
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,

@@ -43,11 +43,36 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     /// <returns>The removed element, or an absent <see cref="StateValue{T}"/> when the deque is empty.</returns>
     Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Removes every element.</summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>A task that completes when the clear is buffered.</returns>
+    Task ClearAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Reads the element at <paramref name="index"/> (front-relative, zero-based).</summary>
     /// <param name="index">The zero-based index from the front. A negative index is a caller mistake (transient).</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
     /// <returns>The element, or an absent <see cref="StateValue{T}"/> when the index is out of range.</returns>
     Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the front element without a length round trip — exactly
+    /// <c>GetAsync(0)</c> minus the count read. Absent (<see cref="StateValue{T}.HasValue"/>
+    /// <see langword="false"/>) when the deque is empty; under a TTL an expired front slot reads absent
+    /// even when later elements are still live (a peek never searches inward).
+    /// </summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>The front element, or an absent <see cref="StateValue{T}"/> when the deque is empty.</returns>
+    Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the back element without a length round trip — exactly
+    /// <c>GetAsync(Count - 1)</c> minus the count read, and safe on an empty deque (returns absent
+    /// rather than the index-underflow a manual two-read incurs). TTL-hole semantics match
+    /// <see cref="PeekFrontAsync"/>.
+    /// </summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>The back element, or an absent <see cref="StateValue{T}"/> when the deque is empty.</returns>
+    Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Counts the elements.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

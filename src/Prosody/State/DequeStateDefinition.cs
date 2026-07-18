@@ -5,6 +5,14 @@ namespace Prosody.State;
 public sealed record DequeStateDefinition<T> : StateDefinition
     where T : notnull
 {
-    internal DequeStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted)
-        : base(name, Native.StateKind.Deque, Native.StatePayload.Json, ttl, readUncommitted, keysetLimit: null) { }
+    internal DequeStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? capacity)
+        : base(
+            name,
+            Native.StateKind.Deque,
+            Native.StatePayload.Json,
+            ttl,
+            readUncommitted,
+            keysetLimit: null,
+            capacity
+        ) { }
 }

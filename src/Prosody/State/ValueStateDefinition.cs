@@ -6,5 +6,13 @@ public sealed record ValueStateDefinition<T> : StateDefinition
     where T : notnull
 {
     internal ValueStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted)
-        : base(name, Native.StateKind.Value, Native.StatePayload.Json, ttl, readUncommitted, keysetLimit: null) { }
+        : base(
+            name,
+            Native.StateKind.Value,
+            Native.StatePayload.Json,
+            ttl,
+            readUncommitted,
+            keysetLimit: null,
+            capacity: null
+        ) { }
 }

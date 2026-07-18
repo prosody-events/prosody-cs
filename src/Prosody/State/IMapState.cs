@@ -23,6 +23,21 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Determines whether a stored cell exists for <paramref name="key"/> — a cheap presence check
+    /// that reads the cell through this event's writes (an uncommitted <see cref="SetAsync"/> reads
+    /// <see langword="true"/>, <see cref="RemoveAsync"/> <see langword="false"/>,
+    /// <see cref="ClearAsync"/> hides entries) <b>without decoding the value or running the message
+    /// resolver</b>. Cheaper than <see cref="GetAsync"/>, but not free: a cache miss still touches the
+    /// store, so it is async and fallible. For a message-backed map it can return
+    /// <see langword="true"/> even when the referenced Kafka message can no longer be fetched —
+    /// presence is about the cell, not fetchability.
+    /// </summary>
+    /// <param name="key">The map key.</param>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns><see langword="true"/> when a live cell exists for <paramref name="key"/>.</returns>
+    Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reads several keys in a single isolated batch. The result is positional:
     /// <c>result[i]</c> answers <c>keys[i]</c>, an absent key reads as an absent
     /// <see cref="StateValue{T}"/>, and a repeated key is answered at each position.
@@ -74,6 +89,21 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
     /// <returns>An async sequence of key/value pairs in the requested order.</returns>
     IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Enumerates the live entry keys in key order, <b>skipping every value decode and the message
+    /// resolver</b> — a message-backed map enumerates keys with zero Kafka fetches. Not zero-I/O: the
+    /// presence of each key is still read from the store. When you need the values, prefer a single
+    /// <see cref="EnumerateAsync"/> (one batched, fully-resolving scan) over a <see cref="GetAsync"/>
+    /// per key. Valid only within the handler invocation that opened it; early exit closes the cursor.
+    /// </summary>
+    /// <param name="direction">The scan direction. Defaults to <see cref="ScanDirection.Forward"/>.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of keys in the requested order.</returns>
+    IAsyncEnumerable<string> EnumerateKeysAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
     );

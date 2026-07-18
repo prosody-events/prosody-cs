@@ -35,7 +35,7 @@ use prosody::loader::KafkaLoader;
 use prosody::loader::KafkaLoaderConfiguration;
 use prosody::producer::ProducerConfigurationBuilder;
 use prosody::state::descriptor::{
-    MapDescriptor, StateDescriptor, deque_state, map_state, value_state,
+    DequeDescriptor, MapDescriptor, StateDescriptor, deque_state, map_state, value_state,
 };
 use prosody::state::order_codec::Utf8KeyCodec;
 use prosody::telemetry::emitter::{
@@ -466,6 +466,17 @@ fn with_keyset<KC, V>(
     }
 }
 
+/// Applies the deque-only capacity bound when configured.
+fn with_capacity<T>(
+    descriptor: DequeDescriptor<T>,
+    capacity: Option<NonZeroUsize>,
+) -> DequeDescriptor<T> {
+    match capacity {
+        Some(cap) => descriptor.capacity(cap),
+        None => descriptor,
+    }
+}
+
 /// Validates one collection and registers its descriptor.
 ///
 /// JSON collections monomorphize over the
@@ -481,7 +492,7 @@ fn with_keyset<KC, V>(
 ///
 /// Returns [`FfiError::PermanentState`] if a field is invalid (empty name, TTL
 /// not a whole number of seconds, keyset limit out of range or set on a
-/// non-map collection).
+/// non-map collection, capacity zero or set on a non-deque collection).
 fn register_state_collection(
     keyed: &mut KeyedStateConfiguration,
     index: usize,
@@ -520,6 +531,22 @@ fn register_state_collection(
         None => None,
     };
 
+    let capacity = match collection.capacity {
+        Some(cap) => {
+            if collection.kind != StateKind::Deque {
+                return Err(permanent_config(format!(
+                    "stateCollections[{index}].capacity: only valid for deque collections"
+                )));
+            }
+            Some(NonZeroUsize::new(cap as usize).ok_or_else(|| {
+                permanent_config(format!(
+                    "stateCollections[{index}].capacity: must be a positive integer"
+                ))
+            })?)
+        }
+        None => None,
+    };
+
     let read_uncommitted = collection.read_uncommitted;
     let name = collection.name.as_str();
     match (collection.kind, collection.payload) {
@@ -539,11 +566,12 @@ fn register_state_collection(
             let _ = keyed.register(with_keyset(descriptor, keyset_limit));
         }
         (StateKind::Deque, StatePayload::Json) => {
-            let _ = keyed.register(with_def(
+            let descriptor = with_def(
                 deque_state::<JsonPassthroughStateCodec>(name),
                 ttl_seconds,
                 read_uncommitted,
-            ));
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
         }
         (StateKind::Value, StatePayload::Message) => {
             let _ = keyed.register(with_def(
@@ -561,11 +589,12 @@ fn register_state_collection(
             let _ = keyed.register(with_keyset(descriptor, keyset_limit));
         }
         (StateKind::Deque, StatePayload::Message) => {
-            let _ = keyed.register(with_def(
+            let descriptor = with_def(
                 message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
                 ttl_seconds,
                 read_uncommitted,
-            ));
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
         }
     }
 

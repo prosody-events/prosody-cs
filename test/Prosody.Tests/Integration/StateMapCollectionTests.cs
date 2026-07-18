@@ -14,6 +14,7 @@ public sealed class StateMapCollectionTests(IntegrationTestFixture fixture) : In
     private sealed record MapObservation
     {
         public string[] Keys { get; init; } = [];
+        public string[] BackwardKeys { get; init; } = [];
         public bool RemovedKeyPresent { get; init; }
         public bool[] Presence { get; init; } = [];
         public int[] Values { get; init; } = [];
@@ -179,6 +180,74 @@ public sealed class StateMapCollectionTests(IntegrationTestFixture fixture) : In
             () => Assert.Equal(1, byKey["k1"]),
             () => Assert.Equal(9, byKey["café"]),
             () => Assert.Equal(7, byKey["😀"])
+        );
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task Map_ContainsKeyAsync_TracksOverlay()
+    {
+        // Presence follows the seeded overlay: absent → false, set → true, removed → false, and (in the
+        // read event) a set-after-clear → true while the cleared siblings read false. Pins the cheap
+        // presence path against the same seed the scan tests use.
+        await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
+        var observations = new MessageChannel<bool[]>();
+
+        var handler = SeedThenObserve(
+            async (map, ct) =>
+            {
+                await map.ClearAsync(ct);
+                await map.SetAsync("k1", 10, ct);
+                observations.Send([
+                    await map.ContainsKeyAsync("k1", ct), // set-after-clear → true
+                    await map.ContainsKeyAsync("k3", ct), // cleared, not re-set → false
+                    await map.ContainsKeyAsync("absent", ct), // never written → false
+                ]);
+            }
+        );
+
+        await RunSeededAsync(ctx, handler);
+        var presence = await observations.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal([true, false, false], presence);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task Map_EnumerateKeysAsync_MatchesPairScan_BothDirections()
+    {
+        await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
+        var observations = new MessageChannel<MapObservation>();
+
+        var handler = SeedThenObserve(
+            async (map, ct) =>
+            {
+                var forward = new List<string>();
+                await foreach (var key in map.EnumerateKeysAsync(ScanDirection.Forward, ct))
+                {
+                    forward.Add(key);
+                }
+
+                var backward = new List<string>();
+                await foreach (var key in map.EnumerateKeysAsync(ScanDirection.Backward, ct))
+                {
+                    backward.Add(key);
+                }
+
+                observations.Send(new MapObservation { Keys = [.. forward], BackwardKeys = [.. backward] });
+            }
+        );
+
+        await RunSeededAsync(ctx, handler);
+        var obs = await observations.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Multiple(
+            () => Assert.Equal(["k1", "k3"], obs.Keys), // key-only scan == pair-scan key set (k2 removed)
+            () => Assert.Equal(["k3", "k1"], obs.BackwardKeys)
         );
     }
 
