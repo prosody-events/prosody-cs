@@ -679,11 +679,11 @@ await using var client = ProsodyClientBuilder.Create()
 
 ## Keyed State
 
-Keyed state is durable working memory for a stream. Each Kafka key gets its own value, map, or deque, so a handler can relate the current event to earlier events for the same key. State survives restarts and rebalances. By default, Prosody saves a handler's changes only when the event succeeds.
+Keyed state gives every Kafka key its own durable working memory. Prosody automatically uses the current message or timer key, so a handler can relate the current event to earlier events for that key. State survives restarts and rebalances. By default, changes become visible only when the event succeeds.
 
-Use keyed state for time-aware processing over each key in a stream: counters, deduplication data, rolling aggregates, pending work, and state machines. This work can be slow and expensive when it requires repeated relational database queries. Keyed state is not designed to be the source of truth for core business data or to provide relational operations such as joins. Keep that data in a relational database and use the right tool for each job.
+Use keyed state for time-aware stream processing: counters, deduplication, rolling aggregates, pending work, and per-key workflows. Keep your relational database as the source of truth for business data and for work that needs joins or ad hoc queries. Reconstructing stream state with repeated database queries can be slow and expensive; keyed state is built for that job.
 
-Give collections a TTL whenever the state does not need to live forever. Choose one comfortably longer than the configured recovery delay and the longest timer or workflow. This prevents inactive keys from accumulating state indefinitely.
+Most collections should have a TTL. Set it comfortably beyond the longest timer or workflow that uses the state; Prosody validates the minimum supported TTL. Omit it only when keeping inactive keys forever is intentional.
 
 ### A counter for each key
 
@@ -711,11 +711,11 @@ var client = ProsodyClientBuilder.Create()
     .Build();
 ```
 
-The TTL keeps counters for recently active keys for 30 days. Omit it only when indefinite retention is intentional.
+Here, counters expire after 30 days without an update.
 
 ### Window activity into one notification
 
-This example sends a user's first activity immediately, saves further activity for five minutes, then sends one summary. The Kafka message key is the user ID.
+This example turns a burst of activity into two useful notifications. It sends the first event immediately, collects later events for five minutes, then sends one summary. Because the user ID is the Kafka key, every user gets an independent window.
 
 ```csharp
 var window = StateDefinition.Value<bool>("window", ttl: TimeSpan.FromDays(1));
@@ -760,18 +760,20 @@ public async Task OnTimerAsync(
 
 See the complete, compiled example for imports, types, client setup, and `Notify`: [`NormativeExampleCompileTests.cs`](test/Prosody.Tests/Unit/NormativeExampleCompileTests.cs).
 
-A few details matter:
+Why this works:
 
 - Register both definitions with `WithStateCollections` before `Build()`. Keyed state uses Cassandra unless `Mock = true`.
 - Use `ClearAndScheduleAsync`, not `ScheduleAsync`, so a retried event does not add another timer for the same key.
-- `capacity: 100` bounds each user's pending queue. Because this example only pushes at the back, overflow drops the oldest saved message.
-- A `MessageDeque` keeps references to Kafka messages and fetches them when read. Keep source-topic retention longer than the window; use a plain `Deque` of payloads when that is not guaranteed.
-- Prosody runs one handler at a time for a key, so that key's message and timer handlers do not overlap.
-- Notifications are external effects: retrying an event can send one again. Use an idempotency key or an outbox when duplicates matter.
+- `capacity: 100` and the one-day TTL prevent an inactive or unusually busy key from retaining an unlimited backlog. Since this example only pushes at the back, overflow drops the oldest saved message.
+- A `MessageDeque` requires the original Kafka messages to remain available for the whole window. Use a plain `Deque` of payloads if topic retention or compaction cannot guarantee that.
+- Prosody runs one handler at a time for each key, so a user's message and timer handlers cannot overlap.
+- Sending a notification is outside Prosody's state transaction and may happen again after a retry. Give notifications a stable idempotency key, or send them through an outbox, when duplicates matter.
 
 ### Collections and handles
 
-Definitions describe the collection; `context.State(definition)` returns the current key's handle. Create handles inside the handler and do not retain them or their iterators afterward.
+A definition gives a collection a stable name, kind, and options. Register it once on the client, then pass the same definition to `context.State()` to access the current key. Do not reuse a persisted name for a different collection kind or payload type.
+
+Create handles inside the handler and do not retain them or their iterators afterward.
 
 | Collection | JSON payload | Kafka message | Main operations |
 | --- | --- | --- | --- |
@@ -779,13 +781,17 @@ Definitions describe the collection; `context.State(definition)` returns the cur
 | Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
 | Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
 
-Map and deque scans use `await foreach`. Map keys are strings. Reads return `StateValue<T>`, which distinguishes an absent value from a stored `default(T)`. `null` cannot be stored—use `ClearAsync` or `RemoveAsync` instead.
+Map and deque scans use `await foreach`. Map keys are strings. Reads return `StateValue<T>`, which distinguishes an absent value from a stored `default(T)`. `null` cannot be stored—use `ClearAsync` or `RemoveAsync` instead. Payload types guide JSON serialization but do not add runtime validation.
 
-Every definition accepts `ttl` and `readUncommitted`; maps also accept `keysetLimit`, and deques accept `capacity`. Collection names must be unique. Reuse the same typed definition for registration and access. Payload types guide JSON serialization but do not add runtime validation.
+### When changes become visible
 
-By default, writes from a successful handler become visible together; if the handler throws, they are discarded. `CommitAsync` publishes one collection's pending writes immediately, even if the event later fails. `RollbackAsync` discards that collection's writes since its last commit. Most handlers should rely on the default behavior.
+Reads inside a handler see its earlier writes. The default behavior is the safest choice for most handlers: Prosody buffers those changes and publishes them together when the event succeeds. If the handler throws, none of its pending changes become visible.
 
-State failures use `TransientStateException` or `PermanentStateException`. Temporary store failures and invalid values are transient; registration or collection-definition conflicts are permanent. Writing `null` raises the more specific `NullValueException`.
+Each collection also offers explicit controls for workflows that need different behavior:
+
+- `readUncommitted: true` writes that collection's changes after the handler succeeds but before the event is recorded as complete. A crash in between can leave the changes visible even though the event is retried. Use it only for idempotent changes, where processing the same event again produces the same stored result.
+- `await state.CommitAsync()` immediately publishes this collection's pending changes. They remain visible even if the handler later throws and the event is retried.
+- `await state.RollbackAsync()` discards this collection's pending changes since its last `CommitAsync()`. It cannot undo changes that were already committed.
 
 Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
 
