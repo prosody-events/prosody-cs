@@ -701,7 +701,7 @@ public sealed class CountHandler(ValueStateDefinition<int> count)
         CancellationToken cancellationToken)
     {
         var state = context.State(count);
-        var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault();
+        var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault(0);
         await state.SetAsync(current + 1, cancellationToken);
     }
 }
@@ -730,7 +730,7 @@ public async Task OnMessageAsync(
     var windowState = context.State(window);
     var pendingState = context.State(pending);
 
-    if ((await windowState.GetAsync(cancellationToken)).GetValueOrDefault())
+    if ((await windowState.GetAsync(cancellationToken)).GetValueOrDefault(false))
     {
         await pendingState.PushBackAsync(message, cancellationToken);
         return;
