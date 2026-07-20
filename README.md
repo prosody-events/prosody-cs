@@ -679,316 +679,115 @@ await using var client = ProsodyClientBuilder.Create()
 
 ## Keyed State
 
-Prosody supports keyed state: per-key data that a handler reads and writes and that survives across events. State is
-partitioned by the message key, so each key has a single writer at a time, and by default writes settle atomically with
-the event — a handler that throws leaves no partial state. Values are either JSON payloads or the full Kafka
-`Message<TPayload>` the handler received. Register collections on the client before subscribing, then bind them inside
-the handler with `context.State(definition)`.
+Keyed state is durable working memory for a stream. Each Kafka key gets its own value, map, or deque, so a handler can relate the current event to earlier events for the same key. State survives restarts and rebalances. By default, Prosody saves a handler's changes only when the event succeeds.
 
-> A `Value` gives every Kafka key durable local memory: update it in the handler, and Prosody publishes the new state
-> only when that event succeeds — even across restarts and rebalances.
+Use keyed state for time-aware processing over each key in a stream: counters, deduplication data, rolling aggregates, pending work, and state machines. This work can be slow and expensive when it requires repeated relational database queries. Keyed state is not designed to be the source of truth for core business data or to provide relational operations such as joins. Keep that data in a relational database and use the right tool for each job.
 
-### Quickstart — a durable per-key counter
+Give collections a TTL whenever the state does not need to live forever. Choose one comfortably longer than the configured recovery delay and the longest timer or workflow. This prevents inactive keys from accumulating state indefinitely.
 
-The smallest useful example: a durable count per Kafka key. Read it, add one, write it back — the write settles with the
-event, so a crash between messages never double-counts or loses a tick.
+### A counter for each key
+
+Declare each collection once, register it on the client, and ask the event context for the current key's state:
 
 ```csharp
-using Prosody;
-using Prosody.State;
+var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
 
-// Declare the collection once and reuse the object for registration and binding.
-var counter = StateDefinition.Value<int>("counter");
+public sealed class CountHandler(ValueStateDefinition<int> count)
+    : IProsodyHandler<Event>
+{
+    public async Task OnMessageAsync(
+        ProsodyContext context,
+        Message<Event> message,
+        CancellationToken cancellationToken)
+    {
+        var state = context.State(count);
+        var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault();
+        await state.SetAsync(current + 1, cancellationToken);
+    }
+}
 
-await using var client = ProsodyClientBuilder.Create()
-    .WithGroupId("events")
-    .WithSubscribedTopics("events")
-    .WithStateCollections(counter)
+var client = ProsodyClientBuilder.Create()
+    .WithStateCollections(count)
     .Build();
+```
 
-await client.SubscribeAsync(new CounterHandler(counter));
+The TTL keeps counters for recently active keys for 30 days. Omit it only when indefinite retention is intentional.
 
-public sealed class CounterHandler(ValueStateDefinition<int> counter) : IProsodyHandler<object>
+### Window activity into one notification
+
+This example sends a user's first activity immediately, saves further activity for five minutes, then sends one summary. The Kafka message key is the user ID.
+
+```csharp
+var window = StateDefinition.Value<bool>("window", ttl: TimeSpan.FromDays(1));
+var pending = StateDefinition.MessageDeque<Activity>(
+    "pending", ttl: TimeSpan.FromDays(1), capacity: 100);
+
+public async Task OnMessageAsync(
+    ProsodyContext context,
+    Message<Activity> message,
+    CancellationToken cancellationToken)
 {
-    public async Task OnMessageAsync(ProsodyContext context, Message<object> message, CancellationToken ct)
+    var windowState = context.State(window);
+    var pendingState = context.State(pending);
+
+    if ((await windowState.GetAsync(cancellationToken)).GetValueOrDefault())
     {
-        IValueState<int> c = context.State(counter);
-        var n = (await c.GetAsync(ct)).GetValueOrDefault(0) + 1;
-        await c.SetAsync(n, ct); // settles atomically with the event
+        await pendingState.PushBackAsync(message, cancellationToken);
+        return;
     }
 
-    public Task OnTimerAsync(ProsodyContext context, ProsodyTimer timer, CancellationToken ct) => Task.CompletedTask;
+    await Notify(message.Key, [message]);
+    await windowState.SetAsync(true, cancellationToken);
+    await context.ClearAndScheduleAsync(
+        DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
+}
+
+public async Task OnTimerAsync(
+    ProsodyContext context,
+    ProsodyTimer timer,
+    CancellationToken cancellationToken)
+{
+    var pendingState = context.State(pending);
+    var batch = new List<Message<Activity>>();
+    await foreach (var message in pendingState.WithCancellation(cancellationToken))
+        batch.Add(message);
+
+    if (batch.Count > 0) await Notify(timer.Key, batch);
+    await pendingState.ClearAsync(cancellationToken);
+    await context.State(window).ClearAsync(cancellationToken);
 }
 ```
 
-### A fuller example — batch a burst of events per user
+See the complete, compiled example for imports, types, client setup, and `Notify`: [`NormativeExampleCompileTests.cs`](test/Prosody.Tests/Unit/NormativeExampleCompileTests.cs).
 
-Your consumer reads a stream of activity events — likes, comments, follows — each tagged with the user it is about (the
-Kafka key). If you send a notification for every event, an active moment spams the user. What you want: tell them the
-instant something happens, but if more arrives right after, hold it and send a single summary a few minutes later.
+A few details matter:
 
-By hand this is surprisingly involved — you need a durable place to stash pending events *for each user*, a timer *for
-each user* to send the summary, and all of it has to survive the process restarting or the work moving to another
-machine. Prosody gives you exactly those two things: durable per-key state and a per-key timer.
+- Register both definitions with `WithStateCollections` before `Build()`. Keyed state uses Cassandra unless `Mock = true`.
+- Use `ClearAndScheduleAsync`, not `ScheduleAsync`, so a retried event does not add another timer for the same key.
+- `capacity: 100` bounds each user's pending queue. Because this example only pushes at the back, overflow drops the oldest saved message.
+- A `MessageDeque` keeps references to Kafka messages and fetches them when read. Keep source-topic retention longer than the window; use a plain `Deque` of payloads when that is not guaranteed.
+- Prosody runs one handler at a time for a key, so that key's message and timer handlers do not overlap.
+- Notifications are external effects: retrying an event can send one again. Use an idempotency key or an outbox when duplicates matter.
 
-1. **First event for a user** → send it now, mark that a batch is open, and set a timer for 5 minutes out.
-2. **More events arrive before the timer fires** → don't notify again; just save each one.
-3. **Timer fires** → send one summary of everything saved, then close the batch so the next event starts fresh.
+### Collections and handles
 
-```csharp
-using Prosody;
-using Prosody.State;
+Definitions describe the collection; `context.State(definition)` returns the current key's handle. Create handles inside the handler and do not retain them or their iterators afterward.
 
-public sealed record Activity(string Actor, string Action);
+| Collection | JSON payload | Kafka message | Main operations |
+| --- | --- | --- | --- |
+| Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `SetAsync`, `ClearAsync` |
+| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
+| Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
 
-// Declare the collections once; register both via WithStateCollections(Window, Pending).
-var window = StateDefinition.Value<bool>("window"); // is a batch open for this user?
-var pending = StateDefinition.MessageDeque<Activity>("pending", capacity: 100); // keep the latest 100 messages
+Map and deque scans use `await foreach`. Map keys are strings. Reads return `StateValue<T>`, which distinguishes an absent value from a stored `default(T)`. `null` cannot be stored—use `ClearAsync` or `RemoveAsync` instead.
 
-public sealed class BatchingHandler(
-    ValueStateDefinition<bool> window,
-    MessageDequeDefinition<Activity> pending
-) : IProsodyHandler<Activity>
-{
-    // Your own delivery function (push, email, …) — the only thing here you write.
-    private static Task Notify(string userId, IReadOnlyList<Message<Activity>> activities) => Task.CompletedTask;
+Every definition accepts `ttl` and `readUncommitted`; maps also accept `keysetLimit`, and deques accept `capacity`. Collection names must be unique. Reuse the same typed definition for registration and access. Payload types guide JSON serialization but do not add runtime validation.
 
-    public async Task OnMessageAsync(ProsodyContext context, Message<Activity> message, CancellationToken ct)
-    {
-        // message.Key = userId; message.Payload = { Actor, Action }
-        IValueState<bool> w = context.State(window); // bind THIS user's handles for THIS event
-        IDequeState<Message<Activity>> p = context.State(pending);
-        if (!(await w.GetAsync(ct)).GetValueOrDefault(false))
-        {
-            // no batch open → this is the first event: send it right away
-            await Notify(message.Key, [message]);
-            await w.SetAsync(true, ct);
-            // ClearAndScheduleAsync (not ScheduleAsync): timers are NOT rolled back with state, so a
-            // retried event must not stack a second timer — this keeps exactly one.
-            await context.ClearAndScheduleAsync(DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
-        }
-        else
-        {
-            await p.PushBackAsync(message, ct); // a batch is open → just save the message
-        }
-    }
+By default, writes from a successful handler become visible together; if the handler throws, they are discarded. `CommitAsync` publishes one collection's pending writes immediately, even if the event later fails. `RollbackAsync` discards that collection's writes since its last commit. Most handlers should rely on the default behavior.
 
-    public async Task OnTimerAsync(ProsodyContext context, ProsodyTimer timer, CancellationToken ct)
-    {
-        // fires ~5 minutes later, for timer.Key
-        IValueState<bool> w = context.State(window);
-        IDequeState<Message<Activity>> p = context.State(pending);
-        var batch = new List<Message<Activity>>();
-        await foreach (var msg in p.EnumerateAsync(ScanDirection.Forward, ct))
-        {
-            batch.Add(msg); // the scan resolves the saved messages concurrently
-        }
+State failures use `TransientStateException` or `PermanentStateException`. Temporary store failures and invalid values are transient; registration or collection-definition conflicts are permanent. Writing `null` raises the more specific `NullValueException`.
 
-        if (batch.Count > 0)
-        {
-            await Notify(timer.Key, batch); // one summary of the actual saved messages
-        }
-
-        await p.ClearAsync(ct); // empty the buffer
-        await w.ClearAsync(ct); // close the batch; the next event opens a fresh one
-    }
-}
-```
-
-A few things worth calling out, because they are what makes this correct rather than merely plausible:
-
-- **The key differs by handler.** `OnMessageAsync` reads `message.Key`; `OnTimerAsync` reads **`timer.Key`**.
-  Scheduling takes an absolute time, so "5 minutes from now" is `DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5)`.
-- **Use `ClearAndScheduleAsync`, not `ScheduleAsync`.** The timer system is not transactional with state settlement — a
-  scheduled timer is not rolled back if the event is retried. A plain `ScheduleAsync` on a retry would stack a second
-  timer and fire the summary twice; `ClearAndScheduleAsync` clears the key's existing timers and sets exactly one.
-- **A `MessageDeque` stores whole Kafka messages** (a lightweight reference) and resolves each back on read, so the
-  `EnumerateAsync` scan resolves the saved messages **concurrently** — never drain with a `PopFrontAsync`-per-item loop,
-  which is one Kafka fetch *serially per element*. Because the messages are re-fetched from the source topic, this
-  pattern needs the topic's retention to comfortably exceed the batching window (5 minutes against days-long retention is
-  safe; a compacted topic or a window that can outlive retention calls for a plain `Deque` of payloads instead). An
-  unfetchable reference surfaces as an error, not silent absence.
-- **`capacity: 100`** bounds the buffer so one unusually active user can't grow it without limit (Prosody runs on a fixed
-  memory budget across millions of keys). On overflow the **oldest saved** message drops — never the one already
-  delivered. The summary is "up to the 100 most recent"; capacity is enforced lazily on each push, is not persisted, and
-  can be changed on a later deploy.
-- **`Value<bool>` is a flag**, only ever `true` or **absent** — close it with `ClearAsync`, never `SetAsync(false)`. The
-  timer, not the flag, owns *when* the batch ends.
-- **No races to reason about.** Prosody runs at most one handler at a time per key, so a message and the timer for the
-  same user never overlap. Sending a notification is an outside effect that isn't undone if the event is retried, so a
-  retry may resend it; a production notifier should use an idempotency key or an outbox.
-
-### Definitions
-
-A `StateDefinition` factory declares one collection and returns an immutable, validated record carrying its name, kind,
-and payload flavour. Reference that definition both when registering (`WithStateCollections`) and when binding
-(`context.State`) — declare each collection once and reuse it. Reuse is a convenience, not a requirement: a binding
-matches a definition to a registered collection by its name and schema identity, not by object reference, so a
-structurally equal definition also works. Three kinds, each with a JSON variant (values are your JSON payload) and a
-message variant (values are the full Kafka `Message<TPayload>`):
-
-- `StateDefinition.Value<T>(name, ttl?, readUncommitted?)`: single value. Vends `IValueState<T>`.
-- `StateDefinition.Map<TValue>(name, ttl?, readUncommitted?, keysetLimit?)`: ordered map with **string** keys. Vends `IMapState<TValue>`.
-- `StateDefinition.Deque<T>(name, ttl?, readUncommitted?, capacity?)`: double-ended queue. Vends `IDequeState<T>`.
-- `StateDefinition.MessageValue<TPayload>(name, ttl?, readUncommitted?)`: single value holding a `Message<TPayload>`. Vends `IValueState<Message<TPayload>>`.
-- `StateDefinition.MessageMap<TPayload>(name, ttl?, readUncommitted?, keysetLimit?)`: ordered map of `Message<TPayload>` (string keys). Vends `IMapState<Message<TPayload>>`.
-- `StateDefinition.MessageDeque<TPayload>(name, ttl?, readUncommitted?, capacity?)`: deque of `Message<TPayload>`. Vends `IDequeState<Message<TPayload>>`.
-
-`ttl` and `readUncommitted` apply to every kind; `keysetLimit` applies to maps only; `capacity` applies to deques only.
-A `capacity` is a positive maximum window size, enforced lazily on each push (an over-capacity push evicts from the far
-end). It is runtime-only — never persisted and not part of the collection's identity, so a bounded and an unbounded
-same-name deque register identically, and you can change it (bounded ⇄ unbounded) on a later deploy; a shrunk deque
-reports its old length until the next push trims it. The type parameter is annotation-level only: payloads cross the
-boundary as plain JSON with no runtime shape validation, so the parameter guides your C# typing but does not enforce a
-shape at runtime. `name`, `ttl`, `keysetLimit`, and `capacity` bounds are validated when the definition is constructed;
-name uniqueness and the TTL-exceeds-recovery-delay rule are validated when the client options are validated.
-
-### Registration
-
-Pass the definitions to `WithStateCollections(...)` before `Build()` (or set `ClientOptions.StateCollections`
-programmatically), then subscribe. Collection names must be unique within a client — duplicate names are rejected.
-Keyed state needs Cassandra unless the client runs with `Mock = true`. See the
-[Keyed State configuration](#keyed-state) subsection for the client-level knobs and per-collection fields.
-
-Under dependency injection, set the collections in the `configure` callback (they are programmatic, not
-IConfiguration-bindable):
-
-```csharp
-builder.Services.AddProsodyClient(options => options.StateCollections = [cart, totals, backlog]);
-```
-
-### State Handles
-
-`context.State(definition)` vends a typed handle bound to the collection for the current event attempt. The handle — and
-any iterator it opens — is valid only within the handler invocation that created it; there is no post-handler read
-window. Repeated `State(definition)` calls within one invocation return the same cached handle. Binding an unregistered
-name throws a `PermanentStateException`; so does a definition whose kind or payload disagrees with what was durably
-registered under that name in the consumer group (the collection's stored schema identity, which core validates at first
-use — this is a schema conflict across deploys, not a C# object-reference check).
-
-`IValueState<T>`:
-
-- `GetAsync()` → `StateValue<T>`: reads the current value, absent when none.
-- `SetAsync(value)`: buffers a write. Writing `null` is rejected — call `ClearAsync`.
-- `ClearAsync()`: deletes the stored value.
-- `CommitAsync()` / `RollbackAsync()`: see [Commit and Rollback](#commit-and-rollback).
-
-`IMapState<TValue>` (keys are always `string`):
-
-- `GetAsync(key)` → `StateValue<TValue>`: reads the value for `key`, absent when the key is absent.
-- `GetManyAsync(keys)` → `IReadOnlyList<StateValue<TValue>>`: reads several keys in one isolated batch, returning one entry per key in the same order (`result[i]` answers `keys[i]`); a missing key is absent, and a repeated key is answered at each spot. The whole read happens as one step, so no other change to this event's state slips in partway through.
-- `ContainsKeyAsync(key)` → `bool`: a cheap presence check — reads the cell through this event's writes **without decoding the value or running the message resolver**. Cheaper than `GetAsync`, but not free (a cache miss still touches the store, so it is async). For a message-backed map it can return `true` even when the referenced Kafka message can no longer be fetched — presence is about the cell, not fetchability.
-- `SetAsync(key, value)`: inserts or overwrites. Writing `null` is rejected — call `RemoveAsync`.
-- `RemoveAsync(key)`: removes `key`. **Deliberate convention: returns nothing, not a "was present" flag** — surfacing that boolean would force a hidden read on every remove.
-- `ClearAsync()`: removes every entry.
-- `EnumerateAsync(direction)` → `IAsyncEnumerable<KeyValuePair<string, TValue>>`: see [Scan Iteration](#scan-iteration).
-- `EnumerateKeysAsync(direction)` → `IAsyncEnumerable<string>`: enumerates the live keys **skipping every value decode and the message resolver** (a message-backed map enumerates keys with zero Kafka fetches). Not zero-I/O: each key's presence is still read. When you need the values too, prefer a single `EnumerateAsync` over a `GetAsync` per key.
-- `CommitAsync()` / `RollbackAsync()`.
-
-`IDequeState<T>`:
-
-- `PushBackAsync(item)`: appends at the back. Writing `null` is rejected. On a capacity-bounded deque this evicts from the front toward the bound.
-- `PushFrontAsync(item)`: prepends at the front. Writing `null` is rejected. On a capacity-bounded deque this evicts from the back toward the bound.
-- `PopFrontAsync()` → `StateValue<T>`: removes and returns the front element, absent when empty.
-- `PopBackAsync()` → `StateValue<T>`: removes and returns the back element, absent when empty.
-- `PeekFrontAsync()` → `StateValue<T>`: reads the front element without a length round trip — exactly `GetAsync(0)` minus the count read; absent when empty. Under a TTL an expired front slot reads absent even when later elements are live (a peek never searches inward).
-- `PeekBackAsync()` → `StateValue<T>`: reads the back element without a length round trip — exactly `GetAsync(Count - 1)`, and safe on an empty deque (returns absent rather than the index-underflow a manual two-read incurs).
-- `ClearAsync()`: removes every element.
-- `CountAsync()` → `int`: number of live elements.
-- `IsEmptyAsync()` → `bool`: whether the deque holds no live elements.
-- `GetAsync(index)` → `StateValue<T>`: reads the element at front-relative, zero-based `index`. A nonnegative index past the end is absent (`HasValue == false`); a negative `index` is a caller mistake, rejected with a `TransientStateException` (it retries and stays visible rather than discarding the message).
-- `EnumerateAsync(direction)` → `IAsyncEnumerable<T>`: see [Scan Iteration](#scan-iteration).
-- `CommitAsync()` / `RollbackAsync()`.
-
-### Scan Iteration
-
-Maps and deques expose `EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken
-cancellationToken = default)`, returning an `IAsyncEnumerable<...>` (map: `KeyValuePair<string, TValue>`; deque: `T`)
-driven with `await foreach`. `direction` is `ScanDirection.Forward` (default) or `ScanDirection.Backward`.
-
-`IMapState<TValue>` and `IDequeState<T>` also implement `IAsyncEnumerable<...>` directly, so a forward scan needs no
-method call — `await foreach (var (key, value) in context.State(totals))` is shorthand for `EnumerateAsync()` with
-`ScanDirection.Forward`. Use `EnumerateAsync(ScanDirection.Backward)` for a reverse scan. Each enumeration opens a fresh
-cursor.
-
-Iterators are attempt-scoped: they are valid only within the invocation that opened them. Exiting an `await foreach` loop
-early — via `break`, a thrown exception, or token cancellation — closes the underlying native cursor promptly through
-`IAsyncEnumerator<T>.DisposeAsync`, which the `await foreach` guarantees:
-
-```csharp
-await foreach (var (key, total) in context.State(totals).EnumerateAsync(ScanDirection.Backward, cancellationToken))
-{
-    if (total > 1000m)
-    {
-        break; // early exit disposes the enumerator and closes the cursor
-    }
-}
-```
-
-The cancellation token is observed at entry and between chunk pulls; an already-dispatched native pull is awaited to
-completion and its result discarded.
-
-### Commit and Rollback
-
-Every handle exposes `CommitAsync()` and `RollbackAsync()`, both returning `Task`. By default a handler's writes are
-buffered and settle atomically when the event completes; commit and rollback are the explicit mid-handler escape hatch.
-
-- `CommitAsync()` durably flushes this collection's buffered operations mid-handler. It is at-least-once: the flush
-  becomes visible even if the event later fails and is redelivered, and it establishes a floor that a later
-  `RollbackAsync()` cannot cross.
-- `RollbackAsync()` discards this collection's buffered uncommitted operations back to the last committed floor. It is
-  infallible.
-
-Both return a plain `Task` with no value. The erased core seam deliberately drops the store outcome, so there is **no**
-applied/no-op return — do not expect one.
-
-### Semantics
-
-- **Per-key single writer.** State is keyed by the message key; only one handler invocation writes a given key at a time.
-- **Transactional by default.** A handler's writes settle atomically with the event. A handler that throws leaves no
-  partial state (unless you opted a collection into `readUncommitted`, or flushed explicitly with `CommitAsync()`).
-- **At-least-once.** Redelivery re-runs the handler; reads reflect committed prior attempts. Keep handlers idempotent.
-- **Attempt-scoped and fenced.** The context, the handles it vends, and any iterators those handles open are valid only
-  within the handler invocation that created them; there is no post-handler read window. Fencing is owned entirely by
-  core — the client carries no fencing logic.
-- **Scan consistency is arm-dependent.** With keyset tracking active (the default), a map's membership snapshots at the
-  first pull; with tracking disabled (`keysetLimit` 0) or overflowed, iteration is a live ordered scan that can observe
-  the handler's own later mutations. A deque's index window snapshots at the first pull. Values always read live;
-  absent or expired entries are skipped; the first error terminates the iterator.
-- **Absence is `StateValue<T>`.** A real optional (`HasValue` / `Value` / `GetValueOrDefault(fallback)` /
-  `TryGetValue(out value)`), because a CLR `T?` cannot tell an absent value from a stored `default(T)` such as `0` or
-  `false`.
-- **JSON `null` is not storable.** The item type is constrained to `notnull`, so a nullable item type (for example
-  `int?`) is a compile-time error; writing a runtime `null` is rejected (transient) — use `ClearAsync` / `RemoveAsync`
-  to delete. (Message collections keep a nullable *payload*: the item type is the non-null `Message<TPayload>`.)
-- **Two categories, never terminal.** Keyed-state errors are exactly `Permanent` or `Transient` and are never terminal.
-
-### Error Handling
-
-Keyed-state failures surface as structured exceptions that flow through the same handler-error bridge as everything else.
-The category is carried as the exception **type**, never parsed from the message:
-
-- `TransientStateException` (does not implement `IPermanentError`): the default. A temporary store read/write failure
-  (for example a timeout), **and every caller mistake** — a rejected `null`/unrepresentable write (surfaced as the more
-  specific `NullValueException`; use `ClearAsync` / `RemoveAsync` instead), a wrong item shape, an out-of-range deque
-  index, or an invalid scan direction. Caller mistakes are transient on purpose: a permanent error would commit the
-  offset and silently lose the message, so a data-dependent handler bug retries and stays visible (logs, metrics, lag)
-  until you fix it.
-- `PermanentStateException` (implements `IPermanentError`): reserved for failures a retry genuinely cannot resolve within
-  the running process — an unregistered or identity-mismatched collection, or a duplicate registration or invalid
-  name/TTL. A handler may also throw one explicitly to declare its own failure permanent.
-
-Because they subclass the existing error hierarchy, rethrowing them from a handler classifies the event exactly like a
-plain `PermanentException` or a plain transient error. Inspect `StateException.Category` (or catch the concrete type) to
-branch on the category.
-
-### AOT and Trimming
-
-Keyed-state (de)serialization mirrors the message payload path exactly: it resolves a `JsonTypeInfo<T>` from the
-client's `JsonSerializerOptions`. For trim or AOT builds, the source-generated `JsonSerializerContext` registered via
-`ConfigureJsonOptions` must include every state item type — the value/map/deque element types, and for message
-collections the `Message<TPayload>` payload types — exactly as it must include message payload types. See the
-[AOT / Trim-safe Usage](#aot--trim-safe-usage) section for how to register a source-generated context.
+Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
 
 ## OpenTelemetry Tracing
 
