@@ -43,7 +43,7 @@ use prosody::telemetry::emitter::{
 };
 use prosody::timers::duration::CompactDuration;
 use std::collections::HashSet;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 use validator::{ValidationError, ValidationErrors};
@@ -615,21 +615,30 @@ fn register_state_collection(
 pub fn build_keyed_state_config(
     options: &ClientOptions,
 ) -> Result<KeyedStateConfiguration, FfiError> {
-    let mut keyed = KeyedStateConfiguration::default();
+    let mut builder = KeyedStateConfiguration::builder();
 
     if let Some(dir) = &options.state_cache_dir {
-        if dir.is_empty() {
-            return Err(permanent_config(
-                "stateCacheDir: must not be an empty string".to_owned(),
-            ));
-        }
-        keyed.cache_dir = PathBuf::from(dir);
+        builder.cache_dir(PathBuf::from(dir));
     }
 
     if let Some(delay) = options.state_recovery_delay {
         let seconds = whole_seconds(delay, "stateRecoveryDelay", 1)?;
-        keyed.recovery_delay = CompactDuration::new(seconds);
+        builder.recovery_delay(CompactDuration::new(seconds));
     }
+
+    if let Some(bytes) = options.state_cache_size_bytes {
+        let bytes = u64::try_from(bytes)
+            .ok()
+            .and_then(NonZeroU64::new)
+            .ok_or_else(|| {
+                permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
+            })?;
+        builder.cache_size_bytes(Some(bytes));
+    }
+
+    let mut keyed = builder
+        .build()
+        .map_err(|error| permanent_config(error.to_string()))?;
 
     if let Some(collections) = &options.state_collections {
         let mut seen = HashSet::with_capacity(collections.len());

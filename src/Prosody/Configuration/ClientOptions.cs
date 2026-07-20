@@ -443,11 +443,19 @@ public sealed class ClientOptions
     public StateDefinition[]? StateCollections { get; set; }
 
     /// <summary>
-    /// Root directory for the local keyed-state cache. Each live client needs its own directory.
-    /// Falls back to <c>PROSODY_FJALL_CACHE_DIR</c>, then a per-client temporary directory.
+    /// Disk workspace for the local keyed-state cache. Each live client needs its own directory.
+    /// Falls back to <c>PROSODY_STATE_CACHE_DIR</c>, then a per-client temporary directory.
     /// Must not be an empty string when set.
     /// </summary>
     public string? StateCacheDir { get; set; }
+
+    /// <summary>
+    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
+    /// <c>PROSODY_STATE_CACHE_SIZE_BYTES</c>,
+    /// then to the storage-engine default.
+    /// Must be greater than zero when set.
+    /// </summary>
+    public long? StateCacheSizeBytes { get; set; }
 
     /// <summary>
     /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
@@ -569,6 +577,7 @@ public sealed class ClientOptions
                 ? null
                 : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
             StateCacheDir: StateCacheDir,
+            StateCacheSizeBytes: StateCacheSizeBytes,
             StateRecoveryDelay: StateRecoveryDelay
         );
 }

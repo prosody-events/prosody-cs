@@ -644,10 +644,17 @@ pub struct ClientOptions {
     /// workspace).
     ///
     /// Each live client needs its own directory. Falls back to the
-    /// `PROSODY_FJALL_CACHE_DIR` environment variable, then a per-client
+    /// `PROSODY_STATE_CACHE_DIR` environment variable, then a per-client
     /// temporary directory. Must not be an empty string when set.
     #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
+
+    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
+    /// `PROSODY_STATE_CACHE_SIZE_BYTES`,
+    /// then to the storage-engine default.
+    /// Must be greater than zero when set.
+    #[uniffi(default = None)]
+    pub state_cache_size_bytes: Option<i64>,
 
     /// Delay between staging a provisional cell and the keyed-state recovery
     /// sweep.

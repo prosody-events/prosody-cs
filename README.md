@@ -362,7 +362,8 @@ variable applies, then the default.
 | Property / Environment Variable | Description | Default |
 |---|---|---|
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
-| `StateCacheDir` / `PROSODY_FJALL_CACHE_DIR` | Root directory for the local committed-value cache; each live client needs its own directory. | per-client temp dir |
+| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
+| `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
 | `StateRecoveryDelay` / `PROSODY_KEYED_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
