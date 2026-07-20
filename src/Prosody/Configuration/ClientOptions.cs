@@ -459,7 +459,7 @@ public sealed class ClientOptions
 
     /// <summary>
     /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
-    /// TTL must strictly exceed this. Falls back to <c>PROSODY_KEYED_STATE_RECOVERY_DELAY</c>, then to
+    /// TTL must strictly exceed this. Falls back to <c>PROSODY_STATE_RECOVERY_DELAY</c>, then to
     /// 30 seconds. Must be a whole number of seconds of at least one when set.
     /// </summary>
     public TimeSpan? StateRecoveryDelay { get; set; }

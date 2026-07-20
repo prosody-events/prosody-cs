@@ -660,7 +660,7 @@ pub struct ClientOptions {
     /// sweep.
     ///
     /// Every registered TTL must strictly exceed this. Falls back to the
-    /// `PROSODY_KEYED_STATE_RECOVERY_DELAY` environment variable, then to 30
+    /// `PROSODY_STATE_RECOVERY_DELAY` environment variable, then to 30
     /// seconds. Must be a whole number of seconds of at least 1 when set
     /// (fractional and sub-second values are rejected).
     #[uniffi(default = None)]

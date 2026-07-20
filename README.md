@@ -364,7 +364,7 @@ variable applies, then the default.
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
 | `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
 | `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
-| `StateRecoveryDelay` / `PROSODY_KEYED_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
+| `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
 documented in the [Definitions](#definitions) subsection). The factory parameters map to these per-collection fields:
