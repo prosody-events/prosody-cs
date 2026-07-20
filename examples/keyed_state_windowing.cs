@@ -8,8 +8,10 @@ using Prosody.State;
 
 namespace ProsodyExamples;
 
-public static class KeyedStateWindowing
+internal static class KeyedStateWindowing
 {
+    private readonly record struct Activity(string Actor, string Action);
+
     private static readonly ValueStateDefinition<bool> Window = StateDefinition.Value<bool>(
         "window",
         ttl: TimeSpan.FromDays(1)
@@ -33,20 +35,18 @@ public static class KeyedStateWindowing
         await client.SubscribeAsync(new ActivityHandler());
     }
 
-    private sealed record Activity(string Actor, string Action);
-
     private sealed class ActivityHandler : IProsodyHandler<Activity>
     {
         public async Task OnMessageAsync(
-            ProsodyContext context,
+            ProsodyContext prosodyContext,
             Message<Activity> message,
             CancellationToken cancellationToken
         )
         {
-            var window = context.State(Window);
-            var pending = context.State(Pending);
+            var window = prosodyContext.State(Window);
+            var pending = prosodyContext.State(Pending);
 
-            if ((await window.GetAsync(cancellationToken)).GetValueOrDefault())
+            if ((await window.GetAsync(cancellationToken)).GetValueOrDefault(false))
             {
                 await pending.PushBackAsync(message, cancellationToken);
                 return;
@@ -54,12 +54,16 @@ public static class KeyedStateWindowing
 
             await NotifyAsync(message.Key, [message]);
             await window.SetAsync(true, cancellationToken);
-            await context.ClearAndScheduleAsync(DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
+            await prosodyContext.ClearAndScheduleAsync(DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
         }
 
-        public async Task OnTimerAsync(ProsodyContext context, ProsodyTimer timer, CancellationToken cancellationToken)
+        public async Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        )
         {
-            var pending = context.State(Pending);
+            var pending = prosodyContext.State(Pending);
             var batch = new List<Message<Activity>>();
             await foreach (var message in pending.EnumerateAsync(ScanDirection.Forward, cancellationToken))
             {
@@ -72,7 +76,7 @@ public static class KeyedStateWindowing
             }
 
             await pending.ClearAsync(cancellationToken);
-            await context.State(Window).ClearAsync(cancellationToken);
+            await prosodyContext.State(Window).ClearAsync(cancellationToken);
         }
     }
 
