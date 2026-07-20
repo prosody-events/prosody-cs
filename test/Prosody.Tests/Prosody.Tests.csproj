@@ -49,6 +49,11 @@
     <PackageReference Include="ProsodyEvents.Prosody" Version="*" />
   </ItemGroup>
 
+  <!-- Keep the public README example compiling against both source and packaged APIs. -->
+  <ItemGroup>
+    <Compile Include="..\..\examples\keyed_state_windowing.cs" Link="Examples\keyed_state_windowing.cs" />
+  </ItemGroup>
+
   <!-- Test configuration file to set xUnit test runner settings -->
   <ItemGroup>
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />

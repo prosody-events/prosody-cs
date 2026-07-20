@@ -758,7 +758,7 @@ public async Task OnTimerAsync(
 }
 ```
 
-See the complete, compiled example for imports, types, client setup, and `Notify`: [`NormativeExampleCompileTests.cs`](test/Prosody.Tests/Unit/NormativeExampleCompileTests.cs).
+See the complete, compiled example for imports, types, client setup, and `NotifyAsync`: [`examples/keyed_state_windowing.cs`](examples/keyed_state_windowing.cs).
 
 Why this works:
 
