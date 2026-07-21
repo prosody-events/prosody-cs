@@ -152,12 +152,16 @@ internal static class StateInterop
             case null:
                 return StateValue<T>.None;
             case Native.StateItem.Json json:
-                var value = JsonSerializer.Deserialize(json.Bytes.AsSpan(), typeInfo);
-                return value is null ? StateValue<T>.None : new StateValue<T>(value);
+                return new StateValue<T>(DeserializeJson(json.Bytes, typeInfo));
             default:
                 throw new TransientStateException("State item shape mismatch: expected a JSON document.");
         }
     }
+
+    internal static T DeserializeJson<T>(byte[] bytes, JsonTypeInfo<T> typeInfo)
+        where T : notnull =>
+        JsonSerializer.Deserialize(bytes.AsSpan(), typeInfo)
+        ?? throw new TransientStateException("Stored keyed-state JSON deserialized to null.");
 
     private static bool IsJsonNullToken(byte[] bytes) =>
         bytes.Length == 4

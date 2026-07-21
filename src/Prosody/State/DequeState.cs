@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
 namespace Prosody.State;
@@ -112,10 +111,13 @@ internal sealed class DequeState<T> : IDequeState<T>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<T>(
+            () => StateInterop.RunSync(() =>
+                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            Transform,
+            cancellationToken
         );
-        return new StateScanSequence<T>(cursor, Transform, cancellationToken);
     }
 
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
@@ -129,6 +131,6 @@ internal sealed class DequeState<T> : IDequeState<T>
 
     private T Transform(Native.StateScanItem item) =>
         item is Native.StateScanItem.DequeJson element
-            ? JsonSerializer.Deserialize(element.Bytes.AsSpan(), _typeInfo)!
+            ? StateInterop.DeserializeJson(element.Bytes, _typeInfo)
             : throw new TransientStateException("State scan item shape mismatch: expected a JSON deque element.");
 }

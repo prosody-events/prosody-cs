@@ -9,6 +9,7 @@ using OpenTelemetry.Context.Propagation;
 using Prosody.Errors;
 using Prosody.Logging;
 using Prosody.Messaging;
+using Prosody.State;
 using NativeHandler = Prosody.Native.EventHandler;
 using NativeResult = Prosody.Native.HandlerResult;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
@@ -246,6 +247,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly Func<Exception, bool> _isTimerPermanent;
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
     private readonly JsonSerializerOptions _jsonOptions;
+    private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
 
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
@@ -253,13 +255,18 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     [RequiresDynamicCode(
         "GetInterfaceMap requires the handler type's methods to be preserved. Use the constructor that accepts IPermanentErrorClassifier to avoid this requirement."
     )]
-    public EventHandlerBridge(IProsodyHandler<TPayload> userHandler, JsonSerializerOptions jsonOptions)
+    public EventHandlerBridge(
+        IProsodyHandler<TPayload> userHandler,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition>? stateDefinitions = null
+    )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
         ArgumentNullException.ThrowIfNull(jsonOptions);
 
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
+        _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
 
         var handlerType = userHandler.GetType();
@@ -281,7 +288,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     public EventHandlerBridge(
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
-        IPermanentErrorClassifier classifier
+        IPermanentErrorClassifier classifier,
+        IReadOnlySet<StateDefinition>? stateDefinitions = null
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -290,6 +298,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
+        _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
@@ -313,7 +322,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var bytes = message.Payload();
 
         return HandleMessageAsync(
-            new ProsodyContext(context, _jsonOptions),
+            new ProsodyContext(context, _jsonOptions, _stateDefinitions),
             topic,
             key,
             partition,
@@ -328,7 +337,12 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 
     /// <inheritdoc/>
     public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
-        HandleTimerAsync(new ProsodyContext(context, _jsonOptions), new ProsodyTimer(timer), context.OnCancel, carrier);
+        HandleTimerAsync(
+            new ProsodyContext(context, _jsonOptions, _stateDefinitions),
+            new ProsodyTimer(timer),
+            context.OnCancel,
+            carrier
+        );
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.

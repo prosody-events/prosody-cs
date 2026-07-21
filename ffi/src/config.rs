@@ -627,12 +627,12 @@ pub fn build_keyed_state_config(
     }
 
     if let Some(bytes) = options.state_cache_size_bytes {
-        let bytes = u64::try_from(bytes)
-            .ok()
-            .and_then(NonZeroU64::new)
-            .ok_or_else(|| {
-                permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
-            })?;
+        let bytes = u64::try_from(bytes).map_err(|_| {
+            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
+        })?;
+        let bytes = NonZeroU64::new(bytes).ok_or_else(|| {
+            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
+        })?;
         builder.cache_size_bytes(Some(bytes));
     }
 

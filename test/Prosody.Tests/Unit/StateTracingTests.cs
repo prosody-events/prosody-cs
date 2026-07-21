@@ -68,7 +68,7 @@ public sealed class StateTracingTests : IDisposable
 
         var cursor = new FakeStateCursor(Chunk("a", "b"));
         var sequence = new StateScanSequence<string>(
-            cursor,
+            () => cursor,
             item => Encoding.UTF8.GetString(((Native.StateScanItem.DequeJson)item).Bytes),
             CancellationToken.None
         );

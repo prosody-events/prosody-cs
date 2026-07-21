@@ -11,15 +11,22 @@ public sealed class ProsodyContext
 {
     private readonly Native.Context _native;
     private readonly JsonSerializerOptions? _jsonOptions;
-    private readonly Dictionary<string, object>? _stateHandles;
+    private readonly IReadOnlySet<StateDefinition>? _stateDefinitions;
+    private readonly Dictionary<StateDefinition, object>? _stateHandles;
 
-    internal ProsodyContext(Native.Context native, JsonSerializerOptions jsonOptions)
+    internal ProsodyContext(
+        Native.Context native,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions
+    )
     {
         ArgumentNullException.ThrowIfNull(native);
         ArgumentNullException.ThrowIfNull(jsonOptions);
+        ArgumentNullException.ThrowIfNull(stateDefinitions);
         _native = native;
         _jsonOptions = jsonOptions;
-        _stateHandles = new Dictionary<string, object>(StringComparer.Ordinal);
+        _stateDefinitions = stateDefinitions;
+        _stateHandles = new Dictionary<StateDefinition, object>(ReferenceEqualityComparer.Instance);
     }
 
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
@@ -204,14 +211,20 @@ public sealed class ProsodyContext
             throw new InvalidOperationException("Keyed-state collections are not available on this context.");
         }
 
-        var cacheKey = $"{definition.Kind}:{definition.Payload}:{definition.Name}";
-        if (_stateHandles.TryGetValue(cacheKey, out var cached))
+        if (_stateDefinitions is null || !_stateDefinitions.Contains(definition))
+        {
+            throw new TransientStateException(
+                $"State collection '{definition.Name}' must be bound with the definition object registered on the client."
+            );
+        }
+
+        if (_stateHandles.TryGetValue(definition, out var cached))
         {
             return (THandle)cached;
         }
 
         var handle = factory(_jsonOptions);
-        _stateHandles[cacheKey] = handle;
+        _stateHandles[definition] = handle;
         return handle;
     }
 }

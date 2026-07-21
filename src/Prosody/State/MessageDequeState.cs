@@ -111,10 +111,13 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<Message<TPayload>>(
+            () => StateInterop.RunSync(() =>
+                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            Transform,
+            cancellationToken
         );
-        return new StateScanSequence<Message<TPayload>>(cursor, Transform, cancellationToken);
     }
 
     public IAsyncEnumerator<Message<TPayload>> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>

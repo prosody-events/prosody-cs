@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
 namespace Prosody.State;
@@ -86,10 +85,13 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<string>(
+            () => StateInterop.RunSync(() =>
+                _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            StateInterop.ItemKey,
+            cancellationToken
         );
-        return new StateScanSequence<string>(cursor, StateInterop.ItemKey, cancellationToken);
     }
 
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
@@ -98,10 +100,13 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<KeyValuePair<string, TValue>>(
+            () => StateInterop.RunSync(() =>
+                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            Transform,
+            cancellationToken
         );
-        return new StateScanSequence<KeyValuePair<string, TValue>>(cursor, Transform, cancellationToken);
     }
 
     public IAsyncEnumerator<KeyValuePair<string, TValue>> GetAsyncEnumerator(
@@ -116,6 +121,6 @@ internal sealed class MapState<TValue> : IMapState<TValue>
 
     private KeyValuePair<string, TValue> Transform(Native.StateScanItem item) =>
         item is Native.StateScanItem.MapJson entry
-            ? KeyValuePair.Create(entry.Key, JsonSerializer.Deserialize(entry.Bytes.AsSpan(), _typeInfo)!)
+            ? KeyValuePair.Create(entry.Key, StateInterop.DeserializeJson(entry.Bytes, _typeInfo))
             : throw new TransientStateException("State scan item shape mismatch: expected a JSON map entry.");
 }

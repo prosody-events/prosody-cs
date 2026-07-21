@@ -69,7 +69,7 @@ public sealed class EventHandlerBridgeTests
     {
         var handler = new TypedLambdaHandler<BridgePayload>();
         Assert.Throws<ArgumentNullException>(() =>
-            new EventHandlerBridge<BridgePayload>(handler, TestJson.Options, null!)
+            new EventHandlerBridge<BridgePayload>(handler, TestJson.Options, (IPermanentErrorClassifier)null!)
         );
     }
 

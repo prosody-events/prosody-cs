@@ -58,4 +58,14 @@ public sealed class StateValueTests
 
         Assert.Multiple(() => Assert.True(value.HasValue), () => Assert.False(value.Value));
     }
+
+    [Fact]
+    public void StoredJsonNull_Throws()
+    {
+        using var item = new Native.StateItem.Json("null"u8.ToArray());
+
+        Assert.Throws<TransientStateException>(() =>
+            StateInterop.JsonToValue<string>(item, TestJson.TypeInfo<string>())
+        );
+    }
 }

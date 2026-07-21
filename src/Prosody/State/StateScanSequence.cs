@@ -19,30 +19,24 @@ namespace Prosody.State;
 /// <typeparam name="T">The yielded element type.</typeparam>
 internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
 {
-    private readonly Native.IStateCursor _cursor;
+    private readonly Func<Native.IStateCursor> _cursorFactory;
     private readonly Func<Native.StateScanItem, T> _transform;
     private readonly CancellationToken _cancellationToken;
-    private int _consumed;
 
     internal StateScanSequence(
-        Native.IStateCursor cursor,
+        Func<Native.IStateCursor> cursorFactory,
         Func<Native.StateScanItem, T> transform,
         CancellationToken cancellationToken
     )
     {
-        _cursor = cursor;
+        _cursorFactory = cursorFactory;
         _transform = transform;
         _cancellationToken = cancellationToken;
     }
 
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _consumed, 1) == 1)
-        {
-            throw new InvalidOperationException("This state scan has already been enumerated.");
-        }
-
-        return new Enumerator(_cursor, _transform, _cancellationToken, cancellationToken);
+        return new Enumerator(_cursorFactory(), _transform, _cancellationToken, cancellationToken);
     }
 
     private sealed class Enumerator : IAsyncEnumerator<T>

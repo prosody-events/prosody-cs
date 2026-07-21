@@ -85,10 +85,13 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<string>(
+            () => StateInterop.RunSync(() =>
+                _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            StateInterop.ItemKey,
+            cancellationToken
         );
-        return new StateScanSequence<string>(cursor, StateInterop.ItemKey, cancellationToken);
     }
 
     public IAsyncEnumerable<KeyValuePair<string, Message<TPayload>>> EnumerateAsync(
@@ -97,10 +100,13 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var cursor = StateInterop.RunSync(() =>
-            _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+        return new StateScanSequence<KeyValuePair<string, Message<TPayload>>>(
+            () => StateInterop.RunSync(() =>
+                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+            ),
+            Transform,
+            cancellationToken
         );
-        return new StateScanSequence<KeyValuePair<string, Message<TPayload>>>(cursor, Transform, cancellationToken);
     }
 
     public IAsyncEnumerator<KeyValuePair<string, Message<TPayload>>> GetAsyncEnumerator(

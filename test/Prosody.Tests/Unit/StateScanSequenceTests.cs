@@ -37,7 +37,7 @@ public sealed class StateScanSequenceTests
     public async Task Exhaustion_ClosesExactlyOnce()
     {
         var cursor = new FakeStateCursor(Chunk("a"));
-        var sequence = new StateScanSequence<string>(cursor, Decode, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, CancellationToken.None);
 
         var results = await DrainAsync(sequence);
 
@@ -45,10 +45,26 @@ public sealed class StateScanSequenceTests
     }
 
     [Fact]
+    public async Task EachEnumeration_OpensAndClosesFreshCursor()
+    {
+        var cursors = new Queue<FakeStateCursor>([new(Chunk("a")), new(Chunk("b"))]);
+        var sequence = new StateScanSequence<string>(() => cursors.Dequeue(), Decode, CancellationToken.None);
+
+        var first = await DrainAsync(sequence);
+        var second = await DrainAsync(sequence);
+
+        Assert.Multiple(
+            () => Assert.Equal(["a"], first),
+            () => Assert.Equal(["b"], second),
+            () => Assert.Empty(cursors)
+        );
+    }
+
+    [Fact]
     public async Task EarlyBreak_ClosesExactlyOnce()
     {
         var cursor = new FakeStateCursor(Chunk("a", "b", "c"));
-        var sequence = new StateScanSequence<string>(cursor, Decode, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, CancellationToken.None);
 
         await foreach (var value in sequence)
         {
@@ -68,7 +84,7 @@ public sealed class StateScanSequenceTests
         // does). A native-close skip in DisposeAsync drops CloseCalls to 0 and fails this.
         using var cts = new CancellationTokenSource();
         var cursor = new FakeStateCursor(Chunk("a", "b"));
-        var sequence = new StateScanSequence<string>(cursor, Decode, cts.Token);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, cts.Token);
         var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         await cts.CancelAsync();
@@ -82,7 +98,7 @@ public sealed class StateScanSequenceTests
     public async Task ReadyChunk_FlattensWithoutPerItemPulls()
     {
         var cursor = new FakeStateCursor(Chunk("a", "b", "c"));
-        var sequence = new StateScanSequence<string>(cursor, Decode, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, CancellationToken.None);
 
         var results = await DrainAsync(sequence);
 
@@ -111,7 +127,7 @@ public sealed class StateScanSequenceTests
             return value;
         }
 
-        var sequence = new StateScanSequence<string>(cursor, Recording, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Recording, CancellationToken.None);
         var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         var moves = Enumerable
@@ -132,7 +148,7 @@ public sealed class StateScanSequenceTests
     public async Task DisposeQueuedBehindActiveMoveNext_ClosesOnce_NoRace()
     {
         var cursor = new FakeStateCursor(Chunk("a")) { PullRelease = new TaskCompletionSource() };
-        var sequence = new StateScanSequence<string>(cursor, Decode, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, CancellationToken.None);
         var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         var move = enumerator.MoveNextAsync().AsTask();
@@ -154,7 +170,7 @@ public sealed class StateScanSequenceTests
     public async Task PullError_ClosesBestEffort_WrapsToStateError_Unmasked()
     {
         var cursor = new FakeStateCursor { PullError = () => new Native.FfiException.TransientState("boom") };
-        var sequence = new StateScanSequence<string>(cursor, Decode, CancellationToken.None);
+        var sequence = new StateScanSequence<string>(() => cursor, Decode, CancellationToken.None);
         var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
 
         var exception = await Assert.ThrowsAsync<TransientStateException>(async () => await enumerator.MoveNextAsync());
