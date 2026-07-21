@@ -74,9 +74,40 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          dotnet-version: 10.0.x
+          packages: cmake libcurl4-openssl-dev
+          version: 1.0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust (nightly for fmt)
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uniffi-bindgen-cs
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: uniffi-bindgen-cs
+          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
+          tag: v0.11.0+v0.31.0
+
+      - name: Install CSharpier globally
+        run: dotnet tool install -g csharpier
 
       - name: Download native library
         uses: actions/download-artifact@v8
@@ -91,6 +122,18 @@ jobs:
             rid="${directory##*/native-}"
             mv "$directory" "ffi/artifacts/$rid"
           done
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build FFI for binding generation
+        run: cargo build -p prosody-ffi
+
+      - name: Generate C# bindings
+        run: make bindgen
 
       - name: Pack
         run: |
