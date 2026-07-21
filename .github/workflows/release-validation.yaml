@@ -175,7 +175,7 @@ jobs:
             runner: ubuntu-latest
           - rid: linux-arm64
             runner: ubuntu-24.04-arm
-        dotnet: ["8.0", "9.0"]
+        dotnet: ["8.0", "9.0", "10.0"]
     runs-on: ${{ matrix.target.runner }}
     services:
       kafka:
