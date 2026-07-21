@@ -291,7 +291,7 @@ jobs:
 
   test:
     name: Test ${{ matrix.target.name }} (.NET ${{ matrix.dotnet }})
-    needs: [build-package]
+    needs: [release-please, build-package]
     runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
