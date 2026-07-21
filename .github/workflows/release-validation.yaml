@@ -42,9 +42,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Cache Linux Rust build
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            target/${{ matrix.target.rust_target }}
+          key: linux-rust-bookworm-${{ matrix.target.rust_target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            linux-rust-bookworm-${{ matrix.target.rust_target }}-
+
       - name: Build in compatibility container
         run: |
           docker run --rm \
+            --env CARGO_HOME=/workspace/.cargo-cache \
             --volume "${{ github.workspace }}:/workspace" \
             --workdir /workspace \
             rust:bookworm \
@@ -125,6 +137,14 @@ jobs:
 
       - name: Restore .NET tools
         run: dotnet tool restore
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
 
       - name: Restore .NET dependencies
         run: dotnet restore
