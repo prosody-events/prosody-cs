@@ -112,9 +112,10 @@ internal sealed class DequeState<T> : IDequeState<T>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<T>(
-            () => StateInterop.RunSync(() =>
-                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-            ),
+            () =>
+                StateInterop.RunSync(() =>
+                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+                ),
             Transform,
             cancellationToken
         );

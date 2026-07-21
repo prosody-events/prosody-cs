@@ -86,9 +86,10 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<string>(
-            () => StateInterop.RunSync(() =>
-                _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-            ),
+            () =>
+                StateInterop.RunSync(() =>
+                    _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+                ),
             StateInterop.ItemKey,
             cancellationToken
         );
@@ -101,9 +102,10 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<KeyValuePair<string, TValue>>(
-            () => StateInterop.RunSync(() =>
-                _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-            ),
+            () =>
+                StateInterop.RunSync(() =>
+                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+                ),
             Transform,
             cancellationToken
         );
