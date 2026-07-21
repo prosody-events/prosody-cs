@@ -48,7 +48,7 @@ jobs:
           path: |
             .cargo-cache/registry
             .cargo-cache/git
-            target/${{ matrix.target.rust_target }}
+            target
           key: linux-rust-bookworm-${{ matrix.target.rust_target }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             linux-rust-bookworm-${{ matrix.target.rust_target }}-
@@ -234,6 +234,7 @@ jobs:
             -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
             -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
             -e DOTNET_NOLOGO=1 \
+            -e NUGET_PACKAGES=/tmp/prosody-release-packages \
             --volume "${{ github.workspace }}:/workspace" \
             --workdir /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
@@ -241,8 +242,8 @@ jobs:
               dotnet restore test/Prosody.Tests \
                 -p:TestPackage=true \
                 -p:TestPackageVersion=0.0.0-validation \
-                --source /workspace/packages \
-                --source https://api.nuget.org/v3/index.json \
+                --configfile /workspace/.github/nuget-release-test.config \
+                --no-http-cache \
                 /p:TargetFramework=net${{ matrix.dotnet }} &&
               dotnet run --project test/Prosody.Tests \
                 --framework net${{ matrix.dotnet }} \
