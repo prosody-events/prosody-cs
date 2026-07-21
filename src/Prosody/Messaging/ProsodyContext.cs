@@ -213,7 +213,7 @@ public sealed class ProsodyContext
 
         if (_stateDefinitions?.Contains(definition) != true)
         {
-            throw new TransientStateException(
+            throw new PermanentStateException(
                 $"State collection '{definition.Name}' must be bound with the definition object registered on the client."
             );
         }
