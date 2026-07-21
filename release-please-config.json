@@ -1,8 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "release-type": "simple",
+  "bootstrap-sha": "c9abe0ca1a91c1b6521ab286ec5cd97c04e4a102",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
   "packages": {
     ".": {
+      "release-type": "simple",
+      "package-name": "prosody",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
