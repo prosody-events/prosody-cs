@@ -211,7 +211,7 @@ public sealed class ProsodyContext
             throw new InvalidOperationException("Keyed-state collections are not available on this context.");
         }
 
-        if (_stateDefinitions is null || !_stateDefinitions.Contains(definition))
+        if (_stateDefinitions?.Contains(definition) != true)
         {
             throw new TransientStateException(
                 $"State collection '{definition.Name}' must be bound with the definition object registered on the client."

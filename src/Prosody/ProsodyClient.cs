@@ -78,7 +78,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         );
     }
 
-    private static IReadOnlySet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
+    private static HashSet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
         new HashSet<StateDefinition>(options.StateCollections ?? [], ReferenceEqualityComparer.Instance);
 
     [RequiresUnreferencedCode(
