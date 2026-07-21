@@ -115,7 +115,7 @@ impl FallibleHandler for CsHandler {
         _demand_type: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where
-        C: EventContext,
+        C: EventContext<Payload = Self::Payload>,
     {
         // Get the span from the message for distributed tracing
         let span = message.span();
@@ -152,7 +152,7 @@ impl FallibleHandler for CsHandler {
         _demand_type: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where
-        C: EventContext,
+        C: EventContext<Payload = Self::Payload>,
     {
         // Only process Application timers - other types are internal to prosody
         if trigger.timer_type != TimerType::Application {

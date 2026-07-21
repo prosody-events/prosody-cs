@@ -1,18 +1,32 @@
-using Prosody.Infrastructure;
+using System.Text.Json;
+using Prosody.State;
 
 namespace Prosody.Messaging;
 
 /// <summary>
-/// Event context for scheduling timers and checking cancellation. All times are in UTC.
+/// Event context for scheduling timers, checking cancellation, and binding keyed-state collections.
+/// All times are in UTC.
 /// </summary>
 public sealed class ProsodyContext
 {
     private readonly Native.Context _native;
+    private readonly JsonSerializerOptions? _jsonOptions;
+    private readonly IReadOnlySet<StateDefinition>? _stateDefinitions;
+    private readonly Dictionary<StateDefinition, object>? _stateHandles;
 
-    internal ProsodyContext(Native.Context native)
+    internal ProsodyContext(
+        Native.Context native,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions
+    )
     {
         ArgumentNullException.ThrowIfNull(native);
+        ArgumentNullException.ThrowIfNull(jsonOptions);
+        ArgumentNullException.ThrowIfNull(stateDefinitions);
         _native = native;
+        _jsonOptions = jsonOptions;
+        _stateDefinitions = stateDefinitions;
+        _stateHandles = new Dictionary<StateDefinition, object>(ReferenceEqualityComparer.Instance);
     }
 
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
@@ -34,7 +48,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ScheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.Schedule(time.UtcDateTime, carrier);
     }
 
@@ -44,7 +58,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time to schedule the timer (UTC).</param>
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.ClearAndSchedule(time.UtcDateTime, carrier);
     }
 
@@ -54,7 +68,7 @@ public sealed class ProsodyContext
     /// <param name="time">The time of the timer to unschedule (UTC).</param>
     public Task UnscheduleAsync(DateTimeOffset time)
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.Unschedule(time.UtcDateTime, carrier);
     }
 
@@ -63,7 +77,7 @@ public sealed class ProsodyContext
     /// </summary>
     public Task ClearScheduledAsync()
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         return _native.ClearScheduled(carrier);
     }
 
@@ -73,15 +87,144 @@ public sealed class ProsodyContext
     /// <returns>An array of scheduled times (UTC).</returns>
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
-        Dictionary<string, string> carrier = CreateCarrier();
+        Dictionary<string, string> carrier = StateInterop.CreateCarrier();
         DateTime[] times = await _native.Scheduled(carrier).ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
 
-    private static Dictionary<string, string> CreateCarrier()
+    /// <summary>
+    /// Binds a single-value JSON collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="T">The stored value type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IValueState<T> State<T>(ValueStateDefinition<T> definition)
+        where T : notnull
     {
-        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        return carrier;
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new ValueState<T>(
+                StateInterop.RunSync(() => _native.ValueState(definition.Name)),
+                StateInterop.ResolveTypeInfo<T>(options)
+            )
+        );
+    }
+
+    /// <summary>
+    /// Binds a string-keyed ordered-map JSON collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="TValue">The stored value type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IMapState<TValue> State<TValue>(MapStateDefinition<TValue> definition)
+        where TValue : notnull
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new MapState<TValue>(
+                StateInterop.RunSync(() => _native.MapState(definition.Name)),
+                StateInterop.ResolveTypeInfo<TValue>(options)
+            )
+        );
+    }
+
+    /// <summary>
+    /// Binds a deque JSON collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="T">The stored element type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IDequeState<T> State<T>(DequeStateDefinition<T> definition)
+        where T : notnull
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new DequeState<T>(
+                StateInterop.RunSync(() => _native.DequeState(definition.Name)),
+                StateInterop.ResolveTypeInfo<T>(options)
+            )
+        );
+    }
+
+    /// <summary>
+    /// Binds a single-value message collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="TPayload">The message payload type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IValueState<Message<TPayload>> State<TPayload>(MessageValueDefinition<TPayload> definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new MessageValueState<TPayload>(
+                StateInterop.RunSync(() => _native.MessageValueState(definition.Name)),
+                StateInterop.ResolveTypeInfo<TPayload>(options)
+            )
+        );
+    }
+
+    /// <summary>
+    /// Binds a string-keyed ordered-map message collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="TPayload">The message payload type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IMapState<Message<TPayload>> State<TPayload>(MessageMapDefinition<TPayload> definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new MessageMapState<TPayload>(
+                StateInterop.RunSync(() => _native.MessageMapState(definition.Name)),
+                StateInterop.ResolveTypeInfo<TPayload>(options)
+            )
+        );
+    }
+
+    /// <summary>
+    /// Binds a deque message collection for the current handler invocation.
+    /// </summary>
+    /// <typeparam name="TPayload">The message payload type.</typeparam>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A typed handle. Repeated calls within one invocation return the same handle.</returns>
+    public IDequeState<Message<TPayload>> State<TPayload>(MessageDequeDefinition<TPayload> definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            options => new MessageDequeState<TPayload>(
+                StateInterop.RunSync(() => _native.MessageDequeState(definition.Name)),
+                StateInterop.ResolveTypeInfo<TPayload>(options)
+            )
+        );
+    }
+
+    private THandle GetOrAddHandle<THandle>(StateDefinition definition, Func<JsonSerializerOptions, THandle> factory)
+        where THandle : class
+    {
+        if (_native is null || _stateHandles is null || _jsonOptions is null)
+        {
+            throw new InvalidOperationException("Keyed-state collections are not available on this context.");
+        }
+
+        if (_stateDefinitions?.Contains(definition) != true)
+        {
+            throw new PermanentStateException(
+                $"State collection '{definition.Name}' must be bound with the definition object registered on the client."
+            );
+        }
+
+        if (_stateHandles.TryGetValue(definition, out var cached))
+        {
+            return (THandle)cached;
+        }
+
+        var handle = factory(_jsonOptions);
+        _stateHandles[definition] = handle;
+        return handle;
     }
 }

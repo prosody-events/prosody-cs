@@ -40,7 +40,22 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
         // Create topic first, before creating the client
         await sharedAdmin.CreateTopicAsync(topic, 4, 1);
 
-        // Retry client creation if topic not yet visible (Kafka metadata propagation delay)
+        var client = await CreateClientWithRetryAsync(groupId, topic, $"topic {topic}", configure);
+        return new IntegrationTestContext(sharedAdmin, topic, groupId, client);
+    }
+
+    /// <summary>
+    /// Builds a client bound to <paramref name="groupId"/> and <paramref name="topic"/>, retrying if
+    /// the topic is not yet visible (Kafka metadata propagation delay). On exhaustion, throws with a
+    /// message naming <paramref name="failureContext"/>.
+    /// </summary>
+    private static async Task<ProsodyClient> CreateClientWithRetryAsync(
+        string groupId,
+        string topic,
+        string failureContext,
+        Action<ClientOptions>? configure
+    )
+    {
         ProsodyClient? client = null;
         Exception? lastException = null;
         for (var attempt = 0; attempt < 10; attempt++)
@@ -69,13 +84,23 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
             }
         }
 
-        return client is null
-            ? throw new InvalidOperationException(
-                $"Failed to create client for topic {topic} after retries",
+        return client
+            ?? throw new InvalidOperationException(
+                $"Failed to create client for {failureContext} after retries",
                 lastException
-            )
-            : new IntegrationTestContext(sharedAdmin, topic, groupId, client);
+            );
     }
+
+    /// <summary>
+    /// Builds a second client bound to this context's topic and group id (not a fresh group), sharing
+    /// the same bootstrap and Cassandra options. Identity persistence requires a shared group, so this
+    /// is the seam the same-name-different-kind identity-mismatch scenario runs across two clients.
+    /// The caller owns the returned client: unsubscribe and dispose it before this context disposes.
+    /// </summary>
+    /// <param name="configure">Optional callback to override client options before construction.</param>
+    /// <returns>A client subscribed to the same topic and group as this context.</returns>
+    public Task<ProsodyClient> CreateSiblingClientAsync(Action<ClientOptions>? configure = null) =>
+        CreateClientWithRetryAsync(GroupId, Topic, $"sibling topic {Topic}", configure);
 
     public async ValueTask DisposeAsync()
     {

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Prosody.State;
 
 namespace Prosody.Configuration;
 
@@ -48,8 +49,60 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         CheckArrayEntries(options.AllowedEvents, nameof(ClientOptions.AllowedEvents), failures);
         CheckArrayEntries(options.CassandraNodes, nameof(ClientOptions.CassandraNodes), failures);
 
+        CheckStateCollections(options, failures);
+
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
+
+    private static void CheckStateCollections(ClientOptions options, List<string> failures)
+    {
+        if (options.StateCacheDir is { Length: 0 })
+        {
+            failures.Add("StateCacheDir must not be empty when set.");
+        }
+
+        if (options.StateCacheSizeBytes is <= 0)
+        {
+            failures.Add("StateCacheSizeBytes must be greater than 0 when set.");
+        }
+
+        var recoveryDelay = options.StateRecoveryDelay;
+        if (recoveryDelay is { } delay && !IsWholeSecondsAtLeastOne(delay))
+        {
+            failures.Add("StateRecoveryDelay must be a whole number of seconds of at least 1.");
+        }
+
+        if (options.StateCollections is not { } definitions)
+        {
+            return;
+        }
+
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        for (var i = 0; i < definitions.Length; i++)
+        {
+            var definition = definitions[i];
+            if (definition is null)
+            {
+                failures.Add($"StateCollections[{i}] must not be null.");
+                continue;
+            }
+
+            if (!seen.Add(definition.Name))
+            {
+                failures.Add(
+                    $"StateCollections must not contain duplicate names. Found duplicate: '{definition.Name}'."
+                );
+            }
+
+            if (recoveryDelay is { } cross && definition.Ttl is { } ttl && ttl <= cross)
+            {
+                failures.Add($"StateCollections[{i}].Ttl must exceed StateRecoveryDelay.");
+            }
+        }
+    }
+
+    private static bool IsWholeSecondsAtLeastOne(TimeSpan value) =>
+        value.Ticks % TimeSpan.TicksPerSecond == 0 && value.Ticks >= TimeSpan.TicksPerSecond;
 
     private static void CheckUnitInterval(double? value, string name, List<string> failures)
     {

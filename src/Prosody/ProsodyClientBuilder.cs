@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Prosody.Configuration;
+using Prosody.State;
 
 namespace Prosody;
 
@@ -256,6 +257,31 @@ public sealed class ProsodyClientBuilder
     public ProsodyClientBuilder WithSendTimeout(TimeSpan timeout)
     {
         _options.SendTimeout = timeout;
+        return this;
+    }
+
+    /// <summary>
+    /// Registers the keyed-state collections available to handlers, declared with
+    /// <see cref="StateDefinition"/> factories.
+    /// </summary>
+    /// <param name="definitions">The collection definitions to register. Names must be unique.</param>
+    /// <returns>This builder for chaining.</returns>
+    /// <remarks>
+    /// Registration is applied before the client subscribes. Each definition is the single source of
+    /// typing: pass the same object to a <c>State</c> overload on <c>ProsodyContext</c> in a handler
+    /// to bind a typed handle.
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// var cart = StateDefinition.Value&lt;Cart&gt;("cart", ttl: TimeSpan.FromDays(30));
+    /// var totals = StateDefinition.Map&lt;decimal&gt;("totals");
+    /// ProsodyClientBuilder.Create().WithStateCollections(cart, totals);
+    /// </code>
+    /// </example>
+    public ProsodyClientBuilder WithStateCollections(params StateDefinition[] definitions)
+    {
+        ArgumentNullException.ThrowIfNull(definitions);
+        _options.StateCollections = definitions;
         return this;
     }
 

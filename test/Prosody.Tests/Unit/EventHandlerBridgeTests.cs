@@ -1,9 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
-using System.Text.Json.Serialization.Metadata;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResult = Prosody.Native.HandlerResult;
 using NativeResultCode = Prosody.Native.HandlerResultCode;
@@ -22,11 +22,6 @@ namespace Prosody.Tests.Unit;
 public sealed class EventHandlerBridgeTests
 {
     private sealed record BridgePayload(string Name, int Count);
-
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-    };
 
     // Placeholder payload for tests that don't care about message contents.
     private static readonly byte[] AnyJson = "null"u8.ToArray();
@@ -52,14 +47,14 @@ public sealed class EventHandlerBridgeTests
             EmptyCarrier
         );
 
-    private static byte[] ToJson<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
+    private static byte[] ToJson<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, TestJson.Options);
 
     #region Constructor Tests
 
     [Fact]
     public void ConstructorThrowsOnNullHandler()
     {
-        Assert.Throws<ArgumentNullException>(() => new EventHandlerBridge<BridgePayload>(null!, JsonOptions));
+        Assert.Throws<ArgumentNullException>(() => new EventHandlerBridge<BridgePayload>(null!, TestJson.Options));
     }
 
     [Fact]
@@ -73,7 +68,9 @@ public sealed class EventHandlerBridgeTests
     public void ClassifierConstructorThrowsOnNullClassifier()
     {
         var handler = new TypedLambdaHandler<BridgePayload>();
-        Assert.Throws<ArgumentNullException>(() => new EventHandlerBridge<BridgePayload>(handler, JsonOptions, null!));
+        Assert.Throws<ArgumentNullException>(() =>
+            new EventHandlerBridge<BridgePayload>(handler, TestJson.Options, (IPermanentErrorClassifier)null!)
+        );
     }
 
     #endregion Constructor Tests
@@ -84,7 +81,7 @@ public sealed class EventHandlerBridgeTests
     public async Task OnMessageReturnsSuccessWhenHandlerCompletes()
     {
         var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
         NativeResult result = await HandleMsg(bridge);
 
         Assert.Multiple(
@@ -99,7 +96,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(
             onMessage: (_, _, _) => throw new InvalidOperationException("transient failure")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -115,7 +112,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(
             onMessage: (_, _, _) => throw new PermanentException("permanent failure")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -131,7 +128,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(
             onMessage: (_, _, _) => throw new CustomPermanentException("custom permanent")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -145,7 +142,7 @@ public sealed class EventHandlerBridgeTests
     public async Task OnMessageReturnsPermanentErrorForAttributeMatchedType()
     {
         var handler = new AttributeOnMessageHandler(onMessage: (_, _, _) => throw new FormatException("bad format"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -161,7 +158,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new AttributeOnMessageHandler(
             onMessage: (_, _, _) => throw new ArgumentNullException("param", "subtype of ArgumentException")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -181,7 +178,7 @@ public sealed class EventHandlerBridgeTests
                 return Task.CompletedTask;
             }
         );
-        var bridge = new EventHandlerBridge<BridgePayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge, payload: ToJson(new BridgePayload("typed", 3)));
 
@@ -197,7 +194,7 @@ public sealed class EventHandlerBridgeTests
     public async Task TypedOnMessageClassifiesPayloadDeserializationFailuresWithMethodAttribute()
     {
         var handler = new TypedPermanentJsonHandler();
-        var bridge = new EventHandlerBridge<BridgePayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge, payload: "{not valid json"u8.ToArray());
 
@@ -213,7 +210,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new AttributeOnMessageHandler(
             onMessage: (_, _, _) => throw new InvalidOperationException("not in attribute list")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -234,7 +231,7 @@ public sealed class EventHandlerBridgeTests
                 return Task.CompletedTask;
             }
         );
-        var bridge = new EventHandlerBridge<BridgePayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge, payload: "null"u8.ToArray());
 
@@ -245,7 +242,7 @@ public sealed class EventHandlerBridgeTests
     public async Task EmptyPayload_ClassifiedByJsonException()
     {
         var handler = new TypedPermanentJsonHandler();
-        var bridge = new EventHandlerBridge<BridgePayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge, payload: Array.Empty<byte>());
 
@@ -256,7 +253,7 @@ public sealed class EventHandlerBridgeTests
     public async Task JsonShapeMismatch_ClassifiedAsTransientByDefault()
     {
         var handler = new TypedLambdaHandler<BridgePayload>(onMessage: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<BridgePayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
 
         // Valid JSON but wrong shape (array instead of object) → JsonException during deserialization
         var result = await HandleMsg(bridge, payload: "[1,2,3]"u8.ToArray());
@@ -273,7 +270,7 @@ public sealed class EventHandlerBridgeTests
     public async Task OnTimerReturnsSuccessWhenHandlerCompletes()
     {
         var handler = new TypedLambdaHandler<JsonElement>(onTimer: (_, _, _) => Task.CompletedTask);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -289,7 +286,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(
             onTimer: (_, _, _) => throw new InvalidOperationException("transient timer failure")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -305,7 +302,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(
             onTimer: (_, _, _) => throw new PermanentException("permanent timer failure")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -319,7 +316,7 @@ public sealed class EventHandlerBridgeTests
     public async Task OnTimerReturnsPermanentErrorForAttributeMatchedType()
     {
         var handler = new AttributeOnTimerHandler(onTimer: (_, _, _) => throw new FormatException("bad timer format"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -335,7 +332,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new AttributeOnTimerHandler(
             onTimer: (_, _, _) => throw new InvalidOperationException("not in timer attribute list")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -354,7 +351,7 @@ public sealed class EventHandlerBridgeTests
     {
         var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => throw new JsonException("bad json"));
         var classifier = new LambdaClassifier(isMessagePermanent: _ => true, isTimerPermanent: _ => false);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await HandleMsg(bridge);
 
@@ -366,7 +363,7 @@ public sealed class EventHandlerBridgeTests
     {
         var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => throw new JsonException("bad json"));
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await HandleMsg(bridge);
 
@@ -386,7 +383,7 @@ public sealed class EventHandlerBridgeTests
             isMessagePermanent: ex => ex is FormatException,
             isTimerPermanent: _ => false
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await HandleMsg(bridge);
 
@@ -400,7 +397,7 @@ public sealed class EventHandlerBridgeTests
             onTimer: (_, _, _) => throw new InvalidOperationException("timer boom")
         );
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => true);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
@@ -416,7 +413,7 @@ public sealed class EventHandlerBridgeTests
             onMessage: (_, _, _) => throw new PermanentException("permanent via marker")
         );
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await HandleMsg(bridge);
 
@@ -431,7 +428,7 @@ public sealed class EventHandlerBridgeTests
             onMessage: (_, _, _) => throw new CustomPermanentException("custom permanent via marker")
         );
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
         var result = await HandleMsg(bridge);
 
@@ -485,7 +482,7 @@ public sealed class EventHandlerBridgeTests
                 }
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
 
@@ -522,7 +519,7 @@ public sealed class EventHandlerBridgeTests
                 }
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
 
@@ -554,7 +551,7 @@ public sealed class EventHandlerBridgeTests
                 await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
 
@@ -579,7 +576,7 @@ public sealed class EventHandlerBridgeTests
                 await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
 
@@ -680,7 +677,7 @@ public sealed class EventHandlerBridgeTests
                 return Task.CompletedTask;
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge, onCancel: () => throw new InvalidOperationException("context torn down"));
 
@@ -698,7 +695,7 @@ public sealed class EventHandlerBridgeTests
                 return Task.CompletedTask;
             }
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(
             AnyContext,
@@ -718,7 +715,7 @@ public sealed class EventHandlerBridgeTests
     public async Task OnMessageDetectsAttributeOnExplicitInterfaceImplementation()
     {
         var handler = new ExplicitInterfaceHandler(onMessage: () => throw new FormatException("explicit permanent"));
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await HandleMsg(bridge);
 
@@ -734,7 +731,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new ExplicitInterfaceHandler(onTimer: () =>
             throw new FormatException("explicit timer permanent")
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 

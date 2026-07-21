@@ -5,6 +5,7 @@ using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using Prosody.State;
 
 namespace Prosody;
 
@@ -14,13 +15,19 @@ namespace Prosody;
 public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
+    private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
 
     internal JsonSerializerOptions JsonOptions { get; }
 
-    private ProsodyClient(Native.ProsodyClient native, JsonSerializerOptions jsonOptions)
+    private ProsodyClient(
+        Native.ProsodyClient native,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions
+    )
     {
         _native = native;
         JsonOptions = jsonOptions;
+        _stateDefinitions = stateDefinitions;
         SourceSystem = native.SourceSystem();
     }
 
@@ -48,6 +55,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
         JsonOptions = BuildJsonOptions(options);
+        _stateDefinitions = RegisteredStateDefinitions(options);
         SourceSystem = _native.SourceSystem();
     }
 
@@ -63,8 +71,15 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     internal static ProsodyClient FromValidatedOptions(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return new ProsodyClient(new Native.ProsodyClient(options.ToNative()), BuildJsonOptions(options));
+        return new ProsodyClient(
+            new Native.ProsodyClient(options.ToNative()),
+            BuildJsonOptions(options),
+            RegisteredStateDefinitions(options)
+        );
     }
+
+    private static HashSet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
+        new HashSet<StateDefinition>(options.StateCollections ?? [], ReferenceEqualityComparer.Instance);
 
     [RequiresUnreferencedCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
@@ -303,7 +318,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     )]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
-        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions);
+        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions);
         return _native.Subscribe(bridge);
     }
 
@@ -325,7 +340,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </remarks>
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier)
     {
-        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier);
+        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions);
         return _native.Subscribe(bridge);
     }
 

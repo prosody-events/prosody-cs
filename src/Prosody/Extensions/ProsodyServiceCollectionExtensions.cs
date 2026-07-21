@@ -63,6 +63,11 @@ public static class ProsodyServiceCollectionExtensions
     /// The client is registered as a singleton because it manages Kafka connections and internal state
     /// that should be shared across the application.
     /// </para>
+    /// <para>
+    /// Keyed-state collections are programmatic (not configuration-bindable): set
+    /// <see cref="ClientOptions.StateCollections"/> in the <paramref name="configure"/> callback, for
+    /// example <c>options.StateCollections = [cart, totals]</c>.
+    /// </para>
     /// </remarks>
     /// <example>
     /// <code>

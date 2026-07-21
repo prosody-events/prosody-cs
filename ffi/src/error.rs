@@ -14,9 +14,10 @@ use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
 use prosody::codec::{BinaryCodecError, JsonExtractError};
-use prosody::consumer::event_context::BoxEventContextError;
+use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
+use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
@@ -71,6 +72,14 @@ pub enum FfiError {
     #[error("telemetry configuration build failed: {0:#}")]
     TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
 
+    /// A Kafka message loader configuration could not be finalized.
+    ///
+    /// Occurs when the deferred-retry loader tuning derived from
+    /// `defer_cache_size`, `defer_seek_timeout`, or `defer_discard_threshold`
+    /// fails validation (e.g. a zero cache size).
+    #[error("loader configuration build failed: {0:#}")]
+    LoaderConfig(#[from] KafkaLoaderConfigError),
+
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
     TopicConfiguration(#[from] TopicConfigurationBuilderError),
@@ -102,6 +111,51 @@ pub enum FfiError {
     /// Indicates that an async task did not complete successfully.
     #[error("task join failed: {0:#}")]
     Join(#[from] JoinError),
+
+    /// A permanent keyed-state failure that must not be retried.
+    ///
+    /// Recovered structurally from the erased seam's
+    /// [`ErasedCategory::Permanent`]: configuration or deployment mistakes
+    /// (unregistered name, identity mismatch, duplicate name, invalid TTL). The
+    /// `flat_error` attribute generates a distinct `FfiException` subclass, so
+    /// the C# layer recovers the category from the exception type, never by
+    /// parsing the message.
+    #[error("permanent state error: {0}")]
+    PermanentState(String),
+
+    /// A transient keyed-state failure that may succeed on retry.
+    ///
+    /// Recovered structurally from the erased seam's
+    /// [`ErasedCategory::Transient`], and the classification every caller/input
+    /// mistake the glue detects folds into (null or unrepresentable writes,
+    /// wrong item shapes, invalid indices) so a data-dependent handler bug
+    /// retries rather than silently committing the offset and losing the
+    /// message.
+    #[error("transient state error: {0}")]
+    TransientState(String),
+}
+
+/// Recovers the state-error category structurally from [`ErasedStateError`].
+///
+/// The category is read from [`ErasedStateError::category`] — never by parsing
+/// the message — and mapped to the matching flat variant. The match is
+/// exhaustive over [`ErasedCategory`], which has no `Terminal`, so a state
+/// error is never surfaced as terminal.
+///
+/// This fold forwards core's category verbatim, including cases core hard-codes
+/// as `Permanent` (e.g. `ErasedStateError::null_write`). Because this client
+/// requires every caller mistake (null or unrepresentable writes, wrong item
+/// shapes, invalid indices, invalid direction tokens) to classify transient,
+/// all such validation must be performed in the glue (`crate::state`) before a
+/// value crosses into core and reaches this conversion; the pre-checks there
+/// are what uphold that invariant, not this generic mapping.
+impl From<ErasedStateError> for FfiError {
+    fn from(error: ErasedStateError) -> Self {
+        match error.category() {
+            ErasedCategory::Permanent => Self::PermanentState(error.message().to_owned()),
+            ErasedCategory::Transient => Self::TransientState(error.message().to_owned()),
+        }
+    }
 }
 
 /// Represents errors from C# event handler callbacks.
@@ -112,8 +166,11 @@ pub enum FfiError {
 /// # Error Classification
 ///
 /// This type implements [`ClassifyError`] to support retry logic:
-/// - [`Transient`][Self::Transient] and [`Ffi`][Self::Ffi] are classified as
-///   transient (retriable).
+/// - [`Transient`][Self::Transient] is classified as transient (retriable).
+/// - An [`Ffi`][Self::Ffi]-wrapped [`FfiError::PermanentState`] classifies as
+///   permanent (a config/deploy state error that escaped the handler and
+///   round-tripped back through the FFI boundary); all other [`Ffi`][Self::Ffi]
+///   variants are infrastructure failures and classify as transient.
 /// - [`Permanent`][Self::Permanent] errors should not be retried.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
@@ -131,9 +188,14 @@ pub enum CsHandlerError {
     #[error("permanent error: {0}")]
     Permanent(String),
 
-    /// An FFI infrastructure error occurred.
+    /// An FFI error occurred.
     ///
-    /// Classified as transient since infrastructure issues are often temporary.
+    /// Most variants are infrastructure failures classified as transient since
+    /// they are often temporary. The exception is a wrapped
+    /// [`FfiError::PermanentState`], which carries a config/deploy state error
+    /// that escaped the handler and round-tripped back across the FFI boundary;
+    /// it classifies as permanent so the offset is committed rather than
+    /// retried forever.
     #[error(transparent)]
     Ffi(#[from] FfiError),
 }
@@ -146,8 +208,8 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
+            Self::Ffi(FfiError::PermanentState(_)) | Self::Permanent(_) => ErrorCategory::Permanent,
             Self::Transient(_) | Self::Ffi(_) => ErrorCategory::Transient,
-            Self::Permanent(_) => ErrorCategory::Permanent,
         }
     }
 }

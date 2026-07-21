@@ -15,11 +15,16 @@ use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
 
 use crate::error::FfiError;
+use crate::state::{
+    DequeStateHandle, DequeStateVariant, MapStateHandle, MapStateVariant, ValueStateHandle,
+    ValueStateVariant,
+};
 
 /// Event context passed to message handlers during event processing.
 ///
@@ -31,7 +36,7 @@ use crate::error::FfiError;
 /// context propagation, allowing traces to span across service boundaries.
 #[derive(uniffi::Object)]
 pub struct Context {
-    inner: BoxEventContext,
+    inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -42,7 +47,10 @@ pub struct Context {
 impl Context {
     /// Creates a new context wrapping the given event context and propagator.
     #[must_use]
-    pub fn new(inner: BoxEventContext, propagator: Arc<TextMapCompositePropagator>) -> Self {
+    pub fn new(
+        inner: BoxEventContext<BinaryPayload>,
+        propagator: Arc<TextMapCompositePropagator>,
+    ) -> Self {
         Self { inner, propagator }
     }
 }
@@ -225,5 +233,119 @@ impl Context {
             .into_iter()
             .map(Into::<SystemTime>::into)
             .collect())
+    }
+
+    /// Vends the state handle for the named JSON value collection.
+    ///
+    /// Vending verifies the collection's registration core-side; no span is
+    /// opened here — vended handles outlive the call, and every operation opens
+    /// its own span.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
+        let handle = self.inner.value_state(&name)?;
+        Ok(Arc::new(ValueStateHandle {
+            name,
+            state: ValueStateVariant::Json(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named JSON map collection.
+    ///
+    /// Vending verifies the collection's registration core-side; no span is
+    /// opened here — vended handles outlive the call, and every operation opens
+    /// its own span.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
+        let handle = self.inner.map_state(&name)?;
+        Ok(Arc::new(MapStateHandle {
+            name,
+            state: MapStateVariant::Json(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named JSON deque collection.
+    ///
+    /// Vending verifies the collection's registration core-side; no span is
+    /// opened here — vended handles outlive the call, and every operation opens
+    /// its own span.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
+        let handle = self.inner.deque_state(&name)?;
+        Ok(Arc::new(DequeStateHandle {
+            name,
+            state: DequeStateVariant::Json(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named Kafka-message value collection.
+    ///
+    /// Items are the full [`Message`](crate::message::Message) the handler
+    /// received, loader-resolved on read. Vending verifies registration
+    /// core-side; no span is opened here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn message_value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
+        let handle = self.inner.message_value_state(&name)?;
+        Ok(Arc::new(ValueStateHandle {
+            name,
+            state: ValueStateVariant::Message(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named Kafka-message map collection.
+    ///
+    /// Items are the full [`Message`](crate::message::Message) the handler
+    /// received, loader-resolved on read. Vending verifies registration
+    /// core-side; no span is opened here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn message_map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
+        let handle = self.inner.message_map_state(&name)?;
+        Ok(Arc::new(MapStateHandle {
+            name,
+            state: MapStateVariant::Message(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named Kafka-message deque collection.
+    ///
+    /// Items are the full [`Message`](crate::message::Message) the handler
+    /// received, loader-resolved on read. Vending verifies registration
+    /// core-side; no span is opened here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn message_deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
+        let handle = self.inner.message_deque_state(&name)?;
+        Ok(Arc::new(DequeStateHandle {
+            name,
+            state: DequeStateVariant::Message(handle),
+            propagator: Arc::clone(&self.propagator),
+        }))
     }
 }

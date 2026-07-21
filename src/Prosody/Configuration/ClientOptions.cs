@@ -1,3 +1,5 @@
+using Prosody.State;
+
 namespace Prosody.Configuration;
 
 /// <summary>
@@ -108,7 +110,8 @@ public sealed class ClientOptions
     public uint? MaxUncommitted { get; set; }
 
     /// <summary>
-    /// Global shared cache capacity across all partitions for deduplication. Set to 0 to disable.
+    /// Global shared cache capacity across all partitions for deduplication. Deduplication is always
+    /// active; this value must be greater than 0. A value of 0 is rejected when the client is built.
     /// Falls back to <c>PROSODY_IDEMPOTENCE_CACHE_SIZE</c> environment variable.
     /// Default: 8192.
     /// </summary>
@@ -424,6 +427,43 @@ public sealed class ClientOptions
     /// </remarks>
     public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonOptions { get; set; }
 
+    // ========================================================================
+    // Keyed-state options
+    // ========================================================================
+
+    /// <summary>
+    /// The keyed-state collections to register, declared with <see cref="StateDefinition"/> factories.
+    /// </summary>
+    /// <remarks>
+    /// Set programmatically only — not bindable from
+    /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Prefer
+    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Names must be non-empty and unique
+    /// within the set; each definition is validated at construction and again when the options are validated.
+    /// </remarks>
+    public StateDefinition[]? StateCollections { get; set; }
+
+    /// <summary>
+    /// Disk workspace for the local keyed-state cache. Each live client needs its own directory.
+    /// Falls back to <c>PROSODY_STATE_CACHE_DIR</c>, then a per-client temporary directory.
+    /// Must not be an empty string when set.
+    /// </summary>
+    public string? StateCacheDir { get; set; }
+
+    /// <summary>
+    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
+    /// <c>PROSODY_STATE_CACHE_SIZE_BYTES</c>,
+    /// then to the storage-engine default.
+    /// Must be greater than zero when set.
+    /// </summary>
+    public long? StateCacheSizeBytes { get; set; }
+
+    /// <summary>
+    /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
+    /// TTL must strictly exceed this. Falls back to <c>PROSODY_STATE_RECOVERY_DELAY</c>, then to
+    /// 30 seconds. Must be a whole number of seconds of at least one when set.
+    /// </summary>
+    public TimeSpan? StateRecoveryDelay { get; set; }
+
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
@@ -451,6 +491,7 @@ public sealed class ClientOptions
         clone.SubscribedTopics = CloneArray(clone.SubscribedTopics);
         clone.AllowedEvents = CloneArray(clone.AllowedEvents);
         clone.CassandraNodes = CloneArray(clone.CassandraNodes);
+        clone.StateCollections = CloneArray(clone.StateCollections);
         return clone;
     }
 
@@ -531,6 +572,12 @@ public sealed class ClientOptions
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
             MessageSpans: ToNativeSpanRelation(MessageSpans),
-            TimerSpans: ToNativeSpanRelation(TimerSpans)
+            TimerSpans: ToNativeSpanRelation(TimerSpans),
+            StateCollections: StateCollections is null
+                ? null
+                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
+            StateCacheDir: StateCacheDir,
+            StateCacheSizeBytes: StateCacheSizeBytes,
+            StateRecoveryDelay: StateRecoveryDelay
         );
 }

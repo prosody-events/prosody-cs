@@ -89,6 +89,62 @@ pub enum ConsumerState {
     },
 }
 
+/// The kind of a keyed-state collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StateKind {
+    /// A single-value collection.
+    Value,
+    /// A `String`-keyed ordered map.
+    Map,
+    /// A deque.
+    Deque,
+}
+
+/// The item payload of a keyed-state collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum StatePayload {
+    /// JSON documents crossing as raw bytes.
+    Json,
+    /// The full Kafka message the handler received.
+    Message,
+}
+
+/// Declares one keyed-state collection to register before subscribe.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StateCollectionConfig {
+    /// The collection name. Must be non-empty and unique within the client's
+    /// definition set.
+    pub name: String,
+
+    /// The collection kind.
+    pub kind: StateKind,
+
+    /// The item payload.
+    pub payload: StatePayload,
+
+    /// Optional per-write TTL. Must be a whole number of seconds of at least 1
+    /// (fractional and sub-second values are rejected) and must exceed the
+    /// recovery delay (the latter checked at consumer build).
+    #[uniffi(default = None)]
+    pub ttl: Option<Duration>,
+
+    /// Optional opt-out of transactional staging (read-uncommitted, at-least
+    /// once). Defaults to transactional.
+    #[uniffi(default = None)]
+    pub read_uncommitted: Option<bool>,
+
+    /// Optional map-only keyset bound (`0..=4096`; default 128 core-side; `0`
+    /// disables ordered-scan tracking). Invalid on value or deque collections.
+    #[uniffi(default = None)]
+    pub keyset_limit: Option<u32>,
+
+    /// Optional deque-only capacity bound (positive). Runtime-only — never
+    /// persisted, not part of identity; enforced lazily on push. Invalid on
+    /// value or map collections.
+    #[uniffi(default = None)]
+    pub capacity: Option<u32>,
+}
+
 /// Configuration options for the Prosody client.
 ///
 /// All fields are optional and default to `null` in C#, meaning "use the
@@ -573,6 +629,42 @@ pub struct ClientOptions {
     /// **Default:** `FollowsFrom`
     #[uniffi(default = None)]
     pub timer_spans: Option<SpanRelation>,
+
+    // ========================================================================
+    // Keyed-state options
+    // ========================================================================
+    /// Keyed-state collections to register before subscribe.
+    ///
+    /// Each entry declares one collection by name, kind, and payload. Duplicate
+    /// names within this set are rejected.
+    #[uniffi(default = None)]
+    pub state_collections: Option<Vec<StateCollectionConfig>>,
+
+    /// Root directory for the local keyed-state cache (the committed-value
+    /// workspace).
+    ///
+    /// Each live client needs its own directory. Falls back to the
+    /// `PROSODY_STATE_CACHE_DIR` environment variable, then a per-client
+    /// temporary directory. Must not be an empty string when set.
+    #[uniffi(default = None)]
+    pub state_cache_dir: Option<String>,
+
+    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
+    /// `PROSODY_STATE_CACHE_SIZE_BYTES`,
+    /// then to the storage-engine default.
+    /// Must be greater than zero when set.
+    #[uniffi(default = None)]
+    pub state_cache_size_bytes: Option<i64>,
+
+    /// Delay between staging a provisional cell and the keyed-state recovery
+    /// sweep.
+    ///
+    /// Every registered TTL must strictly exceed this. Falls back to the
+    /// `PROSODY_STATE_RECOVERY_DELAY` environment variable, then to 30
+    /// seconds. Must be a whole number of seconds of at least 1 when set
+    /// (fractional and sub-second values are rejected).
+    #[uniffi(default = None)]
+    pub state_recovery_delay: Option<Duration>,
 }
 
 /// Optional event metadata supplied by the caller on send.

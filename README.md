@@ -9,6 +9,7 @@ strategies, and integrated OpenTelemetry support for distributed tracing.
 - **Kafka Consumer**: Per-key ordering with cross-key concurrency, offset management, consumer groups
 - **Kafka Producer**: Idempotent delivery with configurable retries
 - **Timer System**: Persistent scheduled execution backed by Cassandra or in-memory store
+- **Keyed State**: Per-key persistent state (value/map/deque) with transactional, at-least-once semantics
 - **Quality of Service**: Fair scheduling limits concurrency and prevents failures from starving fresh traffic. Pipeline mode adds deferred retry and monopolization detection
 - **Distributed Tracing**: OpenTelemetry integration for tracing message flow across services
 - **Error Monitoring**: Optional Sentry integration for automatic handler exception reporting
@@ -272,7 +273,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks (null=8000, 0=disabled) | 8000 |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
-| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for deduplication. Set to 0 to disable the entire deduplication middleware (both in-memory and persistent tiers) | 8192 |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for deduplicating messages. Must be greater than 0 (a value of 0 is rejected) | 8192 |
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
@@ -304,10 +305,10 @@ When a handler fails, retry with exponential backoff:
 | `DeferMaxDelay` / `PROSODY_DEFER_MAX_DELAY` | Never wait longer than this | 24h |
 | `DeferFailureThreshold` / `PROSODY_DEFER_FAILURE_THRESHOLD` | Disable deferral when failure rate exceeds this | 0.9 |
 | `DeferFailureWindow` / `PROSODY_DEFER_FAILURE_WINDOW` | Measure failure rate over this time window | 5m |
-| `DeferCacheSize` / `PROSODY_DEFER_CACHE_SIZE` | Track this many deferred keys in memory | 1024 |
+| `DeferCacheSize` / `PROSODY_LOADER_CACHE_SIZE` | Track this many deferred keys in memory | 1024 |
 | `DeferStoreCacheSize` / `PROSODY_DEFER_STORE_CACHE_SIZE` | Maximum deferred store cache entries per Cassandra defer store | 8192 |
-| `DeferSeekTimeout` / `PROSODY_DEFER_SEEK_TIMEOUT` | Timeout when loading deferred messages | 30s |
-| `DeferDiscardThreshold` / `PROSODY_DEFER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100 |
+| `DeferSeekTimeout` / `PROSODY_LOADER_SEEK_TIMEOUT` | Timeout when loading deferred messages | 30s |
+| `DeferDiscardThreshold` / `PROSODY_LOADER_DISCARD_THRESHOLD` | Read optimization (rarely needs changing) | 100 |
 
 ### Monopolization Detection (Pipeline Mode)
 
@@ -349,6 +350,31 @@ Lifecycle event emission to a Kafka topic (message dispatched, succeeded, failed
 |---|---|---|
 | `TelemetryTopic` / `PROSODY_TELEMETRY_TOPIC` | Kafka topic for telemetry events | prosody.telemetry-events |
 | `TelemetryEnabled` / `PROSODY_TELEMETRY_ENABLED` | Enable telemetry event emission | true |
+
+### Keyed State
+
+Register keyed-state collections before you subscribe, via `ProsodyClientBuilder.WithStateCollections(...)` or
+`ClientOptions.StateCollections`. Persistence is backed by Cassandra and is not needed when `Mock = true`. See the
+[Keyed State](#keyed-state-1) feature section for handler usage; the client-level knobs and per-collection fields are
+below. Where an option and an environment variable are paired, an explicitly set option wins; otherwise the environment
+variable applies, then the default.
+
+| Property / Environment Variable | Description | Default |
+|---|---|---|
+| `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
+| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
+| `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
+| `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
+
+Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
+documented in the [Definitions](#definitions) subsection). The factory parameters map to these per-collection fields:
+
+| Option | Applies to | Description | Default |
+|---|---|---|---|
+| `name` | all | Collection name; non-empty and unique within the client. | (required) |
+| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
+| `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
+| `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
 
 ## Liveness and Readiness Probes
 
@@ -541,20 +567,15 @@ Deduplication uses a global in-memory cache shared across all partitions, which 
 the same process. For cross-restart deduplication, a Cassandra-backed persistent store is used when Cassandra is
 configured.
 
-The entire deduplication middleware (both in-memory and persistent tiers) can be disabled by setting `IdempotenceCacheSize = 0`:
+Deduplication is always active. `IdempotenceCacheSize` must be greater than `0`; a value of `0` (via either the
+option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The cache capacity can be tuned:
 
 ```csharp
 await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .Configure(options => options.IdempotenceCacheSize = 0)       // Disable deduplication
+    .Configure(options => options.IdempotenceCacheSize = 16384)   // Tune the shared cache capacity
     .Build();
-```
-
-Or via environment variable:
-
-```bash
-PROSODY_IDEMPOTENCE_CACHE_SIZE=0
 ```
 
 To invalidate all previously recorded dedup entries and force reprocessing, change the version string:
@@ -655,6 +676,124 @@ await using var client = ProsodyClientBuilder.Create()
     .WithMock(true)  // No Cassandra required in mock mode
     .Build();
 ```
+
+## Keyed State
+
+Keyed state gives every Kafka key its own durable working memory. Prosody automatically uses the current message or timer key, so a handler can relate the current event to earlier events for that key. State survives restarts and rebalances. By default, changes become visible only when the event succeeds.
+
+Use keyed state for time-aware stream processing: counters, deduplication, rolling aggregates, pending work, and per-key workflows. Keep your relational database as the source of truth for business data and for work that needs joins or ad hoc queries. Reconstructing stream state with repeated database queries can be slow and expensive; keyed state is built for that job.
+
+Most collections should have a TTL. Set it comfortably beyond the longest timer or workflow that uses the state; Prosody validates the minimum supported TTL. Omit it only when keeping inactive keys forever is intentional.
+
+### A counter for each key
+
+Declare each collection once, register it on the client, and ask the event context for the current key's state:
+
+```csharp
+var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
+
+public sealed class CountHandler(ValueStateDefinition<int> count)
+    : IProsodyHandler<Event>
+{
+    public async Task OnMessageAsync(
+        ProsodyContext context,
+        Message<Event> message,
+        CancellationToken cancellationToken)
+    {
+        var state = context.State(count);
+        var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault(0);
+        await state.SetAsync(current + 1, cancellationToken);
+    }
+}
+
+var client = ProsodyClientBuilder.Create()
+    .WithStateCollections(count)
+    .Build();
+```
+
+Here, counters expire after 30 days without an update.
+
+### Window activity into one notification
+
+This example turns a burst of activity into two useful notifications. It sends the first event immediately, collects later events for five minutes, then sends one summary. Because the user ID is the Kafka key, every user gets an independent window.
+
+```csharp
+var window = StateDefinition.Value<bool>("window", ttl: TimeSpan.FromDays(1));
+var pending = StateDefinition.MessageDeque<Activity>(
+    "pending", ttl: TimeSpan.FromDays(1), capacity: 100);
+
+public async Task OnMessageAsync(
+    ProsodyContext context,
+    Message<Activity> message,
+    CancellationToken cancellationToken)
+{
+    var windowState = context.State(window);
+    var pendingState = context.State(pending);
+
+    if ((await windowState.GetAsync(cancellationToken)).GetValueOrDefault(false))
+    {
+        await pendingState.PushBackAsync(message, cancellationToken);
+        return;
+    }
+
+    await Notify(message.Key, [message]);
+    await windowState.SetAsync(true, cancellationToken);
+    await context.ClearAndScheduleAsync(
+        DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
+}
+
+public async Task OnTimerAsync(
+    ProsodyContext context,
+    ProsodyTimer timer,
+    CancellationToken cancellationToken)
+{
+    var pendingState = context.State(pending);
+    var batch = new List<Message<Activity>>();
+    await foreach (var message in pendingState.WithCancellation(cancellationToken))
+        batch.Add(message);
+
+    if (batch.Count > 0) await Notify(timer.Key, batch);
+    await pendingState.ClearAsync(cancellationToken);
+    await context.State(window).ClearAsync(cancellationToken);
+}
+```
+
+See the complete, compiled example for imports, types, client setup, and `NotifyAsync`: [`examples/keyed_state_windowing.cs`](examples/keyed_state_windowing.cs).
+
+Why this works:
+
+- Register both definitions with `WithStateCollections` before `Build()`. Keyed state uses Cassandra unless `Mock = true`.
+- Use `ClearAndScheduleAsync`, not `ScheduleAsync`, so a retried event does not add another timer for the same key.
+- `capacity: 100` and the one-day TTL prevent an inactive or unusually busy key from retaining an unlimited backlog. Since this example only pushes at the back, overflow drops the oldest saved message.
+- A `MessageDeque` requires the original Kafka messages to remain available for the whole window. Use a plain `Deque` of payloads if topic retention or compaction cannot guarantee that.
+- Prosody runs one handler at a time for each key, so a user's message and timer handlers cannot overlap.
+- Sending a notification is outside Prosody's state transaction and may happen again after a retry. Give notifications a stable idempotency key, or send them through an outbox, when duplicates matter.
+
+### Collections and handles
+
+A definition gives a collection a stable name, kind, and options. Register it once on the client, then pass the same definition to `context.State()` to access the current key. Do not reuse a persisted name for a different collection kind or payload type.
+
+Create handles inside the handler and do not retain them or their iterators afterward.
+
+| Collection | JSON payload | Kafka message | Main operations |
+| --- | --- | --- | --- |
+| Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `SetAsync`, `ClearAsync` |
+| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
+| Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
+
+Map and deque scans use `await foreach`. Map keys are strings. Reads return `StateValue<T>`, which distinguishes an absent value from a stored `default(T)`. `null` cannot be stored—use `ClearAsync` or `RemoveAsync` instead. Payload types guide JSON serialization but do not add runtime validation.
+
+### When changes become visible
+
+Reads inside a handler see its earlier writes. The default behavior is the safest choice for most handlers: Prosody buffers those changes and publishes them together when the event succeeds. If the handler throws, none of its pending changes become visible.
+
+Each collection also offers explicit controls for workflows that need different behavior:
+
+- `readUncommitted: true` writes that collection's changes after the handler succeeds but before the event is recorded as complete. A crash in between can leave the changes visible even though the event is retried. Use it only for idempotent changes, where processing the same event again produces the same stored result.
+- `await state.CommitAsync()` immediately publishes this collection's pending changes. They remain visible even if the handler later throws and the event is retried.
+- `await state.RollbackAsync()` discards this collection's pending changes since its last `CommitAsync()`. It cannot undo changes that were already committed.
+
+Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
 
 ## OpenTelemetry Tracing
 
@@ -1200,6 +1339,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
 - `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
 - `ConfigureJsonOptions(Action<JsonSerializerOptions> configure)`: Override JSON serialization options (runs after defaults are applied)
+- `WithStateCollections(params StateDefinition[] definitions)`: Register keyed-state collections before subscribe
 
 **Build:**
 - `ProsodyClient Build()`: Validates configuration and creates a new ProsodyClient.
@@ -1256,6 +1396,10 @@ Represents the context of message processing:
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
 
+Keyed-state binding:
+
+- `State(definition)`: Binds a registered collection for the current attempt, returning `IValueState<T>` / `IMapState<TValue>` / `IDequeState<T>` (message definitions vend `*State<Message<TPayload>>`). Throws `PermanentStateException` for an unregistered name or a kind/payload identity mismatch. See the [Keyed State](#keyed-state-2) API reference below.
+
 Timer scheduling methods:
 
 - `Task ScheduleAsync(DateTimeOffset time)`: Schedules a timer to fire at the specified time
@@ -1286,6 +1430,73 @@ Enum representing the operating mode:
 - `Pipeline`: Default mode, retry indefinitely with defer and monopolization detection
 - `LowLatency`: Few retries then dead letter (requires FailureTopic)
 - `BestEffort`: Log failures, no retries
+
+### Keyed State
+
+Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
+
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
+- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
+- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
+
+The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
+a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+
+`IValueState<T> where T : notnull`:
+
+- `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
+- `Task SetAsync(T value, CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValue>>` (keys are `string`, `TValue : notnull`):
+
+- `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
+- `Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)`
+- `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
+- `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateKeysAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`IDequeState<T> : IAsyncEnumerable<T>` (`T : notnull`):
+
+- `Task PushBackAsync(T value, CancellationToken cancellationToken = default)`
+- `Task PushFrontAsync(T value, CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
+- `Task<int> CountAsync(CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `Task CommitAsync(CancellationToken cancellationToken = default)`
+- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+
+`StateValue<T>` (a `readonly struct` optional read result, `T : notnull`):
+
+- `bool HasValue { get; }`: whether a value is present.
+- `T Value { get; }`: the stored value; throws `InvalidOperationException` when absent.
+- `T GetValueOrDefault(T defaultValue)`: the stored value when present, otherwise `defaultValue` (mirrors `Nullable<T>`).
+- `bool TryGetValue(out T value)`: the familiar `Try` pattern — `true` with the value when present, `false` otherwise.
+
+`ScanDirection`: `Forward` (ascending) or `Backward` (descending).
+
+Errors:
+
+- `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
+- `TransientStateException : StateException`: the default — a temporary store read/write failure, or any caller mistake (a `null`/unrepresentable write, item-shape mismatch, out-of-range index, invalid scan direction), classified transient so it retries rather than discarding the message.
+- `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
+- `PermanentStateException : StateException, IPermanentError`: reserved for failures a retry cannot resolve in-process (unregistered/identity-mismatched collection, duplicate/invalid name or TTL), or one a handler throws explicitly.
+- `StateErrorCategory`: `Permanent` or `Transient`.
 
 ## License
 
