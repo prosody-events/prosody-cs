@@ -33,9 +33,9 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ inputs.retry_version != '' || steps.release.outputs.release_created }}
+      release_created: ${{ steps.release_context.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ inputs.retry_version || format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) }}
+      version: ${{ steps.release_context.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - name: Release Please Action
@@ -47,6 +47,35 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           release-as: ${{ github.event.inputs.release_as }}
+
+      - name: Resolve release context
+        id: release_context
+        shell: bash
+        env:
+          RETRY_VERSION: ${{ inputs.retry_version }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_MAJOR: ${{ steps.release.outputs.major }}
+          RELEASE_MINOR: ${{ steps.release.outputs.minor }}
+          RELEASE_PATCH: ${{ steps.release.outputs.patch }}
+        run: |
+          if [[ -n "$RETRY_VERSION" ]]; then
+            version="$RETRY_VERSION"
+            release_created=true
+          elif [[ "$RELEASE_CREATED" == "true" ]]; then
+            version="${RELEASE_MAJOR}.${RELEASE_MINOR}.${RELEASE_PATCH}"
+            release_created=true
+          else
+            version=
+            release_created=false
+          fi
+
+          if [[ "$release_created" == "true" && -z "$version" ]]; then
+            echo "::error::A release was created without a version"
+            exit 1
+          fi
+
+          echo "release_created=$release_created" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   build-native:
     name: Build Native (${{ matrix.target.rid }})
