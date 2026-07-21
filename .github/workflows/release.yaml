@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      retry_version:
+        description: Rebuild and publish an existing release without running Release Please
+        required: false
+        type: string
       release_as:
         description: 'Force release version (e.g. 2.2.0-beta.1)'
         required: false
@@ -29,12 +33,13 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
+      release_created: ${{ inputs.retry_version != '' || steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
+      version: ${{ inputs.retry_version || format('{0}.{1}.{2}', steps.release.outputs.major, steps.release.outputs.minor, steps.release.outputs.patch) }}
     steps:
       - uses: actions/checkout@v7
       - name: Release Please Action
+        if: inputs.retry_version == ''
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
