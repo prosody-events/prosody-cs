@@ -1,0 +1,166 @@
+name: Release Package Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release.yaml
+      - .github/workflows/release-validation.yaml
+      - Cargo.lock
+      - Cargo.toml
+      - Cross.toml
+      - ffi/**
+      - src/**
+      - test/**
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-x64:
+    name: Build Linux x64 package library
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build in compatibility container
+        run: |
+          docker run --rm \
+            --volume "${{ github.workspace }}:/workspace" \
+            --workdir /workspace \
+            rust:bookworm \
+            bash -c '
+              apt-get update &&
+              apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev &&
+              cargo build -p prosody-ffi --release --target x86_64-unknown-linux-gnu
+            '
+
+      - name: Stage native library
+        run: |
+          mkdir -p ffi/artifacts/linux-x64
+          cp target/x86_64-unknown-linux-gnu/release/libprosody_ffi.so \
+            ffi/artifacts/linux-x64/
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-linux-x64
+          path: ffi/artifacts/linux-x64/
+          if-no-files-found: error
+
+  build-package:
+    name: Build validation package
+    needs: build-linux-x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download native library
+        uses: actions/download-artifact@v8
+        with:
+          name: native-linux-x64
+          path: ffi/artifacts/linux-x64/
+
+      - name: Pack
+        run: |
+          dotnet pack src/Prosody/Prosody.csproj \
+            --configuration Release \
+            -p:PackageVersion=0.0.0-validation \
+            -p:ContinuePackingAfterGeneratingNuspec=true \
+            -p:ContinuousIntegrationBuild=true \
+            --output packages
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-package
+          path: packages/*.nupkg
+          if-no-files-found: error
+
+  test-package:
+    name: Test package (.NET ${{ matrix.dotnet }})
+    needs: build-package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dotnet: ["8.0", "9.0"]
+    services:
+      kafka:
+        image: apache/kafka:latest
+        ports:
+          - 9094:9094
+        env:
+          KAFKA_NODE_ID: 0
+          KAFKA_PROCESS_ROLES: controller,broker
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 30s
+      cassandra:
+        image: cassandra:latest
+        ports:
+          - 9042:9042
+        options: >-
+          --health-cmd "cqlsh -e 'SELECT cluster_name FROM system.local'"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 15
+          --health-start-period 60s
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: validation-package
+          path: packages/
+
+      - name: Test installed package
+        run: |
+          docker run --rm --network host \
+            -e PROSODY_BOOTSTRAP_SERVERS=localhost:9094 \
+            -e PROSODY_CASSANDRA_NODES=localhost:9042 \
+            -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            -e DOTNET_NOLOGO=1 \
+            --volume "${{ github.workspace }}:/workspace" \
+            --workdir /workspace \
+            mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
+            bash -c '
+              dotnet restore test/Prosody.Tests \
+                -p:TestPackage=true \
+                --source /workspace/packages \
+                --source https://api.nuget.org/v3/index.json \
+                /p:TargetFramework=net${{ matrix.dotnet }} &&
+              dotnet run --project test/Prosody.Tests \
+                --framework net${{ matrix.dotnet }} \
+                --no-restore \
+                --no-launch-profile \
+                --configuration Release \
+                -p:TestPackage=true
+            '
