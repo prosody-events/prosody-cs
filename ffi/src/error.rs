@@ -20,8 +20,8 @@ use prosody::high_level::HighLevelClientError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
-use prosody::tracing::TracingError;
 use prosody::timers::datetime::CompactDateTimeError;
+use prosody::tracing::TracingError;
 use tokio::task::JoinError;
 
 /// Primary error type for FFI boundary operations.
