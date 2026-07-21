@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Prosody.Messaging;
 
 namespace Prosody.Tests.TestHelpers;
@@ -50,19 +51,20 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         return ValueTask.CompletedTask;
     }
 
-    private sealed class MigrationHandler : IProsodyHandler<MigrationPayload>
+    private sealed class MigrationHandler : IProsodyHandler<JsonElement>
     {
         public Task OnMessageAsync(
-            ProsodyContext context,
-            Message<MigrationPayload> message,
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
-        public Task OnTimerAsync(ProsodyContext context, ProsodyTimer timer, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
-
-    private sealed record MigrationPayload;
 }
 
 /// <summary>Collection for tests that must run sequentially due to shared global state.</summary>
