@@ -8,7 +8,7 @@
     <AssemblyName>Prosody</AssemblyName>
     <RootNamespace>Prosody</RootNamespace>
     <!-- x-release-please-start-version -->
-    <VersionPrefix>0.4.0</VersionPrefix>
+    <VersionPrefix>0.1.0</VersionPrefix>
     <!-- x-release-please-end -->
 
     <!-- NuGet package metadata -->
