@@ -46,7 +46,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(TestPackage)' == 'true'">
-    <PackageReference Include="ProsodyEvents.Prosody" Version="*" />
+    <PackageReference Include="ProsodyEvents.Prosody" Version="$(TestPackageVersion)" />
   </ItemGroup>
 
   <!-- Keep the public README example compiling against both source and packaged APIs. -->
