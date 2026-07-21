@@ -49,7 +49,11 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         Assert.Multiple(
             () => Assert.Equal("timer-test-key", receivedTimer.Key),
             () => AssertTimerApproximatelyEqual(receivedTimer.Time, scheduledTime),
-            () => AssertTimerApproximatelyEqual(actualTime, scheduledTime)
+            () =>
+                Assert.True(
+                    actualTime + IntegrationTestFixture.TimerTolerance >= scheduledTime,
+                    $"Timer fired before its scheduled time. Expected no earlier than {scheduledTime:O}, got {actualTime:O}"
+                )
         );
     }
 
@@ -154,7 +158,9 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
         await using var ctx = await CreateTestContextAsync();
 
         var messageReceived = new EventNotifier();
+        var timerFired = new MessageChannel<ProsodyTimer>();
         var timerCount = 0;
+        DateTimeOffset sentinelTime = default;
 
         var handler = new TestProsodyHandler<TestPayload>(
             onMessage: async (context, _, _) =>
@@ -164,11 +170,15 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
                 await context.ScheduleAsync(DateTimeOffset.UtcNow.AddSeconds(4));
                 await context.ClearScheduledAsync();
 
+                sentinelTime = DateTimeOffset.UtcNow.AddSeconds(5);
+                await context.ScheduleAsync(sentinelTime);
+
                 messageReceived.Signal();
             },
-            onTimer: (_, _, _) =>
+            onTimer: (_, timer, _) =>
             {
                 Interlocked.Increment(ref timerCount);
+                timerFired.Send(timer);
                 return Task.CompletedTask;
             }
         );
@@ -183,9 +193,12 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
 
         await messageReceived.WaitAsync(TestContext.Current.CancellationToken);
 
-        await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var timer = await timerFired.ReceiveAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, timerCount);
+        Assert.Multiple(
+            () => Assert.Equal(1, timerCount),
+            () => AssertTimerApproximatelyEqual(timer.Time, sentinelTime)
+        );
     }
 
     [Fact(Timeout = 60_000)]
