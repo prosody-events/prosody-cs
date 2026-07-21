@@ -43,9 +43,6 @@ services:
       - "9042:9042"
     volumes:
       - cassandra_data:/var/lib/cassandra
-    environment:
-      MAX_HEAP_SIZE: 2G
-      HEAP_NEWSIZE: 400M
     healthcheck:
       test: [ "CMD-SHELL", "cqlsh -e 'SELECT cluster_name FROM system.local;'" ]
       interval: 15s

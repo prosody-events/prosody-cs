@@ -55,9 +55,6 @@ jobs:
         image: cassandra:latest
         ports:
           - 9042:9042
-        env:
-          MAX_HEAP_SIZE: 2G
-          HEAP_NEWSIZE: 400M
         options: >-
           --health-cmd "cqlsh -e 'SELECT cluster_name FROM system.local'"
           --health-interval 15s
