@@ -150,7 +150,8 @@ jobs:
             bash -c '
               apt-get update &&
               apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev &&
-              cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+              cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }} &&
+              chown --recursive --reference=/workspace /workspace/.cargo-cache /workspace/target
             '
 
       - name: Stage artifact
@@ -232,14 +233,6 @@ jobs:
       - name: Restore .NET tools
         run: dotnet tool restore
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
       - name: Restore .NET dependencies
         run: dotnet restore
 
@@ -302,6 +295,7 @@ jobs:
             -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
             -e DOTNET_NOLOGO=1 \
             -e NUGET_PACKAGES=/tmp/prosody-release-packages \
+            -e NUGET_HTTP_CACHE_PATH=/tmp/prosody-release-http-cache \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
@@ -310,7 +304,6 @@ jobs:
               dotnet restore test/Prosody.Tests -p:TestPackage=true \
                 -p:TestPackageVersion=${{ needs.release-please.outputs.version }} \
                 --configfile /workspace/.github/nuget-release-test.config \
-                --no-http-cache \
                 /p:TargetFramework=net${{ matrix.dotnet }}
 
               # Run tests using the NuGet package (not ProjectReference)
