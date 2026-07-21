@@ -249,16 +249,15 @@ jobs:
   test:
     name: Test ${{ matrix.target.name }} (.NET ${{ matrix.dotnet }})
     needs: [build-package]
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.target.runner }}
     strategy:
       fail-fast: false
       matrix:
         target:
           - name: linux-x64
-            platform: ""
+            runner: ubuntu-latest
           - name: linux-arm64
-            platform: linux/arm64
-            needs_qemu: true
+            runner: ubuntu-24.04-arm
         dotnet: ["8.0", "9.0", "10.0"]
 
     steps:
@@ -270,76 +269,12 @@ jobs:
           name: nuget-package
           path: ./packages
 
-      - name: Set up QEMU
-        if: matrix.target.needs_qemu
-        uses: docker/setup-qemu-action@v4
-        with:
-          platforms: arm64
-
-      - name: Set up binfmt_misc
-        if: matrix.target.needs_qemu
-        run: docker run --rm --privileged tonistiigi/binfmt --install all
-
-      - name: Create Docker network
-        run: docker network create test-network
-
-      - name: Start Kafka container
-        run: |
-          docker run -d --name kafka --network test-network \
-            -e KAFKA_NODE_ID=0 \
-            -e KAFKA_PROCESS_ROLES=controller,broker \
-            -e KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:9093 \
-            -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
-            -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092 \
-            -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
-            -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-            -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
-            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
-            -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
-            -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
-            apache/kafka:latest
-
-      - name: Start Cassandra container
-        run: |
-          docker run -d --name cassandra --network test-network \
-            -p 9042:9042 \
-            cassandra:latest
-
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for Cassandra and Kafka to be ready..."
-
-          # Wait for Cassandra
-          for i in {1..60}; do
-            if docker exec cassandra cqlsh -e "SELECT cluster_name FROM system.local;" >/dev/null 2>&1; then
-              echo "Cassandra is ready after ${i} attempts"
-              break
-            elif [ $i -eq 60 ]; then
-              echo "Cassandra failed to start after 60 seconds"
-              docker logs cassandra
-              exit 1
-            else
-              sleep 1
-            fi
-          done
-
-          # Wait for Kafka
-          for i in {1..60}; do
-            if docker exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1; then
-              echo "Kafka is ready after ${i} attempts"
-              break
-            elif [ $i -eq 60 ]; then
-              echo "Kafka failed to start after 60 seconds"
-              docker logs kafka
-              exit 1
-            fi
-            sleep 1
-          done
+      - name: Start healthy dependencies
+        run: docker compose --project-name release-test up --detach --wait kafka cassandra
 
       - name: Run tests
         run: |
-          docker run --rm --network test-network \
-            ${{ matrix.target.platform && format('--platform {0}', matrix.target.platform) || '' }} \
+          docker run --rm --network release-test_default \
             -e PROSODY_BOOTSTRAP_SERVERS=kafka:9092 \
             -e PROSODY_CASSANDRA_NODES=cassandra:9042 \
             -e PROSODY_CASSANDRA_KEYSPACE=prosody_test \
