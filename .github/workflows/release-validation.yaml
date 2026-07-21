@@ -220,6 +220,7 @@ jobs:
             bash -c '
               dotnet restore test/Prosody.Tests \
                 -p:TestPackage=true \
+                -p:TestPackageVersion=0.0.0-validation \
                 --source /workspace/packages \
                 --source https://api.nuget.org/v3/index.json \
                 /p:TargetFramework=net${{ matrix.dotnet }} &&
@@ -228,5 +229,6 @@ jobs:
                 --no-restore \
                 --no-launch-profile \
                 --configuration Release \
-                -p:TestPackage=true
+                -p:TestPackage=true \
+                -p:TestPackageVersion=0.0.0-validation
             '

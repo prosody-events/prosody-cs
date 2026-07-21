@@ -351,6 +351,7 @@ jobs:
             bash -c "
               # Restore for specific framework only (SDK may not support other frameworks)
               dotnet restore test/Prosody.Tests -p:TestPackage=true \
+                -p:TestPackageVersion=${{ needs.release-please.outputs.version }} \
                 --source /workspace/packages \
                 --source https://api.nuget.org/v3/index.json \
                 /p:TargetFramework=net${{ matrix.dotnet }}
@@ -359,7 +360,8 @@ jobs:
               # --no-launch-profile prevents launchSettings.json from overriding
               # PROSODY_BOOTSTRAP_SERVERS with localhost:9094 (which is unreachable
               # from inside this container; Kafka is at kafka:9092 on the Docker network).
-              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore --no-launch-profile -c Release -p:TestPackage=true
+              dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore --no-launch-profile -c Release \
+                -p:TestPackage=true -p:TestPackageVersion=${{ needs.release-please.outputs.version }}
             "
 
   publish:
