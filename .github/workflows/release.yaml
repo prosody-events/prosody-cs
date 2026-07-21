@@ -73,10 +73,10 @@ jobs:
 
           - rid: linux-arm64
             rust_target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             lib_prefix: lib
             lib_ext: .so
-            use_cross: true
+            use_docker: true
 
           - rid: osx-arm64
             rust_target: aarch64-apple-darwin

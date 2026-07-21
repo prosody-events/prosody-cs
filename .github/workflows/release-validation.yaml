@@ -26,9 +26,19 @@ permissions:
   contents: read
 
 jobs:
-  build-linux-x64:
-    name: Build Linux x64 package library
-    runs-on: ubuntu-latest
+  build-linux:
+    name: Build ${{ matrix.target.rid }} package library
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - rid: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - rid: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.target.runner }}
     steps:
       - uses: actions/checkout@v7
 
@@ -41,25 +51,25 @@ jobs:
             bash -c '
               apt-get update &&
               apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev &&
-              cargo build -p prosody-ffi --release --target x86_64-unknown-linux-gnu
+              cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
             '
 
       - name: Stage native library
         run: |
-          mkdir -p ffi/artifacts/linux-x64
-          cp target/x86_64-unknown-linux-gnu/release/libprosody_ffi.so \
-            ffi/artifacts/linux-x64/
+          mkdir -p ffi/artifacts/${{ matrix.target.rid }}
+          cp target/${{ matrix.target.rust_target }}/release/libprosody_ffi.so \
+            ffi/artifacts/${{ matrix.target.rid }}/
 
       - name: Upload native library
         uses: actions/upload-artifact@v7
         with:
-          name: native-linux-x64
-          path: ffi/artifacts/linux-x64/
+          name: native-${{ matrix.target.rid }}
+          path: ffi/artifacts/${{ matrix.target.rid }}/
           if-no-files-found: error
 
   build-package:
     name: Build validation package
-    needs: build-linux-x64
+    needs: build-linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -71,8 +81,16 @@ jobs:
       - name: Download native library
         uses: actions/download-artifact@v8
         with:
-          name: native-linux-x64
-          path: ffi/artifacts/linux-x64/
+          pattern: native-*
+          path: ffi/artifacts/
+          merge-multiple: false
+
+      - name: Reorganize native libraries
+        run: |
+          for directory in ffi/artifacts/native-*; do
+            rid="${directory##*/native-}"
+            mv "$directory" "ffi/artifacts/$rid"
+          done
 
       - name: Pack
         run: |
@@ -91,13 +109,18 @@ jobs:
           if-no-files-found: error
 
   test-package:
-    name: Test package (.NET ${{ matrix.dotnet }})
+    name: Test ${{ matrix.target.rid }} package (.NET ${{ matrix.dotnet }})
     needs: build-package
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        target:
+          - rid: linux-x64
+            runner: ubuntu-latest
+          - rid: linux-arm64
+            runner: ubuntu-24.04-arm
         dotnet: ["8.0", "9.0"]
+    runs-on: ${{ matrix.target.runner }}
     services:
       kafka:
         image: apache/kafka:latest
