@@ -20,6 +20,7 @@ use prosody::high_level::HighLevelClientError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
+use prosody::tracing::TracingError;
 use prosody::timers::datetime::CompactDateTimeError;
 use tokio::task::JoinError;
 
@@ -71,6 +72,13 @@ pub enum FfiError {
     /// is not a valid boolean).
     #[error("telemetry configuration build failed: {0:#}")]
     TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
+
+    /// Flushing or shutting down the telemetry pipeline failed.
+    ///
+    /// Wraps errors from exporting buffered OpenTelemetry spans/metrics or from
+    /// tearing the export pipeline down at process exit.
+    #[error("telemetry operation failed: {0:#}")]
+    Tracing(#[from] TracingError),
 
     /// A Kafka message loader configuration could not be finalized.
     ///
