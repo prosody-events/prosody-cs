@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/prosody-events/prosody-cs/compare/v0.3.1...v0.4.0) (2026-07-21)
+
+
+### Features
+
+* **state:** add durable keyed state ([#60](https://github.com/prosody-events/prosody-cs/issues/60)) ([de7c129](https://github.com/prosody-events/prosody-cs/commit/de7c129a7b6f6ad4da8b1217381ffc230a50ef5e))
+
+
+### Bug Fixes
+
+* **release:** restore published release boundary ([6f8491e](https://github.com/prosody-events/prosody-cs/commit/6f8491ec8ebe1078727b5846e3e7846ec2c90001))
+
 ## [0.3.1](https://github.com/prosody-events/prosody-cs/compare/v0.3.0...v0.3.1) (2026-06-30)
 
 
