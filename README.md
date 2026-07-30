@@ -1475,7 +1475,7 @@ PublishedValue<Cart> cartReader = await client.StateAsync("carts", cart);
 StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
 ```
 
-`PublishedMap<TValue>` provides the owned map's complete read set: `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` likewise provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. An owned handle gets its state key from the current event; a published reader is outside a handler, so each operation receives that state key explicitly. Enumeration uses `ScanDirection` and the same chunked cursor adapter as owned state. Use `StateReadCache.Disabled` on a definition to bypass the cache.
+`PublishedMap<TValue>` provides the owned map's complete read set: `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` likewise provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. An owned handle gets its state key from the current event; a published reader is outside a handler, so each operation receives that state key explicitly. Enumeration uses `ScanDirection` and the same chunked cursor adapter as owned state. Use `StateReadCache.Disabled` on a definition to bypass the cache. To retire a publication, deploy the definition with `published: false` while retaining both its registration and `StateSubsystem` for that deploy.
 
 `IValueState<T> where T : notnull`:
 
