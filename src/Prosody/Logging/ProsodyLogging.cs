@@ -32,6 +32,7 @@ public static class ProsodyLogging
 
     private static LogSinkBridge? _sink;
     private static ILoggerFactory? _loggerFactory;
+    private static bool _processExitHandlerRegistered;
 
     /// <summary>
     /// Configures logging for all Prosody clients. Must only be called once.
@@ -56,7 +57,66 @@ public static class ProsodyLogging
             _sink = sink;
             _loggerFactory = loggerFactory;
             ProsodyFfiMethods.ConfigureLogSink(sink);
+            RegisterProcessExitShutdown();
         }
+    }
+
+    /// <summary>
+    /// Flushes buffered telemetry (OpenTelemetry spans and metrics) to the exporter
+    /// without tearing the export pipeline down. A safe no-op when telemetry was
+    /// never initialized.
+    /// </summary>
+    /// <remarks>
+    /// Telemetry is process-global, so this is the right call when a single client
+    /// is disposed while the process keeps running — it forces the export that the
+    /// batch span processor and periodic metric reader would otherwise defer to
+    /// their timers. For a deterministic final export at process exit, prefer
+    /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes.
+    /// </remarks>
+    /// <exception cref="Native.FfiException">Thrown if the span or metric exporter fails to flush.</exception>
+    public static void FlushTelemetry() => ProsodyFfiMethods.FlushTelemetry();
+
+    /// <summary>
+    /// Flushes and shuts down the process-global telemetry pipeline. A safe no-op
+    /// when telemetry was never initialized.
+    /// </summary>
+    /// <remarks>
+    /// Only correct at actual process exit: shutdown tears telemetry down for the
+    /// whole process, so calling it per client would disable telemetry for every
+    /// sibling client. This runs automatically once via
+    /// <see cref="AppDomain.ProcessExit"/> after logging is configured; call it
+    /// directly only when managing process teardown yourself. Blocks until the
+    /// final export completes.
+    /// </remarks>
+    /// <exception cref="Native.FfiException">Thrown if the span or metric pipeline fails to shut down.</exception>
+    public static void ShutdownTelemetry() => ProsodyFfiMethods.ShutdownTelemetry();
+
+    /// <summary>
+    /// Registers a one-shot <see cref="AppDomain.ProcessExit"/> handler that shuts
+    /// telemetry down for the whole process, giving a deterministic final export at
+    /// real teardown. Idempotent; the caller must hold <see cref="SyncLock"/>.
+    /// </summary>
+    private static void RegisterProcessExitShutdown()
+    {
+        if (_processExitHandlerRegistered)
+        {
+            return;
+        }
+
+        AppDomain.CurrentDomain.ProcessExit += static (_, _) =>
+        {
+            try
+            {
+                ShutdownTelemetry();
+            }
+            catch (Native.FfiException)
+            {
+                // Best-effort at process exit: a telemetry shutdown failure must not
+                // fault a process that is already tearing down.
+            }
+        };
+
+        _processExitHandlerRegistered = true;
     }
 
     /// <summary>

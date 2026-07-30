@@ -37,7 +37,10 @@
 //! [`configure_log_sink`] and [`clear_log_sink`] from any thread.
 
 use arc_swap::ArcSwapOption;
-use prosody::tracing::initialize_tracing;
+use prosody::tracing::{
+    flush_telemetry as flush_core_telemetry, initialize_tracing,
+    shutdown_telemetry as shutdown_core_telemetry,
+};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
@@ -46,6 +49,8 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
+
+use crate::error::FfiError;
 
 /// Log severity level for messages from Rust to C#.
 ///
@@ -199,6 +204,48 @@ pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
 #[uniffi::export]
 pub fn clear_log_sink() {
     LOG_SINK.store(None);
+}
+
+/// Exports buffered OpenTelemetry spans and metrics without tearing the export
+/// pipeline down.
+///
+/// Telemetry is process-global, so this is the correct call when a single
+/// client is disposed while the process keeps running: it forces the batch span
+/// processor and periodic metric reader to export immediately instead of on
+/// their timers (~5s and 60s), so a short-lived client's tail telemetry is not
+/// lost. A safe no-op when tracing was never initialized.
+///
+/// Blocks until the export completes; call it after async work has settled,
+/// never from inside a handler.
+///
+/// # Errors
+///
+/// Returns [`FfiError::Tracing`] if the span or metric exporter fails to flush.
+#[uniffi::export]
+pub fn flush_telemetry() -> Result<(), FfiError> {
+    flush_core_telemetry()?;
+    Ok(())
+}
+
+/// Flushes all buffered telemetry and shuts the export pipeline down for the
+/// whole process.
+///
+/// Because telemetry is process-global, this is only correct at actual process
+/// exit — never per client, since it would tear down telemetry for every other
+/// client in the process. A safe no-op when tracing was never initialized; see
+/// [`flush_telemetry`] for the mid-run flush that keeps the pipeline alive.
+///
+/// Blocks until the final export completes; call it after async work has
+/// settled, never from inside a handler.
+///
+/// # Errors
+///
+/// Returns [`FfiError::Tracing`] if the span or metric pipeline fails to shut
+/// down.
+#[uniffi::export]
+pub fn shutdown_telemetry() -> Result<(), FfiError> {
+    shutdown_core_telemetry()?;
+    Ok(())
 }
 
 /// A [`tracing_subscriber::Layer`] that forwards events to the configured C#

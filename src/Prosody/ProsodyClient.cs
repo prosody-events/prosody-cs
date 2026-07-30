@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
 using Prosody.Infrastructure;
+using Prosody.Logging;
 using Prosody.Messaging;
 using Prosody.State;
 
@@ -363,6 +364,19 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         catch (ObjectDisposedException)
         {
             // Ignore - already disposed
+        }
+
+        // Flush this client's final telemetry (including the unsubscribe span above)
+        // before native teardown so a promptly-exiting process does not lose it.
+        // Flush, not shutdown: telemetry is process-global and sibling clients may
+        // still be running. Best-effort — a flush failure must not fault disposal.
+        try
+        {
+            ProsodyLogging.FlushTelemetry();
+        }
+        catch (Native.FfiException)
+        {
+            // Ignore - telemetry flush is best-effort during disposal
         }
 
         _native.Dispose();
