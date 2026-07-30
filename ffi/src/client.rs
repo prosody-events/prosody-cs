@@ -49,8 +49,7 @@ use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
-use prosody::high_level::HighLevelClient;
-use prosody::high_level::state::ConsumerState as ProsodyConsumerState;
+use prosody::high_level::erased::{ErasedConsumerState, SharedHighLevelClient, new_erased};
 use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
 
@@ -226,7 +225,7 @@ impl FallibleHandler for CsHandler {
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
-    client: HighLevelClient<CsHandler, JsonBinaryCodec>,
+    client: SharedHighLevelClient<CsHandler, JsonBinaryCodec>,
     /// Holds the C# handler reference to prevent premature deallocation.
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
@@ -269,13 +268,14 @@ impl ProsodyClient {
         // Compat enters the same runtime that uniffi uses for async methods
         // (async_compat's global TOKIO1), so tokio::spawn succeeds without
         // creating a second runtime.
+        let mock = consumer_builders.consumer.clone().build()?.mock;
+        let cassandra = if mock {
+            None
+        } else {
+            Some(cassandra_config.build()?)
+        };
         let client = block_on(Compat::new(async {
-            HighLevelClient::new(
-                mode,
-                &mut producer_config,
-                &consumer_builders,
-                &cassandra_config,
-            )
+            new_erased(mode, &mut producer_config, &consumer_builders, cassandra)
         }))?;
 
         Ok(Self {
@@ -364,7 +364,7 @@ impl ProsodyClient {
         // Send the message with tracing, with optional cancellation
         let send_future = self
             .client
-            .send(topic.as_str().into(), &key, binary_payload)
+            .send(topic.as_str().into(), key, binary_payload)
             .instrument(span.clone());
 
         if let Some(signal) = cancel {
@@ -388,14 +388,13 @@ impl ProsodyClient {
 
     /// Returns the current consumer state.
     pub async fn consumer_state(&self) -> ConsumerState {
-        let state_view = self.client.consumer_state().await;
-        match &*state_view {
-            ProsodyConsumerState::Unconfigured => ConsumerState::Unconfigured,
-            ProsodyConsumerState::ConfigurationFailed(err) => ConsumerState::ConfigurationFailed {
-                message: err.to_string(),
-            },
-            ProsodyConsumerState::Configured(_) => ConsumerState::Configured,
-            ProsodyConsumerState::Running { .. } => ConsumerState::Running,
+        match self.client.consumer_state().await {
+            ErasedConsumerState::Unconfigured => ConsumerState::Unconfigured,
+            ErasedConsumerState::ConfigurationFailed(error) => {
+                ConsumerState::ConfigurationFailed { message: error }
+            }
+            ErasedConsumerState::Configured(_) => ConsumerState::Configured,
+            ErasedConsumerState::Running { .. } => ConsumerState::Running,
         }
     }
 

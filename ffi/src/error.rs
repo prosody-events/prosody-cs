@@ -13,10 +13,13 @@
 use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
+use prosody::cassandra::config::CassandraConfigurationBuilderError;
 use prosody::codec::{BinaryCodecError, JsonExtractError};
+use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
+use prosody::high_level::erased::ErasedClientBuildError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
@@ -88,6 +91,14 @@ pub enum FfiError {
     #[error("loader configuration build failed: {0:#}")]
     LoaderConfig(#[from] KafkaLoaderConfigError),
 
+    /// Kafka consumer configuration is invalid or incomplete.
+    #[error("consumer configuration failed: {0:#}")]
+    ConsumerConfiguration(#[from] ConsumerConfigurationBuilderError),
+
+    /// Cassandra configuration is invalid or incomplete.
+    #[error("Cassandra configuration failed: {0:#}")]
+    CassandraConfiguration(#[from] CassandraConfigurationBuilderError),
+
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
     TopicConfiguration(#[from] TopicConfigurationBuilderError),
@@ -97,6 +108,10 @@ pub enum FfiError {
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
     Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+
+    /// Construction of the backend-erased FFI client failed.
+    #[error("client construction failed: {0:#}")]
+    ClientBuild(#[from] ErasedClientBuildError<BinaryCodecError<JsonExtractError>>),
 
     /// A producer operation failed.
     ///
