@@ -20,6 +20,10 @@ fn direction(direction: ScanDirection) -> ErasedDirection {
     }
 }
 
+fn json_item(bytes: Vec<u8>) -> StateItem {
+    StateItem::Json { bytes }
+}
+
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
 pub struct PublishedValueHandle {
@@ -44,11 +48,7 @@ impl PublishedValueHandle {
             .get(key)
             .with_context(context)
             .await
-            .map(|value| {
-                value.map(|payload| StateItem::Json {
-                    bytes: payload.bytes,
-                })
-            })
+            .map(|value| value.map(|payload| json_item(payload.bytes)))
             .map_err(FfiError::from)
     }
 }
@@ -78,11 +78,7 @@ impl PublishedMapHandle {
             .get(key, map_key)
             .with_context(context)
             .await
-            .map(|value| {
-                value.map(|payload| StateItem::Json {
-                    bytes: payload.bytes,
-                })
-            })
+            .map(|value| value.map(|payload| json_item(payload.bytes)))
             .map_err(FfiError::from)
     }
 
@@ -105,13 +101,28 @@ impl PublishedMapHandle {
             .map(|values| {
                 values
                     .into_iter()
-                    .map(|value| {
-                        value.map(|payload| StateItem::Json {
-                            bytes: payload.bytes,
-                        })
-                    })
+                    .map(|value| value.map(|payload| json_item(payload.bytes)))
                     .collect()
             })
+            .map_err(FfiError::from)
+    }
+
+    /// Reports whether a committed map entry exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn contains_key(
+        &self,
+        key: String,
+        map_key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        self.reader
+            .contains_key(key, map_key)
+            .with_context(context)
+            .await
             .map_err(FfiError::from)
     }
 
@@ -135,6 +146,30 @@ impl PublishedMapHandle {
             .map_err(FfiError::from)?;
         Ok(Arc::new(StateCursor {
             cursor: CursorVariant::MapJson(cursor),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Opens an ordered key-only map cursor.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the cursor cannot be opened.
+    pub async fn keys(
+        &self,
+        key: String,
+        direction_value: ScanDirection,
+        carrier: HashMap<String, String>,
+    ) -> Result<Arc<StateCursor>, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        let cursor = self
+            .reader
+            .keys(key, direction(direction_value))
+            .with_context(context)
+            .await
+            .map_err(FfiError::from)?;
+        Ok(Arc::new(StateCursor {
+            cursor: CursorVariant::MapKeys(cursor),
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -167,11 +202,7 @@ impl PublishedDequeHandle {
             .get(key, index)
             .with_context(context)
             .await
-            .map(|value| {
-                value.map(|payload| StateItem::Json {
-                    bytes: payload.bytes,
-                })
-            })
+            .map(|value| value.map(|payload| json_item(payload.bytes)))
             .map_err(FfiError::from)
     }
 
@@ -191,6 +222,62 @@ impl PublishedDequeHandle {
             .with_context(context)
             .await
             .map(|length| length as u64)
+            .map_err(FfiError::from)
+    }
+
+    /// Reports whether the committed deque is empty.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn is_empty(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        self.reader
+            .is_empty(key)
+            .with_context(context)
+            .await
+            .map_err(FfiError::from)
+    }
+
+    /// Reads the committed front element.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn peek_front(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<Option<StateItem>, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        self.reader
+            .peek_front(key)
+            .with_context(context)
+            .await
+            .map(|value| value.map(|payload| json_item(payload.bytes)))
+            .map_err(FfiError::from)
+    }
+
+    /// Reads the committed back element.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn peek_back(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<Option<StateItem>, FfiError> {
+        let context = self.propagator.extract(&carrier);
+        self.reader
+            .peek_back(key)
+            .with_context(context)
+            .await
+            .map(|value| value.map(|payload| json_item(payload.bytes)))
             .map_err(FfiError::from)
     }
 

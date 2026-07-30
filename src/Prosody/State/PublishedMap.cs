@@ -47,6 +47,40 @@ public sealed class PublishedMap<TValue>
         );
     }
 
+    /// <summary>Reports whether one entry exists for a user key.</summary>
+    public Task<bool> ContainsKeyAsync(string key, string mapKey, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(mapKey);
+        return StateInterop.RunAsync(
+            () => _handle.ContainsKey(key, mapKey, StateInterop.CreateCarrier()),
+            cancellationToken
+        );
+    }
+
+    /// <summary>Enumerates keys using the shared key-only chunked cursor.</summary>
+    public IAsyncEnumerable<string> EnumerateKeysAsync(
+        string key,
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+        return new StateScanSequence<string>(
+            () =>
+                StateInterop.RunAsync<Native.IStateCursor>(
+                    async () =>
+                        await _handle
+                            .Keys(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
+                            .ConfigureAwait(false),
+                    cancellationToken
+                ),
+            StateInterop.ItemKey,
+            cancellationToken
+        );
+    }
+
     /// <summary>Enumerates entries using the shared chunked state cursor.</summary>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         string key,

@@ -41,8 +41,39 @@ public sealed class PublishedDeque<T>
     }
 
     /// <summary>Determines whether the deque for a user key is empty.</summary>
-    public async Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default) =>
-        await CountAsync(key, cancellationToken).ConfigureAwait(false) == 0;
+    public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(() => _handle.IsEmpty(key, StateInterop.CreateCarrier()), cancellationToken);
+    }
+
+    /// <summary>Reads the front element for a user key without removing it.</summary>
+    public Task<StateValue<T>> PeekFrontAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(
+            async () =>
+                StateInterop.JsonToValue(
+                    await _handle.PeekFront(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+    }
+
+    /// <summary>Reads the back element for a user key without removing it.</summary>
+    public Task<StateValue<T>> PeekBackAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(
+            async () =>
+                StateInterop.JsonToValue(
+                    await _handle.PeekBack(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    _typeInfo
+                ),
+            cancellationToken
+        );
+    }
 
     /// <summary>Enumerates elements using the shared chunked state cursor.</summary>
     public IAsyncEnumerable<T> EnumerateAsync(
