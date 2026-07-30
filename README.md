@@ -364,8 +364,8 @@ variable applies, then the default.
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
 | `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
 | `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
-| `StateReadCacheSizeBytes` / - | Capacity of the published-state read cache, in bytes; must be greater than 0. | engine default |
-| `StateReadCache` / - | Default published-read cache policy: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | core default |
+| `StateReadCacheSizeBytes` / - | Capacity of the published-state read cache, in bytes; must be greater than 0. | state cache size, then 1 MiB |
+| `StateReadCache` / - | Default published-read cache policy: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | 5s |
 | `StateSubsystem` / - | Subsystem under which published collections are advertised. | (none) |
 | `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
