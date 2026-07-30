@@ -19,7 +19,8 @@ namespace Prosody.State;
 /// <typeparam name="T">The yielded element type.</typeparam>
 internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
 {
-    private readonly Func<Native.IStateCursor> _cursorFactory;
+    private readonly Func<Native.IStateCursor>? _cursorFactory;
+    private readonly Func<Task<Native.IStateCursor>>? _asyncCursorFactory;
     private readonly Func<Native.StateScanItem, T> _transform;
     private readonly CancellationToken _cancellationToken;
 
@@ -34,14 +35,33 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
         _cancellationToken = cancellationToken;
     }
 
+    internal StateScanSequence(
+        Func<Task<Native.IStateCursor>> cursorFactory,
+        Func<Native.StateScanItem, T> transform,
+        CancellationToken cancellationToken
+    )
+    {
+        _asyncCursorFactory = cursorFactory;
+        _transform = transform;
+        _cancellationToken = cancellationToken;
+    }
+
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        return new Enumerator(_cursorFactory(), _transform, _cancellationToken, cancellationToken);
+        return _cursorFactory is { } cursorFactory
+            ? new Enumerator(cursorFactory(), _transform, _cancellationToken, cancellationToken)
+            : new Enumerator(
+                _asyncCursorFactory ?? throw new InvalidOperationException("A state scan must have a cursor factory."),
+                _transform,
+                _cancellationToken,
+                cancellationToken
+            );
     }
 
     private sealed class Enumerator : IAsyncEnumerator<T>
     {
-        private readonly Native.IStateCursor _cursor;
+        private readonly Func<Task<Native.IStateCursor>> _cursorFactory;
+        private Native.IStateCursor? _cursor;
         private readonly Func<Native.StateScanItem, T> _transform;
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly CancellationTokenSource? _linkedCts;
@@ -56,8 +76,19 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
             CancellationToken sequenceToken,
             CancellationToken enumeratorToken
         )
+            : this(() => Task.FromResult(cursor), transform, sequenceToken, enumeratorToken)
         {
             _cursor = cursor;
+        }
+
+        internal Enumerator(
+            Func<Task<Native.IStateCursor>> cursorFactory,
+            Func<Native.StateScanItem, T> transform,
+            CancellationToken sequenceToken,
+            CancellationToken enumeratorToken
+        )
+        {
+            _cursorFactory = cursorFactory;
             _transform = transform;
 
             if (sequenceToken.CanBeCanceled && enumeratorToken.CanBeCanceled)
@@ -97,6 +128,7 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
                     Native.StateScanItem[]? pulled;
                     try
                     {
+                        _cursor ??= await _cursorFactory().ConfigureAwait(false);
                         pulled = await _cursor.NextChunk(StateInterop.CreateCarrier()).ConfigureAwait(false);
                     }
                     catch (Native.FfiException ex)
@@ -127,8 +159,7 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
                 }
                 catch
                 {
-                    // A transform (deserialization) failure is a binding defect, not a store error;
-                    // close best-effort and rethrow the original so its category is preserved.
+                    // Preserve the transform failure after closing best-effort.
                     _finished = true;
                     await CloseQuietlyAsync().ConfigureAwait(false);
                     throw;
@@ -161,13 +192,17 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
             }
         }
 
-        private ValueTask CloseQuietlyAsync() => BestEffort.RunAsync(_cursor.Close);
+        private ValueTask CloseQuietlyAsync() =>
+            _cursor is null ? ValueTask.CompletedTask : BestEffort.RunAsync(_cursor.Close);
 
         private async ValueTask CloseOrThrowAsync()
         {
             try
             {
-                await _cursor.Close().ConfigureAwait(false);
+                if (_cursor is not null)
+                {
+                    await _cursor.Close().ConfigureAwait(false);
+                }
             }
             catch (Native.FfiException ex)
             {

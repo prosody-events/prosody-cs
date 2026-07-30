@@ -364,6 +364,9 @@ variable applies, then the default.
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
 | `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
 | `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
+| `StateReadCacheSizeBytes` / - | Capacity of the published-state read cache, in bytes; must be greater than 0. | engine default |
+| `StateReadCache` / - | Default published-read cache policy: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | core default |
+| `StateSubsystem` / - | Subsystem under which published collections are advertised. | (none) |
 | `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
@@ -373,6 +376,8 @@ documented in the [Definitions](#definitions) subsection). The factory parameter
 |---|---|---|---|
 | `name` | all | Collection name; non-empty and unique within the client. | (required) |
 | `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
+| `published` | JSON | Advertises the owned collection for cross-group read-only access. | `false` |
+| `readCache` | JSON | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
 | `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
 | `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
 
@@ -1435,15 +1440,42 @@ Enum representing the operating mode:
 
 Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
 
-- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `ValueStateDefinition<T>`
-- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MapStateDefinition<TValue>`
-- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
 The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
 a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+
+Published JSON collections use the same definition for owned and read-only access:
+
+```csharp
+var cart = StateDefinition.Value<Cart>(
+    "cart",
+    published: true,
+    readCache: StateReadCache.For(TimeSpan.FromSeconds(2))
+);
+
+var options = new ClientOptions
+{
+    GroupId = "cart-writer",
+    StateSubsystem = "carts",
+    StateCollections = [cart],
+};
+
+// Inside the owner's handler:
+var owned = context.State(cart);
+await owned.SetAsync(updated, cancellationToken);
+
+// From another client:
+PublishedValue<Cart> published = await client.StateAsync("carts", cart);
+StateValue<Cart> value = await published.GetAsync("user-1", cancellationToken);
+```
+
+`PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, and ordered `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, and ordered `EnumerateAsync`. Both enumeration APIs use `ScanDirection` and the same chunked cursor adapter as owned state. Use `StateReadCache.Disabled` on a definition to bypass the cache.
 
 `IValueState<T> where T : notnull`:
 

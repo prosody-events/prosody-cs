@@ -22,6 +22,7 @@ use prosody::high_level::HighLevelClientError;
 use prosody::high_level::erased::ErasedClientBuildError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
+use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
@@ -181,6 +182,17 @@ impl From<ErasedStateError> for FfiError {
     }
 }
 
+impl From<StateReaderError> for FfiError {
+    fn from(error: StateReaderError) -> Self {
+        match error.classify_error() {
+            ErrorCategory::Permanent => Self::PermanentState(error.to_string()),
+            ErrorCategory::Transient | ErrorCategory::Terminal => {
+                Self::TransientState(error.to_string())
+            }
+        }
+    }
+}
+
 /// Represents errors from C# event handler callbacks.
 ///
 /// This type wraps errors that originate in C# code and cross back into Rust.
@@ -220,7 +232,13 @@ pub enum CsHandlerError {
     /// it classifies as permanent so the offset is committed rather than
     /// retried forever.
     #[error(transparent)]
-    Ffi(#[from] FfiError),
+    Ffi(Box<FfiError>),
+}
+
+impl From<FfiError> for CsHandlerError {
+    fn from(error: FfiError) -> Self {
+        Self::Ffi(Box::new(error))
+    }
 }
 
 /// Classifies errors for retry decisions.
@@ -231,7 +249,10 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Ffi(FfiError::PermanentState(_)) | Self::Permanent(_) => ErrorCategory::Permanent,
+            Self::Ffi(error) if matches!(error.as_ref(), FfiError::PermanentState(_)) => {
+                ErrorCategory::Permanent
+            }
+            Self::Permanent(_) => ErrorCategory::Permanent,
             Self::Transient(_) | Self::Ffi(_) => ErrorCategory::Transient,
         }
     }
