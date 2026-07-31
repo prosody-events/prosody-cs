@@ -704,7 +704,7 @@ var items = StateDefinition.Map<Item>("items", published: true);
 var options = new ClientOptions
 {
     GroupId = "cart-writer",
-    Subsystem = "carts",
+    Subsystem = "checkout",
     StateCollections = [cart, items],
 };
 
@@ -716,10 +716,10 @@ await ownedCart.SetAsync(updatedCart, cancellationToken);
 Another client opens a reader by naming the subsystem and passing that same definition. The reader is independent of subscriptions and only returns committed state:
 
 ```csharp
-PublishedValue<Cart> cartReader = await client.StateAsync("carts", cart);
+PublishedValue<Cart> cartReader = await client.StateAsync("checkout", cart);
 StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
 
-PublishedMap<Item> itemReader = await client.StateAsync("carts", items);
+PublishedMap<Item> itemReader = await client.StateAsync("checkout", items);
 await foreach (var (mapKey, item) in itemReader.EnumerateAsync(
     "user-1",
     cancellationToken: cancellationToken))
