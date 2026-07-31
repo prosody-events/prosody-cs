@@ -58,38 +58,6 @@ public sealed class ClientOptionsValidatorStateTests
         );
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void StateCacheSizeBytes_NonPositive_Fails(long bytes)
-    {
-        var options = BaseOptions();
-        options.StateCacheSizeBytes = bytes;
-
-        var result = _validator.Validate(name: null, options);
-
-        Assert.Multiple(
-            () => Assert.True(result.Failed),
-            () => Assert.Contains("StateCacheSizeBytes", result.FailureMessage, StringComparison.Ordinal)
-        );
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void StateReadCacheSizeBytes_NonPositive_Fails(long bytes)
-    {
-        var options = BaseOptions();
-        options.StateReadCacheSizeBytes = bytes;
-
-        var result = _validator.Validate(name: null, options);
-
-        Assert.Multiple(
-            () => Assert.True(result.Failed),
-            () => Assert.Contains("StateReadCacheSizeBytes", result.FailureMessage, StringComparison.Ordinal)
-        );
-    }
-
     [Fact]
     public void RecoveryDelay_Fractional_Fails()
     {

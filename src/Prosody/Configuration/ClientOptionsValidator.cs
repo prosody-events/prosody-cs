@@ -61,16 +61,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
             failures.Add("StateCacheDir must not be empty when set.");
         }
 
-        if (options.StateCacheSizeBytes is <= 0)
-        {
-            failures.Add("StateCacheSizeBytes must be greater than 0 when set.");
-        }
-
-        if (options.StateReadCacheSizeBytes is <= 0)
-        {
-            failures.Add("StateReadCacheSizeBytes must be greater than 0 when set.");
-        }
-
         var recoveryDelay = options.StateRecoveryDelay;
         if (recoveryDelay is { } delay && !IsWholeSecondsAtLeastOne(delay))
         {

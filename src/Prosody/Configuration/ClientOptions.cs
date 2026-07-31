@@ -450,15 +450,13 @@ public sealed class ClientOptions
     public string? StateCacheDir { get; set; }
 
     /// <summary>
-    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
-    /// <c>PROSODY_STATE_CACHE_SIZE_BYTES</c>,
-    /// then to the storage-engine default.
-    /// Must be greater than zero when set.
+    /// Capacity of the owning keyed-state cache, such as <c>64 MiB</c>.
+    /// Falls back to <c>PROSODY_STATE_OWNED_CACHE_SIZE</c>.
     /// </summary>
-    public long? StateCacheSizeBytes { get; set; }
+    public string? StateOwnedCacheSize { get; set; }
 
-    /// <summary>Capacity of the published-state read cache, in bytes.</summary>
-    public long? StateReadCacheSizeBytes { get; set; }
+    /// <summary>Capacity of the published-state read cache, such as <c>1 MiB</c>.</summary>
+    public string? StateReadCacheSize { get; set; }
 
     /// <summary>Default cache policy for published-state reads.</summary>
     public StateReadCache? StateReadCache { get; set; }
@@ -535,8 +533,8 @@ public sealed class ClientOptions
                 ? null
                 : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
             StateCacheDir = StateCacheDir,
-            StateCacheSizeBytes = StateCacheSizeBytes,
-            StateReadCacheSizeBytes = StateReadCacheSizeBytes,
+            StateOwnedCacheSize = StateOwnedCacheSize,
+            StateReadCacheSize = StateReadCacheSize,
             StateReadCacheTtl = StateReadCache?.Ttl,
             StateReadCacheDisabled = StateReadCache?.IsDisabled,
             Subsystem = Subsystem,

@@ -16,6 +16,7 @@
 //!   [`build_dedup_config`] converts the deduplication cache capacity, both of
 //!   which can reject invalid caller input.
 
+use prosody::ByteSize;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::codec::{JsonBinaryCodec, JsonPassthroughStateCodec};
 use prosody::consumer::ConsumerConfigurationBuilder;
@@ -44,7 +45,7 @@ use prosody::telemetry::emitter::{
 };
 use prosody::timers::duration::CompactDuration;
 use std::collections::HashSet;
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
 use validator::{ValidationError, ValidationErrors};
@@ -650,24 +651,18 @@ pub fn build_keyed_state_config(
         builder.recovery_delay(CompactDuration::new(seconds));
     }
 
-    if let Some(bytes) = options.state_cache_size_bytes {
-        let bytes = u64::try_from(bytes).map_err(|_| {
-            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        let bytes = NonZeroU64::new(bytes).ok_or_else(|| {
-            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        builder.cache_size_bytes(Some(bytes));
+    if let Some(size) = &options.state_owned_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| permanent_config(format!("stateOwnedCacheSize: {error}")))?;
+        builder.owned_cache_size(Some(size));
     }
 
-    if let Some(bytes) = options.state_read_cache_size_bytes {
-        let bytes = u64::try_from(bytes).map_err(|_| {
-            permanent_config("stateReadCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        let bytes = NonZeroU64::new(bytes).ok_or_else(|| {
-            permanent_config("stateReadCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        builder.read_cache_size_bytes(Some(bytes));
+    if let Some(size) = &options.state_read_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| permanent_config(format!("stateReadCacheSize: {error}")))?;
+        builder.read_cache_size(Some(size));
     }
 
     match (

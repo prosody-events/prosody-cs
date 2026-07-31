@@ -661,16 +661,13 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
 
-    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
-    /// `PROSODY_STATE_CACHE_SIZE_BYTES`,
-    /// then to the storage-engine default.
-    /// Must be greater than zero when set.
+    /// Capacity of the owning keyed-state cache, such as `64 MiB`.
     #[uniffi(default = None)]
-    pub state_cache_size_bytes: Option<i64>,
+    pub state_owned_cache_size: Option<String>,
 
-    /// Capacity of the published-state read cache, in bytes.
+    /// Capacity of the published-state read cache, such as `1 MiB`.
     #[uniffi(default = None)]
-    pub state_read_cache_size_bytes: Option<i64>,
+    pub state_read_cache_size: Option<String>,
 
     /// Default published-state read cache TTL.
     #[uniffi(default = None)]
