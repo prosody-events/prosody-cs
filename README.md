@@ -690,6 +690,48 @@ Use keyed state for time-aware stream processing: counters, deduplication, rolli
 
 Most collections should have a TTL. Set it comfortably beyond the longest timer or workflow that uses the state; Prosody validates the minimum supported TTL. Omit it only when keeping inactive keys forever is intentional.
 
+### Published state
+
+Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, gives its state a `StateSubsystem`, and registers the definition as usual:
+
+```csharp
+var cart = StateDefinition.Value<Cart>(
+    "cart",
+    published: true,
+    readCache: StateReadCache.For(TimeSpan.FromSeconds(2)));
+var items = StateDefinition.Map<Item>("items", published: true);
+
+var options = new ClientOptions
+{
+    GroupId = "cart-writer",
+    StateSubsystem = "carts",
+    StateCollections = [cart, items],
+};
+
+// Inside the owner's handler, the event supplies the user key.
+var ownedCart = context.State(cart);
+await ownedCart.SetAsync(updatedCart, cancellationToken);
+```
+
+Another client opens a reader by naming the subsystem and passing that same definition. The reader is independent of subscriptions and only returns committed state:
+
+```csharp
+PublishedValue<Cart> cartReader = await client.StateAsync("carts", cart);
+StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
+
+PublishedMap<Item> itemReader = await client.StateAsync("carts", items);
+await foreach (var (mapKey, item) in itemReader.EnumerateAsync(
+    "user-1",
+    cancellationToken: cancellationToken))
+{
+    // Entries are ordered by key.
+}
+```
+
+Published readers provide the owned collection's read operations without its mutations. An owned handle gets the user key from the current event; a published reader is outside a handler, so every operation takes that key explicitly. Map and deque enumeration returns `IAsyncEnumerable<T>` and reads in chunks rather than loading the entire collection. Pass `ScanDirection.Backward` when reverse order is useful.
+
+The default cache window is five seconds unless the client configuration changes it. Set `readCache: StateReadCache.For(ttl)` on a definition to choose a different freshness window, or use `StateReadCache.Disabled` to read durable storage on every operation. To stop publishing a collection, deploy its definition with `published: false` while keeping it registered and retaining `StateSubsystem` for that deployment.
+
 ### A counter for each key
 
 Declare each collection once, register it on the client, and ask the event context for the current key's state:
@@ -1356,6 +1398,9 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
 - `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
+- `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
+- `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
+- `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
@@ -1450,32 +1495,7 @@ Definition factories (each returns an immutable, validated record used both in `
 The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
 a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
 
-Published JSON collections use the same definition for owned and read-only access:
-
-```csharp
-var cart = StateDefinition.Value<Cart>(
-    "cart",
-    published: true,
-    readCache: StateReadCache.For(TimeSpan.FromSeconds(2))
-);
-
-var options = new ClientOptions
-{
-    GroupId = "cart-writer",
-    StateSubsystem = "carts",
-    StateCollections = [cart],
-};
-
-// Inside the owner's handler:
-var owned = context.State(cart);
-await owned.SetAsync(updated, cancellationToken);
-
-// From another client:
-PublishedValue<Cart> cartReader = await client.StateAsync("carts", cart);
-StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
-```
-
-`PublishedMap<TValue>` provides the owned map's complete read set: `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` likewise provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. An owned handle gets its state key from the current event; a published reader is outside a handler, so each operation receives that state key explicitly. Enumeration uses `ScanDirection` and the same chunked cursor adapter as owned state. Use `StateReadCache.Disabled` on a definition to bypass the cache. To retire a publication, deploy the definition with `published: false` while retaining both its registration and `StateSubsystem` for that deploy.
+Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
 
 `IValueState<T> where T : notnull`:
 
