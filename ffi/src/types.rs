@@ -680,9 +680,9 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_read_cache_disabled: Option<bool>,
 
-    /// Subsystem under which this client publishes state.
+    /// Subsystem under which published collections are advertised.
     #[uniffi(default = None)]
-    pub state_subsystem: Option<String>,
+    pub subsystem: Option<String>,
 
     /// Delay between staging a provisional cell and the keyed-state recovery
     /// sweep.

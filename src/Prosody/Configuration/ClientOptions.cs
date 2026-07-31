@@ -463,8 +463,8 @@ public sealed class ClientOptions
     /// <summary>Default cache policy for published-state reads.</summary>
     public StateReadCache? StateReadCache { get; set; }
 
-    /// <summary>Subsystem under which this client publishes state.</summary>
-    public string? StateSubsystem { get; set; }
+    /// <summary>Subsystem under which published collections are advertised.</summary>
+    public string? Subsystem { get; set; }
 
     /// <summary>
     /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
@@ -539,7 +539,7 @@ public sealed class ClientOptions
             StateReadCacheSizeBytes = StateReadCacheSizeBytes,
             StateReadCacheTtl = StateReadCache?.Ttl,
             StateReadCacheDisabled = StateReadCache?.IsDisabled,
-            StateSubsystem = StateSubsystem,
+            Subsystem = Subsystem,
             StateRecoveryDelay = StateRecoveryDelay,
         };
 

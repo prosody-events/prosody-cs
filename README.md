@@ -366,7 +366,7 @@ variable applies, then the default.
 | `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
 | `StateReadCacheSizeBytes` / `PROSODY_STATE_READ_CACHE_SIZE_BYTES` | Capacity of the published-state read cache, in bytes; must be greater than 0. | state cache size, then 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | 5s |
-| `StateSubsystem` / - | Subsystem under which published collections are advertised. | (none) |
+| `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem under which published collections are advertised. | (none) |
 | `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
@@ -692,7 +692,7 @@ Most collections should have a TTL. Set it comfortably beyond the longest timer 
 
 ### Published state
 
-Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, gives its state a `StateSubsystem`, and registers the definition as usual:
+Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, names its `Subsystem`, and registers the definition as usual:
 
 ```csharp
 var cart = StateDefinition.Value<Cart>(
@@ -704,7 +704,7 @@ var items = StateDefinition.Map<Item>("items", published: true);
 var options = new ClientOptions
 {
     GroupId = "cart-writer",
-    StateSubsystem = "carts",
+    Subsystem = "carts",
     StateCollections = [cart, items],
 };
 
@@ -730,7 +730,7 @@ await foreach (var (mapKey, item) in itemReader.EnumerateAsync(
 
 Published readers provide the owned collection's read operations without its mutations. An owned handle gets the user key from the current event; a published reader is outside a handler, so every operation takes that key explicitly. Map and deque enumeration returns `IAsyncEnumerable<T>` and reads in chunks rather than loading the entire collection. Pass `ScanDirection.Backward` when reverse order is useful.
 
-The default cache window is five seconds unless the client configuration changes it. Set `readCache: StateReadCache.For(ttl)` on a definition to choose a different freshness window, or use `StateReadCache.Disabled` to read durable storage on every operation. To stop publishing a collection, deploy its definition with `published: false` while keeping it registered and retaining `StateSubsystem` for that deployment.
+The default cache window is five seconds unless the client configuration changes it. Set `readCache: StateReadCache.For(ttl)` on a definition to choose a different freshness window, or use `StateReadCache.Disabled` to read durable storage on every operation. To stop publishing a collection, deploy its definition with `published: false` while keeping it registered and retaining `Subsystem` for that deployment.
 
 ### A counter for each key
 

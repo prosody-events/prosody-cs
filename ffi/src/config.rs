@@ -693,7 +693,7 @@ pub fn build_keyed_state_config(
         (None, false) => {}
     }
 
-    if let Some(subsystem) = &options.state_subsystem {
+    if let Some(subsystem) = &options.subsystem {
         builder.subsystem(Some(
             SubsystemName::try_new(subsystem.clone())
                 .map_err(|error| permanent_config(error.to_string()))?,
