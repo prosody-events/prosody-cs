@@ -116,7 +116,7 @@ internal sealed class DequeState<T> : IDequeState<T>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            Transform,
+            item => StateInterop.JsonDequeItem(item, _typeInfo),
             cancellationToken
         );
     }
@@ -129,9 +129,4 @@ internal sealed class DequeState<T> : IDequeState<T>
 
     public Task RollbackAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
-
-    private T Transform(Native.StateScanItem item) =>
-        item is Native.StateScanItem.DequeJson element
-            ? StateInterop.DeserializeJson(element.Bytes, _typeInfo)
-            : throw new TransientStateException("State scan item shape mismatch: expected a JSON deque element.");
 }

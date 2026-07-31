@@ -99,10 +99,7 @@ public sealed class PublishedMap<TValue>
                             .ConfigureAwait(false),
                     cancellationToken
                 ),
-            item =>
-                item is Native.StateScanItem.MapJson entry
-                    ? KeyValuePair.Create(entry.Key, StateInterop.DeserializeJson(entry.Bytes, _typeInfo))
-                    : throw new TransientStateException("State scan item shape mismatch: expected a JSON map entry."),
+            item => StateInterop.JsonMapEntry(item, _typeInfo),
             cancellationToken
         );
     }

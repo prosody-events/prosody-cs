@@ -93,12 +93,7 @@ public sealed class PublishedDeque<T>
                             .ConfigureAwait(false),
                     cancellationToken
                 ),
-            item =>
-                item is Native.StateScanItem.DequeJson element
-                    ? StateInterop.DeserializeJson(element.Bytes, _typeInfo)
-                    : throw new TransientStateException(
-                        "State scan item shape mismatch: expected a JSON deque element."
-                    ),
+            item => StateInterop.JsonDequeItem(item, _typeInfo),
             cancellationToken
         );
     }
