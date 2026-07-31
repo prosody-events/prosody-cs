@@ -1968,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "prosody"
 version = "0.5.0"
-source = "git+https://github.com/prosody-events/prosody?rev=db9eaf60d691a2d559400c2438ff8d3b9d31d190#db9eaf60d691a2d559400c2438ff8d3b9d31d190"
+source = "git+https://github.com/prosody-events/prosody?rev=5e936790a4d47b777774c28d7a2738706907074e#5e936790a4d47b777774c28d7a2738706907074e"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -2021,7 +2021,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
- "validator 0.20.0",
+ "validator",
  "whoami",
  "xxhash-rust",
  "zstd",
@@ -2045,7 +2045,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uniffi",
- "validator 0.21.0",
+ "validator",
 ]
 
 [[package]]
@@ -3406,22 +3406,6 @@ dependencies = [
 
 [[package]]
 name = "validator"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43fb22e1a008ece370ce08a3e9e4447a910e92621bb49b85d6e48a45397e7cfa"
-dependencies = [
- "idna",
- "once_cell",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "url",
- "validator_derive",
-]
-
-[[package]]
-name = "validator"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d68c6633c483df6780cc5277a417c7c2d1bceee2649d06c8ab6b0fd2dd3c81"
@@ -3432,6 +3416,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "url",
+ "validator_derive",
 ]
 
 [[package]]
