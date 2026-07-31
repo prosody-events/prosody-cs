@@ -277,7 +277,7 @@ impl ProsodyClient {
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
         let consumer_builders = build_consumer_builders(&options)?;
-        let cassandra_config = build_cassandra_config(&options);
+        let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
         // HighLevelClient::new calls spawn_telemetry_emitter which calls
@@ -286,14 +286,8 @@ impl ProsodyClient {
         // Compat enters the same runtime that uniffi uses for async methods
         // (async_compat's global TOKIO1), so tokio::spawn succeeds without
         // creating a second runtime.
-        let mock = consumer_builders.consumer.clone().build()?.mock;
-        let cassandra = if mock {
-            None
-        } else {
-            Some(cassandra_config.build()?)
-        };
         let client = block_on(Compat::new(async {
-            new_erased(mode, &mut producer_config, &consumer_builders, cassandra)
+            new_erased(mode, &mut producer_config, &consumer_builders, &cassandra)
         }))?;
 
         Ok(Self {
