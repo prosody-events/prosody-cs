@@ -5,7 +5,14 @@ namespace Prosody.State;
 public sealed record DequeStateDefinition<T> : StateDefinition
     where T : notnull
 {
-    internal DequeStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? capacity)
+    internal DequeStateDefinition(
+        string name,
+        TimeSpan? ttl,
+        bool? readUncommitted,
+        int? capacity,
+        bool published,
+        StateReadCache? readCache
+    )
         : base(
             name,
             Native.StateKind.Deque,
@@ -13,6 +20,8 @@ public sealed record DequeStateDefinition<T> : StateDefinition
             ttl,
             readUncommitted,
             keysetLimit: null,
-            capacity
+            capacity,
+            published,
+            readCache
         ) { }
 }

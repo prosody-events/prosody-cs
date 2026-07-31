@@ -1,7 +1,11 @@
+using System.Text.Json;
+using Prosody.Messaging;
+
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
 /// Shared fixture for integration tests providing AdminClient and configuration.
+/// Initialization completes Cassandra schema migration before parallel test classes start.
 /// </summary>
 /// <remarks>
 /// Configuration via environment variables:
@@ -32,10 +36,12 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     public AdminClient Admin { get; private set; } = null!;
 
     /// <inheritdoc/>
-    public ValueTask InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         Admin = new AdminClient(BootstrapServers);
-        return ValueTask.CompletedTask;
+
+        await using var context = await IntegrationTestContext.CreateAsync(Admin);
+        await context.Client.SubscribeAsync(new MigrationHandler());
     }
 
     /// <inheritdoc/>
@@ -43,6 +49,21 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
     {
         Admin?.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    private sealed class MigrationHandler : IProsodyHandler<JsonElement>
+    {
+        public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 }
 

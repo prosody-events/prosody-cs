@@ -57,6 +57,7 @@ pub mod error;
 pub mod handler;
 pub mod logging;
 pub mod message;
+pub mod published;
 pub mod state;
 pub mod timer;
 pub mod types;
@@ -82,6 +83,7 @@ pub use context::Context;
 pub use error::FfiError;
 pub use handler::{EventHandler, HandlerResultCode};
 pub use message::Message;
+pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
 pub use state::{
     DequeStateHandle, MapStateHandle, ScanDirection, StateCursor, StateItem, StateScanItem,
     ValueStateHandle,

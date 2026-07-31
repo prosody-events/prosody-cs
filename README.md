@@ -364,6 +364,9 @@ variable applies, then the default.
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
 | `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. | per-client temp dir |
 | `StateCacheSizeBytes` / `PROSODY_STATE_CACHE_SIZE_BYTES` | Capacity of the in-memory keyed-state cache, in bytes; must be greater than 0. One cache is shared by all partition keyspaces. | engine default |
+| `StateReadCacheSizeBytes` / `PROSODY_STATE_READ_CACHE_SIZE_BYTES` | Capacity of the published-state read cache, in bytes; must be greater than 0. | state cache size, then 1 MiB |
+| `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | 5s |
+| `StateSubsystem` / - | Subsystem under which published collections are advertised. | (none) |
 | `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants,
@@ -373,6 +376,8 @@ documented in the [Definitions](#definitions) subsection). The factory parameter
 |---|---|---|---|
 | `name` | all | Collection name; non-empty and unique within the client. | (required) |
 | `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
+| `published` | JSON | Advertises the owned collection for cross-group read-only access. | `false` |
+| `readCache` | JSON | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
 | `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
 | `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
 
@@ -684,6 +689,48 @@ Keyed state gives every Kafka key its own durable working memory. Prosody automa
 Use keyed state for time-aware stream processing: counters, deduplication, rolling aggregates, pending work, and per-key workflows. Keep your relational database as the source of truth for business data and for work that needs joins or ad hoc queries. Reconstructing stream state with repeated database queries can be slow and expensive; keyed state is built for that job.
 
 Most collections should have a TTL. Set it comfortably beyond the longest timer or workflow that uses the state; Prosody validates the minimum supported TTL. Omit it only when keeping inactive keys forever is intentional.
+
+### Published state
+
+Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, gives its state a `StateSubsystem`, and registers the definition as usual:
+
+```csharp
+var cart = StateDefinition.Value<Cart>(
+    "cart",
+    published: true,
+    readCache: StateReadCache.For(TimeSpan.FromSeconds(2)));
+var items = StateDefinition.Map<Item>("items", published: true);
+
+var options = new ClientOptions
+{
+    GroupId = "cart-writer",
+    StateSubsystem = "carts",
+    StateCollections = [cart, items],
+};
+
+// Inside the owner's handler, the event supplies the user key.
+var ownedCart = context.State(cart);
+await ownedCart.SetAsync(updatedCart, cancellationToken);
+```
+
+Another client opens a reader by naming the subsystem and passing that same definition. The reader is independent of subscriptions and only returns committed state:
+
+```csharp
+PublishedValue<Cart> cartReader = await client.StateAsync("carts", cart);
+StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
+
+PublishedMap<Item> itemReader = await client.StateAsync("carts", items);
+await foreach (var (mapKey, item) in itemReader.EnumerateAsync(
+    "user-1",
+    cancellationToken: cancellationToken))
+{
+    // Entries are ordered by key.
+}
+```
+
+Published readers provide the owned collection's read operations without its mutations. An owned handle gets the user key from the current event; a published reader is outside a handler, so every operation takes that key explicitly. Map and deque enumeration returns `IAsyncEnumerable<T>` and reads in chunks rather than loading the entire collection. Pass `ScanDirection.Backward` when reverse order is useful.
+
+The default cache window is five seconds unless the client configuration changes it. Set `readCache: StateReadCache.For(ttl)` on a definition to choose a different freshness window, or use `StateReadCache.Disabled` to read durable storage on every operation. To stop publishing a collection, deploy its definition with `published: false` while keeping it registered and retaining `StateSubsystem` for that deployment.
 
 ### A counter for each key
 
@@ -1351,6 +1398,9 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
 - `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
+- `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
+- `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
+- `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
@@ -1435,15 +1485,17 @@ Enum representing the operating mode:
 
 Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
 
-- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `ValueStateDefinition<T>`
-- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MapStateDefinition<TValue>`
-- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
 The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
 a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+
+Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
 
 `IValueState<T> where T : notnull`:
 

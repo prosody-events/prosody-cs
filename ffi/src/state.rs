@@ -169,7 +169,7 @@ pub(crate) enum DequeStateVariant {
 }
 
 /// The four cursor flavours a scan yields, one per (collection, payload) pair.
-enum CursorVariant {
+pub(crate) enum CursorVariant {
     /// A deque JSON scan yielding document bytes.
     DequeJson(BoxStateCursor<BinaryPayload>),
     /// A map JSON scan yielding `(key, bytes)` entries.
@@ -1013,9 +1013,9 @@ impl DequeStateHandle {
 #[derive(uniffi::Object)]
 pub struct StateCursor {
     /// The wrapped erased cursor.
-    cursor: CursorVariant,
+    pub(crate) cursor: CursorVariant,
     /// The propagator used to re-establish the event parent per pull.
-    propagator: Arc<TextMapCompositePropagator>,
+    pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]

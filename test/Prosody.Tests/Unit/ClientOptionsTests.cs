@@ -1,4 +1,5 @@
 using Prosody.Configuration;
+using Prosody.State;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -290,5 +291,19 @@ public sealed class ClientOptionsTests
         var native = options.ToNative();
 
         Assert.Multiple(() => Assert.Null(native.MessageSpans), () => Assert.Null(native.TimerSpans));
+    }
+
+    [Fact]
+    public void ToNativeConvertsPublishedReadCachePolicy()
+    {
+        var cached = new ClientOptions { StateReadCache = StateReadCache.For(TimeSpan.FromSeconds(2)) }.ToNative();
+        var uncached = new ClientOptions { StateReadCache = StateReadCache.Disabled }.ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal(TimeSpan.FromSeconds(2), cached.StateReadCacheTtl),
+            () => Assert.False(cached.StateReadCacheDisabled),
+            () => Assert.Null(uncached.StateReadCacheTtl),
+            () => Assert.True(uncached.StateReadCacheDisabled)
+        );
     }
 }

@@ -143,6 +143,18 @@ pub struct StateCollectionConfig {
     /// value or map collections.
     #[uniffi(default = None)]
     pub capacity: Option<u32>,
+
+    /// Whether owners advertise this collection for cross-group reads.
+    #[uniffi(default = false)]
+    pub published: bool,
+
+    /// Per-reader cache TTL override.
+    #[uniffi(default = None)]
+    pub read_cache_ttl: Option<Duration>,
+
+    /// Whether readers bypass their cache for this collection.
+    #[uniffi(default = false)]
+    pub read_cache_disabled: bool,
 }
 
 /// Configuration options for the Prosody client.
@@ -655,6 +667,22 @@ pub struct ClientOptions {
     /// Must be greater than zero when set.
     #[uniffi(default = None)]
     pub state_cache_size_bytes: Option<i64>,
+
+    /// Capacity of the published-state read cache, in bytes.
+    #[uniffi(default = None)]
+    pub state_read_cache_size_bytes: Option<i64>,
+
+    /// Default published-state read cache TTL.
+    #[uniffi(default = None)]
+    pub state_read_cache_ttl: Option<Duration>,
+
+    /// Bypasses the published-state read cache when true.
+    #[uniffi(default = None)]
+    pub state_read_cache_disabled: Option<bool>,
+
+    /// Subsystem under which this client publishes state.
+    #[uniffi(default = None)]
+    pub state_subsystem: Option<String>,
 
     /// Delay between staging a provisional cell and the keyed-state recovery
     /// sweep.

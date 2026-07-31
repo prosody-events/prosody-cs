@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use futures::executor::block_on;
@@ -42,6 +43,7 @@ use crate::error::{CsHandlerError, FfiError};
 use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
 use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
+use crate::published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
 use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::{BinaryPayload, JsonBinaryCodec};
@@ -49,7 +51,9 @@ use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
-use prosody::high_level::erased::{ErasedConsumerState, SharedHighLevelClient, new_erased};
+use prosody::high_level::erased::{
+    ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
+};
 use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
 
@@ -69,6 +73,20 @@ fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
         HandlerResultCode::Success => Ok(()),
         HandlerResultCode::TransientError => Err(CsHandlerError::Transient(error_msg)),
         HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent(error_msg)),
+    }
+}
+
+fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, FfiError> {
+    match (ttl, disabled) {
+        (Some(_), true) => Err(FfiError::PermanentState(
+            "read cache cannot set both a TTL and disabled".to_owned(),
+        )),
+        (None, true) => Ok(ErasedReadCache::Disabled),
+        (Some(ttl), false) if ttl.is_zero() => Err(FfiError::PermanentState(
+            "read cache TTL must be greater than 0".to_owned(),
+        )),
+        (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
+        (None, false) => Ok(ErasedReadCache::Inherit),
     }
 }
 
@@ -259,7 +277,7 @@ impl ProsodyClient {
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
         let consumer_builders = build_consumer_builders(&options)?;
-        let cassandra_config = build_cassandra_config(&options);
+        let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
         // HighLevelClient::new calls spawn_telemetry_emitter which calls
@@ -268,20 +286,83 @@ impl ProsodyClient {
         // Compat enters the same runtime that uniffi uses for async methods
         // (async_compat's global TOKIO1), so tokio::spawn succeeds without
         // creating a second runtime.
-        let mock = consumer_builders.consumer.clone().build()?.mock;
-        let cassandra = if mock {
-            None
-        } else {
-            Some(cassandra_config.build()?)
-        };
         let client = block_on(Compat::new(async {
-            new_erased(mode, &mut producer_config, &consumer_builders, cassandra)
+            new_erased(mode, &mut producer_config, &consumer_builders, &cassandra)
         }))?;
 
         Ok(Self {
             client,
             handler: ArcSwap::new(Arc::new(None)),
         })
+    }
+
+    /// Opens a read-only published value collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error when the descriptor cannot be resolved.
+    pub async fn published_value(
+        &self,
+        subsystem: String,
+        name: String,
+        cache_ttl: Option<Duration>,
+        cache_disabled: bool,
+    ) -> Result<Arc<PublishedValueHandle>, FfiError> {
+        let reader = self
+            .client
+            .value_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+            .await
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        Ok(Arc::new(PublishedValueHandle {
+            reader,
+            propagator: Arc::new(new_propagator()),
+        }))
+    }
+
+    /// Opens a read-only published map collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error when the descriptor cannot be resolved.
+    pub async fn published_map(
+        &self,
+        subsystem: String,
+        name: String,
+        cache_ttl: Option<Duration>,
+        cache_disabled: bool,
+    ) -> Result<Arc<PublishedMapHandle>, FfiError> {
+        let reader = self
+            .client
+            .map_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+            .await
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        Ok(Arc::new(PublishedMapHandle {
+            reader,
+            propagator: Arc::new(new_propagator()),
+        }))
+    }
+
+    /// Opens a read-only published deque collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error when the descriptor cannot be resolved.
+    pub async fn published_deque(
+        &self,
+        subsystem: String,
+        name: String,
+        cache_ttl: Option<Duration>,
+        cache_disabled: bool,
+    ) -> Result<Arc<PublishedDequeHandle>, FfiError> {
+        let reader = self
+            .client
+            .deque_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+            .await
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        Ok(Arc::new(PublishedDequeHandle {
+            reader,
+            propagator: Arc::new(new_propagator()),
+        }))
     }
 
     /// Subscribes to configured topics and begins consuming messages.

@@ -457,6 +457,15 @@ public sealed class ClientOptions
     /// </summary>
     public long? StateCacheSizeBytes { get; set; }
 
+    /// <summary>Capacity of the published-state read cache, in bytes.</summary>
+    public long? StateReadCacheSizeBytes { get; set; }
+
+    /// <summary>Default cache policy for published-state reads.</summary>
+    public StateReadCache? StateReadCache { get; set; }
+
+    /// <summary>Subsystem under which this client publishes state.</summary>
+    public string? StateSubsystem { get; set; }
+
     /// <summary>
     /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
     /// TTL must strictly exceed this. Falls back to <c>PROSODY_STATE_RECOVERY_DELAY</c>, then to
@@ -520,6 +529,21 @@ public sealed class ClientOptions
     /// Converts to the internal native options type.
     /// </summary>
     internal Native.ClientOptions ToNative() =>
+        ToNativeBase() with
+        {
+            StateCollections = StateCollections is null
+                ? null
+                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
+            StateCacheDir = StateCacheDir,
+            StateCacheSizeBytes = StateCacheSizeBytes,
+            StateReadCacheSizeBytes = StateReadCacheSizeBytes,
+            StateReadCacheTtl = StateReadCache?.Ttl,
+            StateReadCacheDisabled = StateReadCache?.IsDisabled,
+            StateSubsystem = StateSubsystem,
+            StateRecoveryDelay = StateRecoveryDelay,
+        };
+
+    private Native.ClientOptions ToNativeBase() =>
         new(
             BootstrapServers: BootstrapServers,
             GroupId: GroupId,
@@ -572,12 +596,6 @@ public sealed class ClientOptions
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
             MessageSpans: ToNativeSpanRelation(MessageSpans),
-            TimerSpans: ToNativeSpanRelation(TimerSpans),
-            StateCollections: StateCollections is null
-                ? null
-                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
-            StateCacheDir: StateCacheDir,
-            StateCacheSizeBytes: StateCacheSizeBytes,
-            StateRecoveryDelay: StateRecoveryDelay
+            TimerSpans: ToNativeSpanRelation(TimerSpans)
         );
 }

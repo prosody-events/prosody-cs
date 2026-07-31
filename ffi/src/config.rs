@@ -38,6 +38,7 @@ use prosody::state::descriptor::{
     DequeDescriptor, MapDescriptor, StateDescriptor, deque_state, map_state, value_state,
 };
 use prosody::state::order_codec::Utf8KeyCodec;
+use prosody::subsystem::SubsystemName;
 use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
 };
@@ -444,6 +445,7 @@ fn with_def<D: StateDescriptor>(
     descriptor: D,
     ttl_seconds: Option<u32>,
     read_uncommitted: Option<bool>,
+    published: bool,
 ) -> D {
     let mut descriptor = descriptor;
     if let Some(ttl) = ttl_seconds {
@@ -452,6 +454,7 @@ fn with_def<D: StateDescriptor>(
     if read_uncommitted == Some(true) {
         descriptor = descriptor.read_uncommitted();
     }
+    descriptor = descriptor.published(published);
     descriptor
 }
 
@@ -513,6 +516,78 @@ fn register_state_collection(
         None => None,
     };
 
+    let (keyset_limit, capacity) = collection_bounds(collection, index)?;
+
+    let read_uncommitted = collection.read_uncommitted;
+    let published = collection.published;
+    let name = collection.name.as_str();
+    match (collection.kind, collection.payload) {
+        (StateKind::Value, StatePayload::Json) => {
+            let _ = keyed.register(with_def(
+                value_state::<JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            ));
+        }
+        (StateKind::Map, StatePayload::Json) => {
+            let descriptor = with_def(
+                map_state::<Utf8KeyCodec, JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+        }
+        (StateKind::Deque, StatePayload::Json) => {
+            let descriptor = with_def(
+                deque_state::<JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
+        }
+        (StateKind::Value, StatePayload::Message) => {
+            let _ = keyed.register(with_def(
+                message_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            ));
+        }
+        (StateKind::Map, StatePayload::Message) => {
+            let descriptor = with_def(
+                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+        }
+        (StateKind::Deque, StatePayload::Message) => {
+            let descriptor = with_def(
+                message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
+        }
+    }
+
+    Ok(())
+}
+
+fn collection_bounds(
+    collection: &StateCollectionConfig,
+    index: usize,
+) -> Result<(Option<u32>, Option<NonZeroUsize>), FfiError> {
+    if collection.published && collection.payload == StatePayload::Message {
+        return Err(permanent_config(format!(
+            "stateCollections[{index}].published: message collections cannot be published"
+        )));
+    }
     let keyset_limit = match collection.keyset_limit {
         Some(limit) => {
             if collection.kind != StateKind::Map {
@@ -547,58 +622,7 @@ fn register_state_collection(
         None => None,
     };
 
-    let read_uncommitted = collection.read_uncommitted;
-    let name = collection.name.as_str();
-    match (collection.kind, collection.payload) {
-        (StateKind::Value, StatePayload::Json) => {
-            let _ = keyed.register(with_def(
-                value_state::<JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            ));
-        }
-        (StateKind::Map, StatePayload::Json) => {
-            let descriptor = with_def(
-                map_state::<Utf8KeyCodec, JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
-        }
-        (StateKind::Deque, StatePayload::Json) => {
-            let descriptor = with_def(
-                deque_state::<JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_capacity(descriptor, capacity));
-        }
-        (StateKind::Value, StatePayload::Message) => {
-            let _ = keyed.register(with_def(
-                message_state::<KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            ));
-        }
-        (StateKind::Map, StatePayload::Message) => {
-            let descriptor = with_def(
-                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
-        }
-        (StateKind::Deque, StatePayload::Message) => {
-            let descriptor = with_def(
-                message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_capacity(descriptor, capacity));
-        }
-    }
-
-    Ok(())
+    Ok((keyset_limit, capacity))
 }
 
 /// Builds the keyed-state configuration from client options.
@@ -634,6 +658,46 @@ pub fn build_keyed_state_config(
             permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
         })?;
         builder.cache_size_bytes(Some(bytes));
+    }
+
+    if let Some(bytes) = options.state_read_cache_size_bytes {
+        let bytes = u64::try_from(bytes).map_err(|_| {
+            permanent_config("stateReadCacheSizeBytes must be greater than 0".to_owned())
+        })?;
+        let bytes = NonZeroU64::new(bytes).ok_or_else(|| {
+            permanent_config("stateReadCacheSizeBytes must be greater than 0".to_owned())
+        })?;
+        builder.read_cache_size_bytes(Some(bytes));
+    }
+
+    match (
+        options.state_read_cache_ttl,
+        options.state_read_cache_disabled == Some(true),
+    ) {
+        (Some(_), true) => {
+            return Err(permanent_config(
+                "stateReadCacheTtl and stateReadCacheDisabled cannot both be set".to_owned(),
+            ));
+        }
+        (Some(ttl), false) if ttl.is_zero() => {
+            return Err(permanent_config(
+                "stateReadCacheTtl must be greater than 0".to_owned(),
+            ));
+        }
+        (Some(ttl), false) => {
+            builder.read_cache_ttl(Some(ttl));
+        }
+        (None, true) => {
+            builder.read_cache_ttl(None);
+        }
+        (None, false) => {}
+    }
+
+    if let Some(subsystem) = &options.state_subsystem {
+        builder.subsystem(Some(
+            SubsystemName::try_new(subsystem.clone())
+                .map_err(|error| permanent_config(error.to_string()))?,
+        ));
     }
 
     let mut keyed = builder

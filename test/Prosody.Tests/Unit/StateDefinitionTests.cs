@@ -139,6 +139,26 @@ public sealed class StateDefinitionTests
     }
 
     [Fact]
+    public void ToNative_Value_MapsPublicationAndReadCache()
+    {
+        var native = StateDefinition
+            .Value<int>("v", published: true, readCache: StateReadCache.For(TimeSpan.FromSeconds(2)))
+            .ToNative();
+
+        Assert.Multiple(
+            () => Assert.True(native.Published),
+            () => Assert.Equal(TimeSpan.FromSeconds(2), native.ReadCacheTtl),
+            () => Assert.False(native.ReadCacheDisabled)
+        );
+    }
+
+    [Fact]
+    public void ReadCache_NonPositiveTtl_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => StateReadCache.For(TimeSpan.Zero));
+    }
+
+    [Fact]
     public void ToNative_MessageDeque_MapsKindAndPayload()
     {
         var native = StateDefinition.MessageDeque<int>("d").ToNative();
