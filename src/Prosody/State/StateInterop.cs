@@ -144,10 +144,8 @@ internal static class StateInterop
             : throw new TransientStateException("State scan item shape mismatch: expected a map key.");
 
     /// <summary>Projects a native JSON map entry into a typed key-value pair.</summary>
-    internal static KeyValuePair<string, T> JsonMapEntry<T>(
-        Native.StateScanItem item,
-        JsonTypeInfo<T> typeInfo
-    ) where T : notnull =>
+    internal static KeyValuePair<string, T> JsonMapEntry<T>(Native.StateScanItem item, JsonTypeInfo<T> typeInfo)
+        where T : notnull =>
         item is Native.StateScanItem.MapJson entry
             ? KeyValuePair.Create(entry.Key, DeserializeJson(entry.Bytes, typeInfo))
             : throw new TransientStateException("State scan item shape mismatch: expected a JSON map entry.");
