@@ -209,7 +209,8 @@ public sealed class ClientOptions
     // ========================================================================
 
     /// <summary>
-    /// Maximum retry attempts. Set to 0 for unlimited retries.
+    /// Low-latency retries before routing to the failure topic. Set to 0 to route the initial
+    /// failure without retrying. Pipeline mode uses deferral and does not use this limit.
     /// Default: 3.
     /// </summary>
     public uint? MaxRetries { get; set; }
@@ -267,29 +268,36 @@ public sealed class ClientOptions
     public TimeSpan? DeferFailureWindow { get; set; }
 
     /// <summary>
-    /// Track this many deferred keys in memory.
-    /// Default: 1024.
-    /// </summary>
-    public uint? DeferCacheSize { get; set; }
-
-    /// <summary>
     /// Maximum deferred store cache entries per Cassandra defer store.
     /// Default: 8192.
     /// </summary>
     /// <remarks>Environment variable: <c>PROSODY_DEFER_STORE_CACHE_SIZE</c></remarks>
     public uint? DeferStoreCacheSize { get; set; }
 
-    /// <summary>
-    /// Timeout when loading deferred messages from Kafka.
-    /// Default: 30 seconds.
-    /// </summary>
-    public TimeSpan? DeferSeekTimeout { get; set; }
+    // ========================================================================
+    // Kafka message loader options (all modes)
+    // ========================================================================
 
     /// <summary>
-    /// Read optimization threshold. Rarely needs changing.
+    /// Maximum messages retained by the shared Kafka loader.
+    /// Default: 1024.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_CACHE_SIZE</c></remarks>
+    public uint? LoaderCacheSize { get; set; }
+
+    /// <summary>
+    /// Timeout for Kafka loader seek operations.
+    /// Default: 30 seconds.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_SEEK_TIMEOUT</c></remarks>
+    public TimeSpan? LoaderSeekTimeout { get; set; }
+
+    /// <summary>
+    /// Sequential-read distance before the loader seeks. Rarely needs changing.
     /// Default: 100.
     /// </summary>
-    public uint? DeferDiscardThreshold { get; set; }
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_DISCARD_THRESHOLD</c></remarks>
+    public uint? LoaderDiscardThreshold { get; set; }
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)
@@ -348,7 +356,7 @@ public sealed class ClientOptions
     public uint? SchedulerCacheSize { get; set; }
 
     // ========================================================================
-    // Cassandra options (required for timers in non-mock mode)
+    // Cassandra options for persistent features in non-mock mode
     // ========================================================================
 
     /// <summary>
@@ -384,7 +392,7 @@ public sealed class ClientOptions
     public string? CassandraPassword { get; set; }
 
     /// <summary>
-    /// Delete timer data older than this.
+    /// Retention period for persistent timer and deferral data.
     /// Default: 1 year.
     /// </summary>
     public TimeSpan? CassandraRetention { get; set; }
@@ -437,8 +445,8 @@ public sealed class ClientOptions
     /// <remarks>
     /// Set programmatically only — not bindable from
     /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Prefer
-    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Names must be non-empty and unique
-    /// within the set; each definition is validated at construction and again when the options are validated.
+    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Prosody validates collection names,
+    /// identities, and semantic limits when the client is built.
     /// </remarks>
     public StateDefinition[]? StateCollections { get; set; }
 
@@ -450,12 +458,30 @@ public sealed class ClientOptions
     public string? StateCacheDir { get; set; }
 
     /// <summary>
-    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
-    /// <c>PROSODY_STATE_CACHE_SIZE_BYTES</c>,
-    /// then to the storage-engine default.
-    /// Must be greater than zero when set.
+    /// Capacity of the owning keyed-state cache, such as <c>64 MiB</c>.
+    /// Uses <c>PROSODY_STATE_OWNED_CACHE_SIZE</c> when omitted.
+    /// Otherwise, the storage engine selects its default.
     /// </summary>
-    public long? StateCacheSizeBytes { get; set; }
+    public string? StateOwnedCacheSize { get; set; }
+
+    /// <summary>
+    /// Capacity of the published-state read cache, such as <c>1 MiB</c>.
+    /// Uses <c>PROSODY_STATE_READ_CACHE_SIZE</c> when omitted.
+    /// It then uses the owned cache size when set, or 1 MiB when both sizes are unset.
+    /// </summary>
+    public string? StateReadCacheSize { get; set; }
+
+    /// <summary>
+    /// Default cache policy for published-state reads.
+    /// Uses <c>PROSODY_STATE_READ_CACHE_TTL</c> when omitted, then 5 seconds.
+    /// </summary>
+    public StateReadCache? StateReadCache { get; set; }
+
+    /// <summary>
+    /// Subsystem under which published JSON collections are advertised.
+    /// Uses <c>PROSODY_SUBSYSTEM</c> when omitted. Published collections require it.
+    /// </summary>
+    public string? Subsystem { get; set; }
 
     /// <summary>
     /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
@@ -520,6 +546,21 @@ public sealed class ClientOptions
     /// Converts to the internal native options type.
     /// </summary>
     internal Native.ClientOptions ToNative() =>
+        ToNativeBase() with
+        {
+            StateCollections = StateCollections is null
+                ? null
+                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
+            StateCacheDir = StateCacheDir,
+            StateOwnedCacheSize = StateOwnedCacheSize,
+            StateReadCacheSize = StateReadCacheSize,
+            StateReadCacheTtl = StateReadCache?.Ttl,
+            StateReadCacheDisabled = StateReadCache?.IsDisabled,
+            Subsystem = Subsystem,
+            StateRecoveryDelay = StateRecoveryDelay,
+        };
+
+    private Native.ClientOptions ToNativeBase() =>
         new(
             BootstrapServers: BootstrapServers,
             GroupId: GroupId,
@@ -550,10 +591,10 @@ public sealed class ClientOptions
             DeferMaxDelay: DeferMaxDelay,
             DeferFailureThreshold: DeferFailureThreshold,
             DeferFailureWindow: DeferFailureWindow,
-            DeferCacheSize: DeferCacheSize,
             DeferStoreCacheSize: DeferStoreCacheSize,
-            DeferSeekTimeout: DeferSeekTimeout,
-            DeferDiscardThreshold: DeferDiscardThreshold,
+            LoaderCacheSize: LoaderCacheSize,
+            LoaderSeekTimeout: LoaderSeekTimeout,
+            LoaderDiscardThreshold: LoaderDiscardThreshold,
             MonopolizationEnabled: MonopolizationEnabled,
             MonopolizationThreshold: MonopolizationThreshold,
             MonopolizationWindow: MonopolizationWindow,
@@ -572,12 +613,6 @@ public sealed class ClientOptions
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
             MessageSpans: ToNativeSpanRelation(MessageSpans),
-            TimerSpans: ToNativeSpanRelation(TimerSpans),
-            StateCollections: StateCollections is null
-                ? null
-                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
-            StateCacheDir: StateCacheDir,
-            StateCacheSizeBytes: StateCacheSizeBytes,
-            StateRecoveryDelay: StateRecoveryDelay
+            TimerSpans: ToNativeSpanRelation(TimerSpans)
         );
 }

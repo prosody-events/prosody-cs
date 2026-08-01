@@ -13,12 +13,16 @@
 use std::ffi::NulError;
 
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
+use prosody::cassandra::config::CassandraConfigurationBuilderError;
 use prosody::codec::{BinaryCodecError, JsonExtractError};
+use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
+use prosody::high_level::erased::ErasedClientBuildError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
+use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
@@ -82,11 +86,20 @@ pub enum FfiError {
 
     /// A Kafka message loader configuration could not be finalized.
     ///
-    /// Occurs when the deferred-retry loader tuning derived from
-    /// `defer_cache_size`, `defer_seek_timeout`, or `defer_discard_threshold`
-    /// fails validation (e.g. a zero cache size).
+    /// Occurs when the Kafka loader tuning derived from
+    /// `loader_cache_size`, `loader_seek_timeout`, or
+    /// `loader_discard_threshold` fails validation (e.g. a zero cache
+    /// size).
     #[error("loader configuration build failed: {0:#}")]
     LoaderConfig(#[from] KafkaLoaderConfigError),
+
+    /// Kafka consumer configuration is invalid or incomplete.
+    #[error("consumer configuration failed: {0:#}")]
+    ConsumerConfiguration(#[from] ConsumerConfigurationBuilderError),
+
+    /// Cassandra configuration is invalid or incomplete.
+    #[error("Cassandra configuration failed: {0:#}")]
+    CassandraConfiguration(#[from] CassandraConfigurationBuilderError),
 
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
@@ -97,6 +110,10 @@ pub enum FfiError {
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
     Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+
+    /// Construction of the backend-erased FFI client failed.
+    #[error("client construction failed: {0:#}")]
+    ClientBuild(#[from] ErasedClientBuildError<BinaryCodecError<JsonExtractError>>),
 
     /// A producer operation failed.
     ///
@@ -166,6 +183,17 @@ impl From<ErasedStateError> for FfiError {
     }
 }
 
+impl From<StateReaderError> for FfiError {
+    fn from(error: StateReaderError) -> Self {
+        match error.classify_error() {
+            ErrorCategory::Permanent => Self::PermanentState(error.to_string()),
+            ErrorCategory::Transient | ErrorCategory::Terminal => {
+                Self::TransientState(error.to_string())
+            }
+        }
+    }
+}
+
 /// Represents errors from C# event handler callbacks.
 ///
 /// This type wraps errors that originate in C# code and cross back into Rust.
@@ -205,7 +233,13 @@ pub enum CsHandlerError {
     /// it classifies as permanent so the offset is committed rather than
     /// retried forever.
     #[error(transparent)]
-    Ffi(#[from] FfiError),
+    Ffi(Box<FfiError>),
+}
+
+impl From<FfiError> for CsHandlerError {
+    fn from(error: FfiError) -> Self {
+        Self::Ffi(Box::new(error))
+    }
 }
 
 /// Classifies errors for retry decisions.
@@ -216,7 +250,10 @@ pub enum CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
-            Self::Ffi(FfiError::PermanentState(_)) | Self::Permanent(_) => ErrorCategory::Permanent,
+            Self::Ffi(error) if matches!(error.as_ref(), FfiError::PermanentState(_)) => {
+                ErrorCategory::Permanent
+            }
+            Self::Permanent(_) => ErrorCategory::Permanent,
             Self::Transient(_) | Self::Ffi(_) => ErrorCategory::Transient,
         }
     }

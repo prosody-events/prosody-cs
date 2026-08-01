@@ -1,7 +1,7 @@
 namespace Prosody.State;
 
 /// <summary>
-/// An immutable, validated declaration of a keyed-state collection.
+/// An immutable declaration of a keyed-state collection.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,20 +13,12 @@ namespace Prosody.State;
 /// <see cref="MessageDeque{TPayload}"/>).
 /// </para>
 /// <para>
-/// Per-definition rules (name non-empty; TTL whole seconds in <c>1..=630_720_000</c>; keyset limit
-/// in <c>0..=4096</c>; deque capacity positive) are enforced here at construction; set-level rules
-/// (name uniqueness, TTL exceeding the recovery delay) are enforced when the client options are
-/// validated. Capacity is runtime-only — enforced lazily on push and changeable on a later deploy.
+/// Prosody validates collection semantics when the client is built. Capacity is runtime-only. It is
+/// enforced lazily on push and may change on a later deploy.
 /// </para>
 /// </remarks>
 public abstract record StateDefinition
 {
-    /// <summary>The maximum TTL in seconds accepted by the Cassandra backing store.</summary>
-    private const long _maxTtlSeconds = 630_720_000;
-
-    /// <summary>The inclusive upper bound for a map keyset limit.</summary>
-    private const int _maxKeysetLimit = 4096;
-
     private protected StateDefinition(
         string name,
         Native.StateKind kind,
@@ -34,33 +26,29 @@ public abstract record StateDefinition
         TimeSpan? ttl,
         bool? readUncommitted,
         int? keysetLimit,
-        int? capacity
+        int? capacity,
+        bool published = false,
+        StateReadCache? readCache = null
     )
     {
-        if (string.IsNullOrWhiteSpace(name))
+        ArgumentNullException.ThrowIfNull(name);
+        if (ttl is { Ticks: < 0 })
         {
-            throw new ArgumentException("State collection name must be non-empty.", nameof(name));
+            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "TTL must not be negative.");
         }
 
-        name = name.Trim();
-
-        if (ttl is { } t)
-        {
-            ValidateTtl(t);
-        }
-
-        if (keysetLimit is { } k && k is < 0 or > _maxKeysetLimit)
+        if (keysetLimit is < 0)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(keysetLimit),
-                k,
-                $"Keyset limit must be between 0 and {_maxKeysetLimit}."
+                keysetLimit,
+                "Keyset limit must not be negative."
             );
         }
 
-        if (capacity is { } cap && cap < 1)
+        if (capacity is < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(capacity), cap, "Capacity must be a positive integer.");
+            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must not be negative.");
         }
 
         Name = name;
@@ -70,9 +58,11 @@ public abstract record StateDefinition
         ReadUncommitted = readUncommitted;
         KeysetLimit = keysetLimit;
         Capacity = capacity;
+        Published = published;
+        ReadCache = readCache;
     }
 
-    /// <summary>Gets the collection name. Non-empty and unique within the client's definition set.</summary>
+    /// <summary>Gets the collection name.</summary>
     public string Name { get; }
 
     internal Native.StateKind Kind { get; }
@@ -87,6 +77,14 @@ public abstract record StateDefinition
 
     internal int? Capacity { get; }
 
+    internal bool Published { get; }
+
+    internal StateReadCache? ReadCache { get; }
+
+    internal TimeSpan? ReadCacheTtl => ReadCache?.Ttl;
+
+    internal bool ReadCacheDisabled => ReadCache?.IsDisabled ?? false;
+
     /// <summary>
     /// Declares a single-value JSON collection.
     /// </summary>
@@ -94,9 +92,17 @@ public abstract record StateDefinition
     /// <param name="name">The collection name.</param>
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
+    /// <param name="published">Whether owners advertise the collection for cross-group reads.</param>
+    /// <param name="readCache">Optional cache policy used by read-only clients.</param>
     /// <returns>A validated definition.</returns>
-    public static ValueStateDefinition<T> Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)
-        where T : notnull => new(name, ttl, readUncommitted);
+    public static ValueStateDefinition<T> Value<T>(
+        string name,
+        TimeSpan? ttl = null,
+        bool? readUncommitted = null,
+        bool published = false,
+        StateReadCache? readCache = null
+    )
+        where T : notnull => new(name, ttl, readUncommitted, published, readCache);
 
     /// <summary>
     /// Declares a string-keyed ordered-map JSON collection.
@@ -106,14 +112,18 @@ public abstract record StateDefinition
     /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
     /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
     /// <param name="keysetLimit">Optional ordered-scan keyset bound (<c>0..=4096</c>).</param>
+    /// <param name="published">Whether owners advertise the collection for cross-group reads.</param>
+    /// <param name="readCache">Optional cache policy used by read-only clients.</param>
     /// <returns>A validated definition.</returns>
     public static MapStateDefinition<TValue> Map<TValue>(
         string name,
         TimeSpan? ttl = null,
         bool? readUncommitted = null,
-        int? keysetLimit = null
+        int? keysetLimit = null,
+        bool published = false,
+        StateReadCache? readCache = null
     )
-        where TValue : notnull => new(name, ttl, readUncommitted, keysetLimit);
+        where TValue : notnull => new(name, ttl, readUncommitted, keysetLimit, published, readCache);
 
     /// <summary>
     /// Declares a deque JSON collection.
@@ -127,14 +137,18 @@ public abstract record StateDefinition
     /// end toward the bound. Runtime-only — never persisted, not part of identity, and freely changed
     /// across redeploys, so a shrunk deque reports its old length until the next push trims it.
     /// </param>
+    /// <param name="published">Whether owners advertise the collection for cross-group reads.</param>
+    /// <param name="readCache">Optional cache policy used by read-only clients.</param>
     /// <returns>A validated definition.</returns>
     public static DequeStateDefinition<T> Deque<T>(
         string name,
         TimeSpan? ttl = null,
         bool? readUncommitted = null,
-        int? capacity = null
+        int? capacity = null,
+        bool published = false,
+        StateReadCache? readCache = null
     )
-        where T : notnull => new(name, ttl, readUncommitted, capacity);
+        where T : notnull => new(name, ttl, readUncommitted, capacity, published, readCache);
 
     /// <summary>
     /// Declares a single-value message collection storing the full Kafka message.
@@ -193,28 +207,9 @@ public abstract record StateDefinition
             Ttl,
             ReadUncommitted,
             KeysetLimit is { } k ? (uint)k : null,
-            Capacity is { } c ? (uint)c : null
+            Capacity is { } c ? (uint)c : null,
+            Published,
+            ReadCacheTtl,
+            ReadCacheDisabled
         );
-
-    private static void ValidateTtl(TimeSpan ttl)
-    {
-        if (ttl.Ticks % TimeSpan.TicksPerSecond != 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(ttl),
-                ttl,
-                "TTL must be a whole number of seconds (no fractional or sub-second values)."
-            );
-        }
-
-        var seconds = ttl.Ticks / TimeSpan.TicksPerSecond;
-        if (seconds is < 1 or > _maxTtlSeconds)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(ttl),
-                ttl,
-                $"TTL must be between 1 and {_maxTtlSeconds} seconds."
-            );
-        }
-    }
 }

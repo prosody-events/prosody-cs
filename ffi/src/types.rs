@@ -143,6 +143,18 @@ pub struct StateCollectionConfig {
     /// value or map collections.
     #[uniffi(default = None)]
     pub capacity: Option<u32>,
+
+    /// Whether owners advertise this collection for cross-group reads.
+    #[uniffi(default = false)]
+    pub published: bool,
+
+    /// Per-reader cache TTL override.
+    #[uniffi(default = None)]
+    pub read_cache_ttl: Option<Duration>,
+
+    /// Whether readers bypass their cache for this collection.
+    #[uniffi(default = false)]
+    pub read_cache_disabled: bool,
 }
 
 /// Configuration options for the Prosody client.
@@ -357,10 +369,10 @@ pub struct ClientOptions {
     // ========================================================================
     // Retry options
     // ========================================================================
-    /// Maximum retry attempts before giving up or deferring.
+    /// Low-latency retries before routing to the failure topic.
     ///
-    /// Set to `0` for unlimited retries (only effective in
-    /// [`Pipeline`][ClientMode::Pipeline] mode).
+    /// Set to `0` to route the initial low-latency failure without retrying.
+    /// Pipeline mode uses deferral and does not use this limit.
     ///
     /// **Default:** `3`
     #[uniffi(default = None)]
@@ -434,15 +446,6 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_failure_window: Option<Duration>,
 
-    /// Maximum deferred keys tracked in memory.
-    ///
-    /// Limits memory usage for deferral state. Excess keys are evicted using
-    /// LRU policy.
-    ///
-    /// **Default:** `1024`
-    #[uniffi(default = None)]
-    pub defer_cache_size: Option<u32>,
-
     /// Maximum deferred store cache entries per Cassandra defer store.
     ///
     /// Controls the size of the built-in write-through cache for deferred store
@@ -452,19 +455,30 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_store_cache_size: Option<u32>,
 
-    /// Timeout for loading deferred messages from Kafka.
+    // ========================================================================
+    // Kafka message loader options (all modes)
+    // ========================================================================
+    /// Maximum messages retained by the shared Kafka loader.
+    ///
+    /// The loader evicts messages when it reaches this bound.
+    ///
+    /// **Default:** `1024`
+    #[uniffi(default = None)]
+    pub loader_cache_size: Option<u32>,
+
+    /// Timeout for Kafka loader seek operations.
     ///
     /// **Default:** 30 seconds
     #[uniffi(default = None)]
-    pub defer_seek_timeout: Option<Duration>,
+    pub loader_seek_timeout: Option<Duration>,
 
-    /// Read optimization threshold for discarding old deferrals.
+    /// Sequential-read distance before the loader seeks.
     ///
     /// Advanced tuning parameter; rarely needs adjustment.
     ///
     /// **Default:** `100`
     #[uniffi(default = None)]
-    pub defer_discard_threshold: Option<u32>,
+    pub loader_discard_threshold: Option<u32>,
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)
@@ -649,12 +663,25 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
 
-    /// Capacity of the in-memory keyed-state cache, in bytes. Falls back to
-    /// `PROSODY_STATE_CACHE_SIZE_BYTES`,
-    /// then to the storage-engine default.
-    /// Must be greater than zero when set.
+    /// Capacity of the owning keyed-state cache, such as `64 MiB`.
     #[uniffi(default = None)]
-    pub state_cache_size_bytes: Option<i64>,
+    pub state_owned_cache_size: Option<String>,
+
+    /// Capacity of the published-state read cache, such as `1 MiB`.
+    #[uniffi(default = None)]
+    pub state_read_cache_size: Option<String>,
+
+    /// Default published-state read cache TTL.
+    #[uniffi(default = None)]
+    pub state_read_cache_ttl: Option<Duration>,
+
+    /// Bypasses the published-state read cache when true.
+    #[uniffi(default = None)]
+    pub state_read_cache_disabled: Option<bool>,
+
+    /// Subsystem under which published collections are advertised.
+    #[uniffi(default = None)]
+    pub subsystem: Option<String>,
 
     /// Delay between staging a provisional cell and the keyed-state recovery
     /// sweep.

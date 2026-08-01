@@ -106,7 +106,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            Transform,
+            item => StateInterop.JsonMapEntry(item, _typeInfo),
             cancellationToken
         );
     }
@@ -120,9 +120,4 @@ internal sealed class MapState<TValue> : IMapState<TValue>
 
     public Task RollbackAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
-
-    private KeyValuePair<string, TValue> Transform(Native.StateScanItem item) =>
-        item is Native.StateScanItem.MapJson entry
-            ? KeyValuePair.Create(entry.Key, StateInterop.DeserializeJson(entry.Bytes, _typeInfo))
-            : throw new TransientStateException("State scan item shape mismatch: expected a JSON map entry.");
 }

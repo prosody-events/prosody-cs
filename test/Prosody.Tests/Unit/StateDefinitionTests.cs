@@ -4,91 +4,15 @@ using Native = Prosody.Native;
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Unit tests for <see cref="StateDefinition"/> construction-time validation and native mapping.
+/// Unit tests for <see cref="StateDefinition"/> host-value validation and native mapping.
 /// </summary>
 public sealed class StateDefinitionTests
 {
-    private const long _cassandraCeilingSeconds = 630_720_000;
-
     [Fact]
     public void Value_ValidName_Constructs()
     {
         var definition = StateDefinition.Value<int>("counter");
         Assert.Equal("counter", definition.Name);
-    }
-
-    [Theory]
-    [InlineData("")]
-    public void Value_EmptyName_Throws(string name)
-    {
-        Assert.Throws<ArgumentException>(() => StateDefinition.Value<int>(name));
-    }
-
-    [Fact]
-    public void Value_WhitespaceName_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => StateDefinition.Value<int>("   "));
-    }
-
-    [Fact]
-    public void Value_PaddedName_IsTrimmed()
-    {
-        var definition = StateDefinition.Value<int>(" cart ");
-        Assert.Equal("cart", definition.Name);
-    }
-
-    [Fact]
-    public void Map_EmptyName_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => StateDefinition.Map<int>(string.Empty));
-    }
-
-    [Fact]
-    public void Deque_EmptyName_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => StateDefinition.Deque<int>(string.Empty));
-    }
-
-    [Fact]
-    public void MessageDeque_EmptyName_Throws()
-    {
-        Assert.Throws<ArgumentException>(() => StateDefinition.MessageDeque<int>(string.Empty));
-    }
-
-    [Fact]
-    public void Ttl_Zero_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Value<int>("v", ttl: TimeSpan.Zero));
-    }
-
-    [Fact]
-    public void Ttl_Ceiling_Ok()
-    {
-        var definition = StateDefinition.Value<int>("v", ttl: TimeSpan.FromSeconds(_cassandraCeilingSeconds));
-        Assert.Equal("v", definition.Name);
-    }
-
-    [Fact]
-    public void Ttl_AboveCeiling_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            StateDefinition.Value<int>("v", ttl: TimeSpan.FromSeconds(_cassandraCeilingSeconds + 1))
-        );
-    }
-
-    [Fact]
-    public void Ttl_Fractional_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            StateDefinition.Value<int>("v", ttl: TimeSpan.FromMilliseconds(1500))
-        );
-    }
-
-    [Fact]
-    public void Ttl_OneSecond_Ok()
-    {
-        var definition = StateDefinition.Value<int>("v", ttl: TimeSpan.FromSeconds(1));
-        Assert.Equal("v", definition.Name);
     }
 
     [Fact]
@@ -99,28 +23,9 @@ public sealed class StateDefinitionTests
     }
 
     [Fact]
-    public void Keyset_Max_Ok()
-    {
-        var definition = StateDefinition.Map<int>("m", keysetLimit: 4096);
-        Assert.Equal("m", definition.Name);
-    }
-
-    [Fact]
-    public void Keyset_AboveMax_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Map<int>("m", keysetLimit: 4097));
-    }
-
-    [Fact]
     public void Keyset_Negative_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Map<int>("m", keysetLimit: -1));
-    }
-
-    [Fact]
-    public void MessageMap_Keyset_AboveMax_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.MessageMap<int>("m", keysetLimit: 4097));
     }
 
     [Fact]
@@ -135,6 +40,29 @@ public sealed class StateDefinitionTests
             () => Assert.Equal(TimeSpan.FromSeconds(2), native.Ttl),
             () => Assert.Null(native.ReadUncommitted),
             () => Assert.Null(native.KeysetLimit)
+        );
+    }
+
+    [Fact]
+    public void ToNative_Value_MapsPublicationAndReadCache()
+    {
+        var native = StateDefinition
+            .Value<int>("v", published: true, readCache: StateReadCache.For(TimeSpan.FromSeconds(2)))
+            .ToNative();
+
+        Assert.Multiple(
+            () => Assert.True(native.Published),
+            () => Assert.Equal(TimeSpan.FromSeconds(2), native.ReadCacheTtl),
+            () => Assert.False(native.ReadCacheDisabled)
+        );
+    }
+
+    [Fact]
+    public void ReadCache_ZeroTtl_IsPassedToProsody()
+    {
+        Assert.Equal(
+            TimeSpan.Zero,
+            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ToNative().ReadCacheTtl
         );
     }
 
@@ -159,18 +87,6 @@ public sealed class StateDefinitionTests
             () => Assert.Equal(Native.StatePayload.Json, native.Payload),
             () => Assert.Equal(8u, native.KeysetLimit)
         );
-    }
-
-    [Fact]
-    public void Deque_Capacity_Zero_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Deque<int>("d", capacity: 0));
-    }
-
-    [Fact]
-    public void MessageDeque_Capacity_Zero_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.MessageDeque<int>("d", capacity: 0));
     }
 
     [Fact]

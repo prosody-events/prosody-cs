@@ -238,50 +238,6 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void BuildThrowsWhenLowLatencyWithoutFailureTopic()
-    {
-        var builder = ProsodyClientBuilder
-            .Create()
-            .WithMode(ClientMode.LowLatency)
-            .WithSourceSystem("test")
-            .WithMock(true);
-
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
-        Assert.Contains("FailureTopic", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildThrowsWhenBootstrapServersEmpty()
-    {
-        var builder = ProsodyClientBuilder.Create().WithBootstrapServers().WithSourceSystem("test").WithMock(true);
-
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
-        Assert.Contains("BootstrapServers", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildThrowsWhenSubscribedTopicsEmpty()
-    {
-        var builder = ProsodyClientBuilder.Create().WithSubscribedTopics().WithSourceSystem("test").WithMock(true);
-
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
-        Assert.Contains("SubscribedTopics", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void BuildThrowsWhenThresholdOutOfRange()
-    {
-        var builder = ProsodyClientBuilder
-            .Create()
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .Configure(options => options.DeferFailureThreshold = 1.5);
-
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.Build());
-        Assert.Contains("DeferFailureThreshold", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void BuildSucceedsWithNullOptionalFields()
     {
         var builder = ProsodyClientBuilder
@@ -329,7 +285,7 @@ public sealed class ProsodyClientBuilderTests
                 options.DeferMaxDelay = TimeSpan.FromHours(12);
                 options.DeferFailureThreshold = 0.8;
                 options.DeferFailureWindow = TimeSpan.FromMinutes(10);
-                options.DeferCacheSize = 2048;
+                options.LoaderCacheSize = 2048;
             });
 
         using var client = builder.Build();

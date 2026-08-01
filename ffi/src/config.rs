@@ -16,6 +16,7 @@
 //!   [`build_dedup_config`] converts the deduplication cache capacity, both of
 //!   which can reject invalid caller input.
 
+use prosody::ByteSize;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::codec::{JsonBinaryCodec, JsonPassthroughStateCodec};
 use prosody::consumer::ConsumerConfigurationBuilder;
@@ -38,12 +39,12 @@ use prosody::state::descriptor::{
     DequeDescriptor, MapDescriptor, StateDescriptor, deque_state, map_state, value_state,
 };
 use prosody::state::order_codec::Utf8KeyCodec;
+use prosody::subsystem::SubsystemName;
 use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
 };
 use prosody::timers::duration::CompactDuration;
-use std::collections::HashSet;
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
 use validator::{ValidationError, ValidationErrors};
@@ -94,9 +95,9 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::LoaderConfig`] if the deferred-retry loader tuning
-/// derived from `defer_cache_size`, `defer_seek_timeout`, or
-/// `defer_discard_threshold` fails validation.
+/// Returns [`FfiError::LoaderConfig`] if the Kafka loader tuning
+/// derived from `loader_cache_size`, `loader_seek_timeout`, or
+/// `loader_discard_threshold` fails validation.
 pub fn build_consumer_config(
     options: &ClientOptions,
 ) -> Result<ConsumerConfigurationBuilder, FfiError> {
@@ -168,24 +169,24 @@ pub fn build_consumer_config(
         });
     }
 
-    // The deferred-retry message loader tuning is consumer-wide in the current
-    // core API. Only build and attach it when the caller supplied at least one
+    // The message loader tuning is consumer-wide. Only build and attach it
+    // when the caller supplied at least one
     // loader knob, so the default configuration keeps environment fallbacks.
-    if options.defer_cache_size.is_some()
-        || options.defer_seek_timeout.is_some()
-        || options.defer_discard_threshold.is_some()
+    if options.loader_cache_size.is_some()
+        || options.loader_seek_timeout.is_some()
+        || options.loader_discard_threshold.is_some()
     {
         let mut loader = KafkaLoaderConfiguration::builder();
 
-        if let Some(cache_size) = options.defer_cache_size {
+        if let Some(cache_size) = options.loader_cache_size {
             loader.cache_size(cache_size as usize);
         }
 
-        if let Some(seek_timeout) = options.defer_seek_timeout {
+        if let Some(seek_timeout) = options.loader_seek_timeout {
             loader.seek_timeout(seek_timeout);
         }
 
-        if let Some(discard_threshold) = options.defer_discard_threshold {
+        if let Some(discard_threshold) = options.loader_discard_threshold {
             loader.discard_threshold(i64::from(discard_threshold));
         }
 
@@ -400,9 +401,6 @@ pub fn build_telemetry_emitter_config(
     builder
 }
 
-/// The inclusive upper bound core accepts for a map's keyset limit.
-const MAX_KEYSET_LIMIT: u32 = 4096;
-
 /// Builds a permanent state error for an invalid keyed-state configuration.
 ///
 /// Configuration and deployment mistakes are permanent: retrying an
@@ -411,29 +409,29 @@ fn permanent_config(message: String) -> FfiError {
     FfiError::PermanentState(message)
 }
 
-/// Validates a duration as a whole number of seconds of at least `min`.
+/// Maps a duration into the whole-second representation Prosody descriptors
+/// use.
 ///
 /// The field arrives as a [`Duration`] (a C# `TimeSpan`) so that fractional
 /// (sub-second) and out-of-range values reach this guard rather than being
 /// silently truncated by a `u32` conversion. A sub-second component or a value
-/// outside `min..=u32::MAX` seconds is rejected with a permanent error naming
-/// the field.
+/// outside the `u32` seconds range is rejected with a permanent error naming
+/// the field. Semantic duration limits remain in Prosody.
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if the duration is not a whole number
-/// of seconds in `min..=u32::MAX`.
-fn whole_seconds(duration: Duration, field: &str, min: u32) -> Result<u32, FfiError> {
+/// Returns [`FfiError::PermanentState`] if the duration cannot be represented
+/// as whole `u32` seconds.
+fn whole_seconds(duration: Duration, field: &str) -> Result<u32, FfiError> {
     if duration.subsec_nanos() != 0 {
         return Err(permanent_config(format!(
             "{field}: must be a whole number of seconds"
         )));
     }
     let seconds = duration.as_secs();
-    if seconds < u64::from(min) || seconds > u64::from(u32::MAX) {
+    if seconds > u64::from(u32::MAX) {
         return Err(permanent_config(format!(
-            "{field}: must be between {min} and {} seconds",
-            u32::MAX
+            "{field}: exceeds the u32 seconds range"
         )));
     }
     Ok(seconds as u32)
@@ -444,6 +442,7 @@ fn with_def<D: StateDescriptor>(
     descriptor: D,
     ttl_seconds: Option<u32>,
     read_uncommitted: Option<bool>,
+    published: bool,
 ) -> D {
     let mut descriptor = descriptor;
     if let Some(ttl) = ttl_seconds {
@@ -452,6 +451,7 @@ fn with_def<D: StateDescriptor>(
     if read_uncommitted == Some(true) {
         descriptor = descriptor.read_uncommitted();
     }
+    descriptor = descriptor.published(published);
     descriptor
 }
 
@@ -490,40 +490,93 @@ fn with_capacity<T>(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a field is invalid (empty name, TTL
-/// not a whole number of seconds, keyset limit out of range or set on a
-/// non-map collection, capacity zero or set on a non-deque collection).
+/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped into
+/// its Prosody type.
 fn register_state_collection(
     keyed: &mut KeyedStateConfiguration,
     index: usize,
     collection: &StateCollectionConfig,
 ) -> Result<(), FfiError> {
-    if collection.name.is_empty() {
-        return Err(permanent_config(format!(
-            "stateCollections[{index}].name: must not be empty"
-        )));
-    }
-
     let ttl_seconds = match collection.ttl {
         Some(ttl) => Some(whole_seconds(
             ttl,
             &format!("stateCollections[{index}].ttl"),
-            1,
         )?),
         None => None,
     };
 
+    let (keyset_limit, capacity) = collection_bounds(collection, index)?;
+
+    let read_uncommitted = collection.read_uncommitted;
+    let published = collection.published;
+    let name = collection.name.as_str();
+    match (collection.kind, collection.payload) {
+        (StateKind::Value, StatePayload::Json) => {
+            let _ = keyed.register(with_def(
+                value_state::<JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            ));
+        }
+        (StateKind::Map, StatePayload::Json) => {
+            let descriptor = with_def(
+                map_state::<Utf8KeyCodec, JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+        }
+        (StateKind::Deque, StatePayload::Json) => {
+            let descriptor = with_def(
+                deque_state::<JsonPassthroughStateCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
+        }
+        (StateKind::Value, StatePayload::Message) => {
+            let _ = keyed.register(with_def(
+                message_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            ));
+        }
+        (StateKind::Map, StatePayload::Message) => {
+            let descriptor = with_def(
+                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+        }
+        (StateKind::Deque, StatePayload::Message) => {
+            let descriptor = with_def(
+                message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_capacity(descriptor, capacity));
+        }
+    }
+
+    Ok(())
+}
+
+fn collection_bounds(
+    collection: &StateCollectionConfig,
+    index: usize,
+) -> Result<(Option<u32>, Option<NonZeroUsize>), FfiError> {
     let keyset_limit = match collection.keyset_limit {
         Some(limit) => {
             if collection.kind != StateKind::Map {
                 return Err(permanent_config(format!(
                     "stateCollections[{index}].keysetLimit: only valid for map collections"
-                )));
-            }
-            if limit > MAX_KEYSET_LIMIT {
-                return Err(permanent_config(format!(
-                    "stateCollections[{index}].keysetLimit: must be between 0 and \
-                     {MAX_KEYSET_LIMIT}"
                 )));
             }
             Some(limit)
@@ -547,71 +600,17 @@ fn register_state_collection(
         None => None,
     };
 
-    let read_uncommitted = collection.read_uncommitted;
-    let name = collection.name.as_str();
-    match (collection.kind, collection.payload) {
-        (StateKind::Value, StatePayload::Json) => {
-            let _ = keyed.register(with_def(
-                value_state::<JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            ));
-        }
-        (StateKind::Map, StatePayload::Json) => {
-            let descriptor = with_def(
-                map_state::<Utf8KeyCodec, JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
-        }
-        (StateKind::Deque, StatePayload::Json) => {
-            let descriptor = with_def(
-                deque_state::<JsonPassthroughStateCodec>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_capacity(descriptor, capacity));
-        }
-        (StateKind::Value, StatePayload::Message) => {
-            let _ = keyed.register(with_def(
-                message_state::<KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            ));
-        }
-        (StateKind::Map, StatePayload::Message) => {
-            let descriptor = with_def(
-                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
-        }
-        (StateKind::Deque, StatePayload::Message) => {
-            let descriptor = with_def(
-                message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
-                ttl_seconds,
-                read_uncommitted,
-            );
-            let _ = keyed.register(with_capacity(descriptor, capacity));
-        }
-    }
-
-    Ok(())
+    Ok((keyset_limit, capacity))
 }
 
 /// Builds the keyed-state configuration from client options.
 ///
-/// Registers each declared collection synchronously (before subscribe, hence
-/// resubscribe-safe), rejecting duplicate names. Field-level validation names
-/// the offending field; core validates the remaining rules (TTL ceiling, TTL
-/// exceeding the recovery delay, identity conflicts) at consumer build.
+/// Maps each declared collection into a typed descriptor. The normal Prosody
+/// construction path validates the result.
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a keyed-state field is invalid, a
-/// collection name is duplicated, or the cache directory is an empty string.
+/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped.
 pub fn build_keyed_state_config(
     options: &ClientOptions,
 ) -> Result<KeyedStateConfiguration, FfiError> {
@@ -622,18 +621,47 @@ pub fn build_keyed_state_config(
     }
 
     if let Some(delay) = options.state_recovery_delay {
-        let seconds = whole_seconds(delay, "stateRecoveryDelay", 1)?;
+        let seconds = whole_seconds(delay, "stateRecoveryDelay")?;
         builder.recovery_delay(CompactDuration::new(seconds));
     }
 
-    if let Some(bytes) = options.state_cache_size_bytes {
-        let bytes = u64::try_from(bytes).map_err(|_| {
-            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        let bytes = NonZeroU64::new(bytes).ok_or_else(|| {
-            permanent_config("stateCacheSizeBytes must be greater than 0".to_owned())
-        })?;
-        builder.cache_size_bytes(Some(bytes));
+    if let Some(size) = &options.state_owned_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| permanent_config(format!("stateOwnedCacheSize: {error}")))?;
+        builder.owned_cache_size(Some(size));
+    }
+
+    if let Some(size) = &options.state_read_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| permanent_config(format!("stateReadCacheSize: {error}")))?;
+        builder.read_cache_size(Some(size));
+    }
+
+    match (
+        options.state_read_cache_ttl,
+        options.state_read_cache_disabled == Some(true),
+    ) {
+        (Some(_), true) => {
+            return Err(permanent_config(
+                "stateReadCacheTtl and stateReadCacheDisabled cannot both be set".to_owned(),
+            ));
+        }
+        (Some(ttl), false) => {
+            builder.read_cache_ttl(Some(ttl));
+        }
+        (None, true) => {
+            builder.read_cache_ttl(None);
+        }
+        (None, false) => {}
+    }
+
+    if let Some(subsystem) = &options.subsystem {
+        builder.subsystem(Some(
+            SubsystemName::try_new(subsystem.clone())
+                .map_err(|error| permanent_config(error.to_string()))?,
+        ));
     }
 
     let mut keyed = builder
@@ -641,14 +669,7 @@ pub fn build_keyed_state_config(
         .map_err(|error| permanent_config(error.to_string()))?;
 
     if let Some(collections) = &options.state_collections {
-        let mut seen = HashSet::with_capacity(collections.len());
         for (index, collection) in collections.iter().enumerate() {
-            if !seen.insert(collection.name.as_str()) {
-                return Err(permanent_config(format!(
-                    "stateCollections[{index}].name: duplicate collection name {:?}",
-                    collection.name
-                )));
-            }
             register_state_collection(&mut keyed, index, collection)?;
         }
     }

@@ -5,7 +5,13 @@ namespace Prosody.State;
 public sealed record ValueStateDefinition<T> : StateDefinition
     where T : notnull
 {
-    internal ValueStateDefinition(string name, TimeSpan? ttl, bool? readUncommitted)
+    internal ValueStateDefinition(
+        string name,
+        TimeSpan? ttl,
+        bool? readUncommitted,
+        bool published,
+        StateReadCache? readCache
+    )
         : base(
             name,
             Native.StateKind.Value,
@@ -13,6 +19,8 @@ public sealed record ValueStateDefinition<T> : StateDefinition
             ttl,
             readUncommitted,
             keysetLimit: null,
-            capacity: null
+            capacity: null,
+            published,
+            readCache
         ) { }
 }
