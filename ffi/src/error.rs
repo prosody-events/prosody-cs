@@ -86,9 +86,10 @@ pub enum FfiError {
 
     /// A Kafka message loader configuration could not be finalized.
     ///
-    /// Occurs when the deferred-retry loader tuning derived from
-    /// `defer_cache_size`, `defer_seek_timeout`, or `defer_discard_threshold`
-    /// fails validation (e.g. a zero cache size).
+    /// Occurs when the Kafka loader tuning derived from
+    /// `loader_cache_size`, `loader_seek_timeout`, or
+    /// `loader_discard_threshold` fails validation (e.g. a zero cache
+    /// size).
     #[error("loader configuration build failed: {0:#}")]
     LoaderConfig(#[from] KafkaLoaderConfigError),
 

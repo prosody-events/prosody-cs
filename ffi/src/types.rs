@@ -446,15 +446,6 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_failure_window: Option<Duration>,
 
-    /// Maximum deferred keys tracked in memory.
-    ///
-    /// Limits memory usage for deferral state. Excess keys are evicted using
-    /// LRU policy.
-    ///
-    /// **Default:** `1024`
-    #[uniffi(default = None)]
-    pub defer_cache_size: Option<u32>,
-
     /// Maximum deferred store cache entries per Cassandra defer store.
     ///
     /// Controls the size of the built-in write-through cache for deferred store
@@ -464,19 +455,30 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_store_cache_size: Option<u32>,
 
-    /// Timeout for loading deferred messages from Kafka.
+    // ========================================================================
+    // Kafka message loader options (all modes)
+    // ========================================================================
+    /// Maximum messages retained by the shared Kafka loader.
+    ///
+    /// The loader evicts messages when it reaches this bound.
+    ///
+    /// **Default:** `1024`
+    #[uniffi(default = None)]
+    pub loader_cache_size: Option<u32>,
+
+    /// Timeout for Kafka loader seek operations.
     ///
     /// **Default:** 30 seconds
     #[uniffi(default = None)]
-    pub defer_seek_timeout: Option<Duration>,
+    pub loader_seek_timeout: Option<Duration>,
 
-    /// Read optimization threshold for discarding old deferrals.
+    /// Sequential-read distance before the loader seeks.
     ///
     /// Advanced tuning parameter; rarely needs adjustment.
     ///
     /// **Default:** `100`
     #[uniffi(default = None)]
-    pub defer_discard_threshold: Option<u32>,
+    pub loader_discard_threshold: Option<u32>,
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)

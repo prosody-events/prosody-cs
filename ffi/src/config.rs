@@ -96,9 +96,9 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::LoaderConfig`] if the deferred-retry loader tuning
-/// derived from `defer_cache_size`, `defer_seek_timeout`, or
-/// `defer_discard_threshold` fails validation.
+/// Returns [`FfiError::LoaderConfig`] if the Kafka loader tuning
+/// derived from `loader_cache_size`, `loader_seek_timeout`, or
+/// `loader_discard_threshold` fails validation.
 pub fn build_consumer_config(
     options: &ClientOptions,
 ) -> Result<ConsumerConfigurationBuilder, FfiError> {
@@ -170,24 +170,24 @@ pub fn build_consumer_config(
         });
     }
 
-    // The deferred-retry message loader tuning is consumer-wide in the current
-    // core API. Only build and attach it when the caller supplied at least one
+    // The message loader tuning is consumer-wide. Only build and attach it
+    // when the caller supplied at least one
     // loader knob, so the default configuration keeps environment fallbacks.
-    if options.defer_cache_size.is_some()
-        || options.defer_seek_timeout.is_some()
-        || options.defer_discard_threshold.is_some()
+    if options.loader_cache_size.is_some()
+        || options.loader_seek_timeout.is_some()
+        || options.loader_discard_threshold.is_some()
     {
         let mut loader = KafkaLoaderConfiguration::builder();
 
-        if let Some(cache_size) = options.defer_cache_size {
+        if let Some(cache_size) = options.loader_cache_size {
             loader.cache_size(cache_size as usize);
         }
 
-        if let Some(seek_timeout) = options.defer_seek_timeout {
+        if let Some(seek_timeout) = options.loader_seek_timeout {
             loader.seek_timeout(seek_timeout);
         }
 
-        if let Some(discard_threshold) = options.defer_discard_threshold {
+        if let Some(discard_threshold) = options.loader_discard_threshold {
             loader.discard_threshold(i64::from(discard_threshold));
         }
 

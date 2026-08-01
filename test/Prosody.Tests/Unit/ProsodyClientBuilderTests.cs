@@ -329,7 +329,7 @@ public sealed class ProsodyClientBuilderTests
                 options.DeferMaxDelay = TimeSpan.FromHours(12);
                 options.DeferFailureThreshold = 0.8;
                 options.DeferFailureWindow = TimeSpan.FromMinutes(10);
-                options.DeferCacheSize = 2048;
+                options.LoaderCacheSize = 2048;
             });
 
         using var client = builder.Build();

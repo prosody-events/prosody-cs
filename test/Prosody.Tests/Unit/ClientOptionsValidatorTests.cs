@@ -177,7 +177,7 @@ public sealed class ClientOptionsValidatorTests
     [InlineData(nameof(ClientOptions.DeferBase))]
     [InlineData(nameof(ClientOptions.DeferMaxDelay))]
     [InlineData(nameof(ClientOptions.DeferFailureWindow))]
-    [InlineData(nameof(ClientOptions.DeferSeekTimeout))]
+    [InlineData(nameof(ClientOptions.LoaderSeekTimeout))]
     [InlineData(nameof(ClientOptions.MonopolizationWindow))]
     [InlineData(nameof(ClientOptions.SchedulerMaxWait))]
     [InlineData(nameof(ClientOptions.CassandraRetention))]

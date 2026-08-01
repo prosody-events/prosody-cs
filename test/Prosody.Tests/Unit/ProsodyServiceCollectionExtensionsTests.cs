@@ -344,7 +344,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
                     ["Prosody:IdempotenceCacheSize"] = "8192",
                     ["Prosody:MaxRetries"] = "5",
                     ["Prosody:ProbePort"] = "8080",
-                    ["Prosody:DeferCacheSize"] = "2048",
+                    ["Prosody:LoaderCacheSize"] = "2048",
                     ["Prosody:SchedulerCacheSize"] = "16384",
                 }
             )

@@ -267,29 +267,36 @@ public sealed class ClientOptions
     public TimeSpan? DeferFailureWindow { get; set; }
 
     /// <summary>
-    /// Track this many deferred keys in memory.
-    /// Default: 1024.
-    /// </summary>
-    public uint? DeferCacheSize { get; set; }
-
-    /// <summary>
     /// Maximum deferred store cache entries per Cassandra defer store.
     /// Default: 8192.
     /// </summary>
     /// <remarks>Environment variable: <c>PROSODY_DEFER_STORE_CACHE_SIZE</c></remarks>
     public uint? DeferStoreCacheSize { get; set; }
 
-    /// <summary>
-    /// Timeout when loading deferred messages from Kafka.
-    /// Default: 30 seconds.
-    /// </summary>
-    public TimeSpan? DeferSeekTimeout { get; set; }
+    // ========================================================================
+    // Kafka message loader options (all modes)
+    // ========================================================================
 
     /// <summary>
-    /// Read optimization threshold. Rarely needs changing.
+    /// Maximum messages retained by the shared Kafka loader.
+    /// Default: 1024.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_CACHE_SIZE</c></remarks>
+    public uint? LoaderCacheSize { get; set; }
+
+    /// <summary>
+    /// Timeout for Kafka loader seek operations.
+    /// Default: 30 seconds.
+    /// </summary>
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_SEEK_TIMEOUT</c></remarks>
+    public TimeSpan? LoaderSeekTimeout { get; set; }
+
+    /// <summary>
+    /// Sequential-read distance before the loader seeks. Rarely needs changing.
     /// Default: 100.
     /// </summary>
-    public uint? DeferDiscardThreshold { get; set; }
+    /// <remarks>Environment variable: <c>PROSODY_LOADER_DISCARD_THRESHOLD</c></remarks>
+    public uint? LoaderDiscardThreshold { get; set; }
 
     // ========================================================================
     // Monopolization detection options (Pipeline mode)
@@ -451,17 +458,28 @@ public sealed class ClientOptions
 
     /// <summary>
     /// Capacity of the owning keyed-state cache, such as <c>64 MiB</c>.
-    /// Falls back to <c>PROSODY_STATE_OWNED_CACHE_SIZE</c>.
+    /// Uses <c>PROSODY_STATE_OWNED_CACHE_SIZE</c> when omitted.
+    /// Otherwise, the storage engine selects its default.
     /// </summary>
     public string? StateOwnedCacheSize { get; set; }
 
-    /// <summary>Capacity of the published-state read cache, such as <c>1 MiB</c>.</summary>
+    /// <summary>
+    /// Capacity of the published-state read cache, such as <c>1 MiB</c>.
+    /// Uses <c>PROSODY_STATE_READ_CACHE_SIZE</c> when omitted.
+    /// It then uses the owned cache size when set, or 1 MiB when both sizes are unset.
+    /// </summary>
     public string? StateReadCacheSize { get; set; }
 
-    /// <summary>Default cache policy for published-state reads.</summary>
+    /// <summary>
+    /// Default cache policy for published-state reads.
+    /// Uses <c>PROSODY_STATE_READ_CACHE_TTL</c> when omitted, then 5 seconds.
+    /// </summary>
     public StateReadCache? StateReadCache { get; set; }
 
-    /// <summary>Subsystem under which published collections are advertised.</summary>
+    /// <summary>
+    /// Subsystem under which published JSON collections are advertised.
+    /// Uses <c>PROSODY_SUBSYSTEM</c> when omitted. Published collections require it.
+    /// </summary>
     public string? Subsystem { get; set; }
 
     /// <summary>
@@ -572,10 +590,10 @@ public sealed class ClientOptions
             DeferMaxDelay: DeferMaxDelay,
             DeferFailureThreshold: DeferFailureThreshold,
             DeferFailureWindow: DeferFailureWindow,
-            DeferCacheSize: DeferCacheSize,
+            LoaderCacheSize: LoaderCacheSize,
             DeferStoreCacheSize: DeferStoreCacheSize,
-            DeferSeekTimeout: DeferSeekTimeout,
-            DeferDiscardThreshold: DeferDiscardThreshold,
+            LoaderSeekTimeout: LoaderSeekTimeout,
+            LoaderDiscardThreshold: LoaderDiscardThreshold,
             MonopolizationEnabled: MonopolizationEnabled,
             MonopolizationThreshold: MonopolizationThreshold,
             MonopolizationWindow: MonopolizationWindow,

@@ -121,7 +121,7 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         CheckNonNegative(options.DeferBase, nameof(ClientOptions.DeferBase), failures);
         CheckNonNegative(options.DeferMaxDelay, nameof(ClientOptions.DeferMaxDelay), failures);
         CheckNonNegative(options.DeferFailureWindow, nameof(ClientOptions.DeferFailureWindow), failures);
-        CheckNonNegative(options.DeferSeekTimeout, nameof(ClientOptions.DeferSeekTimeout), failures);
+        CheckNonNegative(options.LoaderSeekTimeout, nameof(ClientOptions.LoaderSeekTimeout), failures);
         CheckNonNegative(options.MonopolizationWindow, nameof(ClientOptions.MonopolizationWindow), failures);
         CheckNonNegative(options.SchedulerMaxWait, nameof(ClientOptions.SchedulerMaxWait), failures);
         CheckNonNegative(options.CassandraRetention, nameof(ClientOptions.CassandraRetention), failures);
