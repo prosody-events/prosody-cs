@@ -82,9 +82,6 @@ fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, 
             "read cache cannot set both a TTL and disabled".to_owned(),
         )),
         (None, true) => Ok(ErasedReadCache::Disabled),
-        (Some(ttl), false) if ttl.is_zero() => Err(FfiError::PermanentState(
-            "read cache TTL must be greater than 0".to_owned(),
-        )),
         (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
         (None, false) => Ok(ErasedReadCache::Inherit),
     }

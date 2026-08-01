@@ -44,7 +44,6 @@ use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
 };
 use prosody::timers::duration::CompactDuration;
-use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -402,9 +401,6 @@ pub fn build_telemetry_emitter_config(
     builder
 }
 
-/// The inclusive upper bound core accepts for a map's keyset limit.
-const MAX_KEYSET_LIMIT: u32 = 4096;
-
 /// Builds a permanent state error for an invalid keyed-state configuration.
 ///
 /// Configuration and deployment mistakes are permanent: retrying an
@@ -413,29 +409,28 @@ fn permanent_config(message: String) -> FfiError {
     FfiError::PermanentState(message)
 }
 
-/// Validates a duration as a whole number of seconds of at least `min`.
+/// Maps a duration into the whole-second representation Prosody descriptors use.
 ///
 /// The field arrives as a [`Duration`] (a C# `TimeSpan`) so that fractional
 /// (sub-second) and out-of-range values reach this guard rather than being
 /// silently truncated by a `u32` conversion. A sub-second component or a value
-/// outside `min..=u32::MAX` seconds is rejected with a permanent error naming
-/// the field.
+/// outside the `u32` seconds range is rejected with a permanent error naming
+/// the field. Semantic duration limits remain in Prosody.
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if the duration is not a whole number
-/// of seconds in `min..=u32::MAX`.
-fn whole_seconds(duration: Duration, field: &str, min: u32) -> Result<u32, FfiError> {
+/// Returns [`FfiError::PermanentState`] if the duration cannot be represented
+/// as whole `u32` seconds.
+fn whole_seconds(duration: Duration, field: &str) -> Result<u32, FfiError> {
     if duration.subsec_nanos() != 0 {
         return Err(permanent_config(format!(
             "{field}: must be a whole number of seconds"
         )));
     }
     let seconds = duration.as_secs();
-    if seconds < u64::from(min) || seconds > u64::from(u32::MAX) {
+    if seconds > u64::from(u32::MAX) {
         return Err(permanent_config(format!(
-            "{field}: must be between {min} and {} seconds",
-            u32::MAX
+            "{field}: exceeds the u32 seconds range"
         )));
     }
     Ok(seconds as u32)
@@ -494,25 +489,17 @@ fn with_capacity<T>(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a field is invalid (empty name, TTL
-/// not a whole number of seconds, keyset limit out of range or set on a
-/// non-map collection, capacity zero or set on a non-deque collection).
+/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped into
+/// its Prosody type.
 fn register_state_collection(
     keyed: &mut KeyedStateConfiguration,
     index: usize,
     collection: &StateCollectionConfig,
 ) -> Result<(), FfiError> {
-    if collection.name.is_empty() {
-        return Err(permanent_config(format!(
-            "stateCollections[{index}].name: must not be empty"
-        )));
-    }
-
     let ttl_seconds = match collection.ttl {
         Some(ttl) => Some(whole_seconds(
             ttl,
             &format!("stateCollections[{index}].ttl"),
-            1,
         )?),
         None => None,
     };
@@ -584,22 +571,11 @@ fn collection_bounds(
     collection: &StateCollectionConfig,
     index: usize,
 ) -> Result<(Option<u32>, Option<NonZeroUsize>), FfiError> {
-    if collection.published && collection.payload == StatePayload::Message {
-        return Err(permanent_config(format!(
-            "stateCollections[{index}].published: message collections cannot be published"
-        )));
-    }
     let keyset_limit = match collection.keyset_limit {
         Some(limit) => {
             if collection.kind != StateKind::Map {
                 return Err(permanent_config(format!(
                     "stateCollections[{index}].keysetLimit: only valid for map collections"
-                )));
-            }
-            if limit > MAX_KEYSET_LIMIT {
-                return Err(permanent_config(format!(
-                    "stateCollections[{index}].keysetLimit: must be between 0 and \
-                     {MAX_KEYSET_LIMIT}"
                 )));
             }
             Some(limit)
@@ -628,15 +604,12 @@ fn collection_bounds(
 
 /// Builds the keyed-state configuration from client options.
 ///
-/// Registers each declared collection synchronously (before subscribe, hence
-/// resubscribe-safe), rejecting duplicate names. Field-level validation names
-/// the offending field; core validates the remaining rules (TTL ceiling, TTL
-/// exceeding the recovery delay, identity conflicts) at consumer build.
+/// Maps each declared collection into a typed descriptor. The normal Prosody
+/// construction path validates the result.
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a keyed-state field is invalid, a
-/// collection name is duplicated, or the cache directory is an empty string.
+/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped.
 pub fn build_keyed_state_config(
     options: &ClientOptions,
 ) -> Result<KeyedStateConfiguration, FfiError> {
@@ -647,7 +620,7 @@ pub fn build_keyed_state_config(
     }
 
     if let Some(delay) = options.state_recovery_delay {
-        let seconds = whole_seconds(delay, "stateRecoveryDelay", 1)?;
+        let seconds = whole_seconds(delay, "stateRecoveryDelay")?;
         builder.recovery_delay(CompactDuration::new(seconds));
     }
 
@@ -674,11 +647,6 @@ pub fn build_keyed_state_config(
                 "stateReadCacheTtl and stateReadCacheDisabled cannot both be set".to_owned(),
             ));
         }
-        (Some(ttl), false) if ttl.is_zero() => {
-            return Err(permanent_config(
-                "stateReadCacheTtl must be greater than 0".to_owned(),
-            ));
-        }
         (Some(ttl), false) => {
             builder.read_cache_ttl(Some(ttl));
         }
@@ -700,14 +668,7 @@ pub fn build_keyed_state_config(
         .map_err(|error| permanent_config(error.to_string()))?;
 
     if let Some(collections) = &options.state_collections {
-        let mut seen = HashSet::with_capacity(collections.len());
         for (index, collection) in collections.iter().enumerate() {
-            if !seen.insert(collection.name.as_str()) {
-                return Err(permanent_config(format!(
-                    "stateCollections[{index}].name: duplicate collection name {:?}",
-                    collection.name
-                )));
-            }
             register_state_collection(&mut keyed, index, collection)?;
         }
     }

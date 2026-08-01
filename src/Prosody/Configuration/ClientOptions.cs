@@ -444,8 +444,8 @@ public sealed class ClientOptions
     /// <remarks>
     /// Set programmatically only — not bindable from
     /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Prefer
-    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Names must be non-empty and unique
-    /// within the set; each definition is validated at construction and again when the options are validated.
+    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Prosody validates collection names,
+    /// identities, and semantic limits when the client is built.
     /// </remarks>
     public StateDefinition[]? StateCollections { get; set; }
 

@@ -9,14 +9,14 @@ public readonly record struct StateReadCache
     public static StateReadCache Disabled { get; } = new(ttl: null, disabled: true);
 
     /// <summary>Creates a time-based read-cache policy.</summary>
-    /// <param name="ttl">A positive cache duration.</param>
+    /// <param name="ttl">A non-negative cache duration. Prosody rejects zero.</param>
     /// <returns>A time-based read-cache policy.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="ttl"/> is not positive.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="ttl"/> is negative.</exception>
     public static StateReadCache For(TimeSpan ttl)
     {
-        if (ttl <= TimeSpan.Zero)
+        if (ttl < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "Read cache TTL must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "Read cache TTL must not be negative.");
         }
 
         return new StateReadCache(ttl, disabled: false);

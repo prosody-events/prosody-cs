@@ -1,7 +1,7 @@
 namespace Prosody.State;
 
 /// <summary>
-/// An immutable, validated declaration of a keyed-state collection.
+/// An immutable declaration of a keyed-state collection.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,20 +13,12 @@ namespace Prosody.State;
 /// <see cref="MessageDeque{TPayload}"/>).
 /// </para>
 /// <para>
-/// Per-definition rules (name non-empty; TTL whole seconds in <c>1..=630_720_000</c>; keyset limit
-/// in <c>0..=4096</c>; deque capacity positive) are enforced here at construction; set-level rules
-/// (name uniqueness, TTL exceeding the recovery delay) are enforced when the client options are
-/// validated. Capacity is runtime-only — enforced lazily on push and changeable on a later deploy.
+/// Prosody validates collection semantics when the client is built. Capacity is runtime-only. It is
+/// enforced lazily on push and may change on a later deploy.
 /// </para>
 /// </remarks>
 public abstract record StateDefinition
 {
-    /// <summary>The maximum TTL in seconds accepted by the Cassandra backing store.</summary>
-    private const long _maxTtlSeconds = 630_720_000;
-
-    /// <summary>The inclusive upper bound for a map keyset limit.</summary>
-    private const int _maxKeysetLimit = 4096;
-
     private protected StateDefinition(
         string name,
         Native.StateKind kind,
@@ -39,30 +31,20 @@ public abstract record StateDefinition
         StateReadCache? readCache = null
     )
     {
-        if (string.IsNullOrWhiteSpace(name))
+        ArgumentNullException.ThrowIfNull(name);
+        if (ttl is { Ticks: < 0 })
         {
-            throw new ArgumentException("State collection name must be non-empty.", nameof(name));
+            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "TTL must not be negative.");
         }
 
-        name = name.Trim();
-
-        if (ttl is { } t)
+        if (keysetLimit is < 0)
         {
-            ValidateTtl(t);
+            throw new ArgumentOutOfRangeException(nameof(keysetLimit), keysetLimit, "Keyset limit must not be negative.");
         }
 
-        if (keysetLimit is { } k && k is < 0 or > _maxKeysetLimit)
+        if (capacity is < 0)
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(keysetLimit),
-                k,
-                $"Keyset limit must be between 0 and {_maxKeysetLimit}."
-            );
-        }
-
-        if (capacity is { } cap && cap < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(capacity), cap, "Capacity must be a positive integer.");
+            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must not be negative.");
         }
 
         Name = name;
@@ -76,7 +58,7 @@ public abstract record StateDefinition
         ReadCache = readCache;
     }
 
-    /// <summary>Gets the collection name. Non-empty and unique within the client's definition set.</summary>
+    /// <summary>Gets the collection name.</summary>
     public string Name { get; }
 
     internal Native.StateKind Kind { get; }
@@ -227,25 +209,4 @@ public abstract record StateDefinition
             ReadCacheDisabled
         );
 
-    private static void ValidateTtl(TimeSpan ttl)
-    {
-        if (ttl.Ticks % TimeSpan.TicksPerSecond != 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(ttl),
-                ttl,
-                "TTL must be a whole number of seconds (no fractional or sub-second values)."
-            );
-        }
-
-        var seconds = ttl.Ticks / TimeSpan.TicksPerSecond;
-        if (seconds is < 1 or > _maxTtlSeconds)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(ttl),
-                ttl,
-                $"TTL must be between 1 and {_maxTtlSeconds} seconds."
-            );
-        }
-    }
 }
