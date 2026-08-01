@@ -39,7 +39,11 @@ public abstract record StateDefinition
 
         if (keysetLimit is < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(keysetLimit), keysetLimit, "Keyset limit must not be negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(keysetLimit),
+                keysetLimit,
+                "Keyset limit must not be negative."
+            );
         }
 
         if (capacity is < 0)
@@ -208,5 +212,4 @@ public abstract record StateDefinition
             ReadCacheTtl,
             ReadCacheDisabled
         );
-
 }
