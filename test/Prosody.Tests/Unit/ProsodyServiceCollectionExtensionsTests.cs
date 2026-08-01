@@ -483,33 +483,4 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             () => Assert.Equal(64u, options.MaxConcurrency)
         );
     }
-
-    [Fact]
-    public void AddProsodyClientValidateOnStartThrowsForInvalidConfig()
-    {
-        // Arrange - LowLatency without FailureTopic
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(
-                new Dictionary<string, string?>
-                {
-                    ["Prosody:BootstrapServers:0"] = TestDefaults.BootstrapServers,
-                    ["Prosody:GroupId"] = "test-group",
-                    ["Prosody:Mock"] = "true",
-                    ["Prosody:Mode"] = "LowLatency",
-                }
-            )
-            .Build();
-
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-        services.AddProsodyClient();
-
-        // Act & Assert - validation runs eagerly when resolving IOptions<ClientOptions>
-        using ServiceProvider provider = services.BuildServiceProvider();
-        var ex = Assert.Throws<OptionsValidationException>(() =>
-            provider.GetRequiredService<IOptions<ClientOptions>>().Value
-        );
-
-        Assert.Contains("FailureTopic is required when Mode is LowLatency", ex.Message, StringComparison.Ordinal);
-    }
 }

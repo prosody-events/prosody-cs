@@ -409,7 +409,8 @@ fn permanent_config(message: String) -> FfiError {
     FfiError::PermanentState(message)
 }
 
-/// Maps a duration into the whole-second representation Prosody descriptors use.
+/// Maps a duration into the whole-second representation Prosody descriptors
+/// use.
 ///
 /// The field arrives as a [`Duration`] (a C# `TimeSpan`) so that fractional
 /// (sub-second) and out-of-range values reach this guard rather than being

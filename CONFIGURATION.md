@@ -2,6 +2,8 @@
 
 Configure via `ClientOptions` properties or environment variables. Properties take precedence; unset options (`null`) fall back to environment variables.
 
+The .NET client reports values it cannot convert to Prosody types. Prosody validates configuration semantics when the client is built.
+
 Common options have dedicated builder methods (e.g., `WithBootstrapServers()`). Set all other options via `Configure()` or directly on `ClientOptions`. See the [API reference](README.md#api-reference) for the full builder API.
 
 ## Dependency Injection
@@ -113,11 +115,11 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 
 ## Retry
 
-When a handler fails, retry with exponential backoff:
+Retry backoff applies in pipeline and low-latency modes. `MaxRetries` controls how many retries low-latency mode performs before routing the failure to `FailureTopic`. Pipeline mode uses deferral and does not use this limit.
 
 | Property / Environment Variable | Description | Default |
 |---|---|---|
-| `MaxRetries` / `PROSODY_MAX_RETRIES` | Give up after this many attempts | 3 |
+| `MaxRetries` / `PROSODY_MAX_RETRIES` | Low-latency retries before routing to the failure topic | 3 |
 | `RetryBase` / `PROSODY_RETRY_BASE` | Wait this long before first retry | 20ms |
 | `MaxRetryDelay` / `PROSODY_RETRY_MAX_DELAY` | Never wait longer than this | 5m |
 

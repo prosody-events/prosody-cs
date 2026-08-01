@@ -213,7 +213,10 @@ public sealed class ProsodyClientBuilder
     /// <summary>
     /// Sets the maximum retry attempts.
     /// </summary>
-    /// <param name="maxRetries">Maximum retries. Set to 0 for unlimited. Default: 3.</param>
+    /// <param name="maxRetries">
+    /// Low-latency retries before routing to the failure topic. Set to 0 to route the initial
+    /// failure without retrying. Default: 3.
+    /// </param>
     /// <returns>This builder for chaining.</returns>
     public ProsodyClientBuilder WithMaxRetries(uint maxRetries)
     {

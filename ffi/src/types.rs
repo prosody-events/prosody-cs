@@ -369,10 +369,10 @@ pub struct ClientOptions {
     // ========================================================================
     // Retry options
     // ========================================================================
-    /// Maximum retry attempts before giving up or deferring.
+    /// Low-latency retries before routing to the failure topic.
     ///
-    /// Set to `0` for unlimited retries (only effective in
-    /// [`Pipeline`][ClientMode::Pipeline] mode).
+    /// Set to `0` to route the initial low-latency failure without retrying.
+    /// Pipeline mode uses deferral and does not use this limit.
     ///
     /// **Default:** `3`
     #[uniffi(default = None)]

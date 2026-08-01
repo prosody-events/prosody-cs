@@ -209,7 +209,8 @@ public sealed class ClientOptions
     // ========================================================================
 
     /// <summary>
-    /// Maximum retry attempts. Set to 0 for unlimited retries.
+    /// Low-latency retries before routing to the failure topic. Set to 0 to route the initial
+    /// failure without retrying. Pipeline mode uses deferral and does not use this limit.
     /// Default: 3.
     /// </summary>
     public uint? MaxRetries { get; set; }
@@ -355,7 +356,7 @@ public sealed class ClientOptions
     public uint? SchedulerCacheSize { get; set; }
 
     // ========================================================================
-    // Cassandra options (required for timers in non-mock mode)
+    // Cassandra options for persistent features in non-mock mode
     // ========================================================================
 
     /// <summary>
@@ -391,7 +392,7 @@ public sealed class ClientOptions
     public string? CassandraPassword { get; set; }
 
     /// <summary>
-    /// Delete timer data older than this.
+    /// Retention period for persistent timer and deferral data.
     /// Default: 1 year.
     /// </summary>
     public TimeSpan? CassandraRetention { get; set; }

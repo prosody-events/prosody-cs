@@ -11,44 +11,7 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         List<string> failures = [];
 
-        if (options.BootstrapServers is { Length: 0 })
-        {
-            failures.Add("BootstrapServers must not be empty.");
-        }
-
-        if (options.SubscribedTopics is { Length: 0 })
-        {
-            failures.Add("SubscribedTopics must not be empty.");
-        }
-
-        if (options.Mode is ClientMode.LowLatency && string.IsNullOrWhiteSpace(options.FailureTopic))
-        {
-            failures.Add("FailureTopic is required when Mode is LowLatency.");
-        }
-
-        CheckUnitInterval(options.DeferFailureThreshold, nameof(ClientOptions.DeferFailureThreshold), failures);
-        CheckUnitInterval(options.MonopolizationThreshold, nameof(ClientOptions.MonopolizationThreshold), failures);
-        CheckUnitInterval(options.SchedulerFailureWeight, nameof(ClientOptions.SchedulerFailureWeight), failures);
-
-        if (options.SchedulerWaitWeight is { } schedulerWaitWeight)
-        {
-            if (!double.IsFinite(schedulerWaitWeight))
-            {
-                failures.Add("SchedulerWaitWeight must be finite.");
-            }
-            else if (schedulerWaitWeight < 0.0)
-            {
-                failures.Add("SchedulerWaitWeight must not be negative.");
-            }
-        }
-
         CheckTimeSpans(options, failures);
-
-        CheckArrayEntries(options.BootstrapServers, nameof(ClientOptions.BootstrapServers), failures);
-        CheckArrayEntries(options.SubscribedTopics, nameof(ClientOptions.SubscribedTopics), failures);
-        CheckArrayEntries(options.AllowedEvents, nameof(ClientOptions.AllowedEvents), failures);
-        CheckArrayEntries(options.CassandraNodes, nameof(ClientOptions.CassandraNodes), failures);
-
         CheckStateCollections(options, failures);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
@@ -67,14 +30,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
             {
                 failures.Add($"StateCollections[{i}] must not be null.");
             }
-        }
-    }
-
-    private static void CheckUnitInterval(double? value, string name, List<string> failures)
-    {
-        if (value is { } intervalValue && (!double.IsFinite(intervalValue) || intervalValue is < 0.0 or > 1.0))
-        {
-            failures.Add($"{name} must be between 0.0 and 1.0.");
         }
     }
 
@@ -103,37 +58,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         if (value is { Ticks: < 0 })
         {
             failures.Add($"{name} must not be negative.");
-        }
-    }
-
-    private static void CheckArrayEntries(string[]? list, string name, List<string> failures)
-    {
-        if (list is null)
-        {
-            return;
-        }
-
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < list.Length; i++)
-        {
-            var item = list[i];
-
-            if (string.IsNullOrWhiteSpace(item))
-            {
-                failures.Add($"{name}[{i}] must not be empty or whitespace.");
-                continue;
-            }
-
-            var normalizedItem = item.Trim();
-            if (!string.Equals(item, normalizedItem, StringComparison.Ordinal))
-            {
-                failures.Add($"{name}[{i}] must not contain leading or trailing whitespace.");
-            }
-
-            if (!seen.Add(normalizedItem))
-            {
-                failures.Add($"{name} must not contain duplicates. Found duplicate: '{normalizedItem}'.");
-            }
         }
     }
 }
