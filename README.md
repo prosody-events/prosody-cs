@@ -695,10 +695,7 @@ Most collections should have a TTL. Set it comfortably beyond the longest timer 
 Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, names its `Subsystem`, and registers the definition as usual:
 
 ```csharp
-var currentOrder = StateDefinition.Value<Order>(
-    "current-order",
-    published: true,
-    readCache: StateReadCache.For(TimeSpan.FromSeconds(2)));
+var currentOrder = StateDefinition.Value<Order>("current-order", published: true);
 var options = new ClientOptions
 {
     GroupId = "order-writer",
