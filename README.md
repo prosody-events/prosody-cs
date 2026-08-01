@@ -695,37 +695,27 @@ Most collections should have a TTL. Set it comfortably beyond the longest timer 
 Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, names its `Subsystem`, and registers the definition as usual:
 
 ```csharp
-var cart = StateDefinition.Value<Cart>(
-    "cart",
+var currentOrder = StateDefinition.Value<Order>(
+    "current-order",
     published: true,
     readCache: StateReadCache.For(TimeSpan.FromSeconds(2)));
-var items = StateDefinition.Map<Item>("items", published: true);
-
 var options = new ClientOptions
 {
-    GroupId = "cart-writer",
+    GroupId = "order-writer",
     Subsystem = "checkout",
-    StateCollections = [cart, items],
+    StateCollections = [currentOrder],
 };
 
 // Inside the owner's handler, the event supplies the user key.
-var ownedCart = context.State(cart);
-await ownedCart.SetAsync(updatedCart, cancellationToken);
+var ownedOrder = context.State(currentOrder);
+await ownedOrder.SetAsync(updatedOrder, cancellationToken);
 ```
 
 Another client opens a reader by naming the subsystem and passing that same definition. The reader is independent of subscriptions and only returns committed state:
 
 ```csharp
-PublishedValue<Cart> cartReader = await client.StateAsync("checkout", cart);
-StateValue<Cart> value = await cartReader.GetAsync("user-1", cancellationToken);
-
-PublishedMap<Item> itemReader = await client.StateAsync("checkout", items);
-await foreach (var (mapKey, item) in itemReader.EnumerateAsync(
-    "user-1",
-    cancellationToken: cancellationToken))
-{
-    // Entries are ordered by key.
-}
+PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentOrder);
+StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellationToken);
 ```
 
 Published readers provide the owned collection's read operations without its mutations. An owned handle gets the user key from the current event; a published reader is outside a handler, so every operation takes that key explicitly. Map and deque enumeration returns `IAsyncEnumerable<T>` and reads in chunks rather than loading the entire collection. Pass `ScanDirection.Backward` when reverse order is useful.
