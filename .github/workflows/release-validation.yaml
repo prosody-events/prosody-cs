@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - .dockerignore
+      - .github/docker/**
       - .github/workflows/release.yaml
       - .github/workflows/release-validation.yaml
       - Cargo.lock
