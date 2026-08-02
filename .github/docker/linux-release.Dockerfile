@@ -34,4 +34,3 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM scratch AS artifact
 COPY --from=builder /output/ /
-
