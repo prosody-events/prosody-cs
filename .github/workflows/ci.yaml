@@ -24,9 +24,30 @@ permissions:
   contents: write
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.rail.outputs.build }}
+      docs: ${{ steps.rail.outputs.docs }}
+      infra: ${{ steps.rail.outputs.infra }}
+      test: ${{ steps.rail.outputs.test }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: rail
+        uses: loadingalias/cargo-rail-action@ebc8ef2740efefe2cd5c42826344a8f1213113ae # v6
+        with:
+          since: ${{ github.event_name == 'push' && github.event.before || '' }}
+
   test:
     name: Test
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     services:
       kafka:
         image: apache/kafka:latest
@@ -79,6 +100,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
@@ -118,7 +144,11 @@ jobs:
 
   dotnet-lint:
     name: .NET Lint
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@v7
 
@@ -135,6 +165,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -171,7 +206,11 @@ jobs:
 
   fmt:
     name: Format
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@v7
 
@@ -179,6 +218,11 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
+
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
 
       - name: Install taplo
         uses: baptiste0928/cargo-install@v3
@@ -201,7 +245,11 @@ jobs:
 
   dependencies:
     name: Unused Dependencies
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@v7
 
@@ -213,6 +261,11 @@ jobs:
 
       - name: Setup Rust (nightly)
         uses: dtolnay/rust-toolchain@nightly
+
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -227,7 +280,11 @@ jobs:
 
   docs:
     name: Documentation
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.docs == 'true' || needs.plan.outputs.build == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@v7
 
@@ -240,6 +297,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
+
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
@@ -248,7 +310,11 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: plan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: -C link-arg=-fuse-ld=mold
     steps:
       - uses: actions/checkout@v7
 
@@ -262,6 +328,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+
+      - name: Setup mold
+        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        with:
+          make-default: false
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
