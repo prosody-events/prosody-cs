@@ -1,8 +1,0 @@
-.git
-.cargo-cache
-artifacts
-ffi/artifacts
-packages
-target
-**/bin
-**/obj
