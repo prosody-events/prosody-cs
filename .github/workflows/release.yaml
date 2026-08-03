@@ -140,48 +140,26 @@ jobs:
         with:
           key: ${{ matrix.target.rid }}
 
-      - name: Cache Linux Rust build
+      - name: Set up Docker Buildx
         if: matrix.target.use_docker
-        uses: actions/cache@v6
-        with:
-          path: |
-            .cargo-cache/registry
-            .cargo-cache/git
-            target
-          key: linux-rust-bookworm-${{ matrix.target.rust_target }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            linux-rust-bookworm-${{ matrix.target.rust_target }}-
-
-      - name: Install cross (for cross-compilation)
-        if: matrix.target.use_cross
-        uses: baptiste0928/cargo-install@v3
-        with:
-          crate: cross
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build native library
         if: '!matrix.target.use_docker'
         shell: bash
-        run: |
-          if [ "${{ matrix.target.use_cross }}" = "true" ]; then
-            cross build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
-          else
-            cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
-          fi
+        run: cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
 
       - name: Build native library in compatibility container
         if: matrix.target.use_docker
-        run: |
-          docker run --rm \
-            --env CARGO_HOME=/workspace/.cargo-cache \
-            --volume "${{ github.workspace }}:/workspace" \
-            --workdir /workspace \
-            rust:bookworm \
-            bash -c '
-              apt-get update &&
-              apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev &&
-              cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }} &&
-              chown --recursive --reference=/workspace /workspace/.cargo-cache /workspace/target
-            '
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: .github/docker/linux-release.Dockerfile
+          target: artifact
+          build-args: RUST_TARGET=${{ matrix.target.rust_target }}
+          outputs: type=local,dest=target/${{ matrix.target.rust_target }}/release
+          cache-from: type=gha,scope=linux-${{ matrix.target.rust_target }}
+          cache-to: type=gha,mode=max,scope=linux-${{ matrix.target.rust_target }}
 
       - name: Stage artifact
         shell: bash
