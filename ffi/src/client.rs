@@ -446,14 +446,20 @@ impl ProsodyClient {
             .instrument(span.clone());
 
         if let Some(signal) = cancel {
+            // `biased` checks cancellation first so an already-cancelled signal wins
+            // deterministically over a ready send future. Reporting Cancelled for a
+            // send that may have completed in the same poll window is acceptable:
+            // delivery is at-least-once, so callers already tolerate
+            // delivered-but-reported-cancelled.
             tokio::select! {
-                result = send_future => {
-                    span.record("aborted", false);
-                    result?;
-                }
+                biased;
                 () = signal.cancelled() => {
                     span.record("aborted", true);
                     return Err(FfiError::Cancelled);
+                }
+                result = send_future => {
+                    span.record("aborted", false);
+                    result?;
                 }
             }
         } else {

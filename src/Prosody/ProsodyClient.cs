@@ -239,6 +239,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// contract the rest of the system requires.
     /// </para>
     /// </remarks>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
     [RequiresUnreferencedCode(
         "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver (reflection-based). Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
     )]
@@ -279,6 +280,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <see cref="SendOptions.EventId"/> and <see cref="SendOptions.EventType"/> values.
     /// </para>
     /// </remarks>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
     public Task SendAsync<T>(
         string topic,
         string key,
@@ -312,6 +314,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// extracting from the payload.
     /// </param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
     public Task SendAsync<T>(
         string topic,
         string key,
@@ -354,6 +357,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         try
         {
             await _native.Send(topic, key, metadata, jsonBytes, carrier, linked?.Signal).ConfigureAwait(false);
+        }
+        // Invariant: the signal is triggered only by cancellationToken's registration
+        // (CancellationHelper.CreateSignal), so a native Cancelled from the send path always
+        // means the caller's token fired — surface it as the standard .NET cancellation type.
+        catch (Native.FfiException.Cancelled ex)
+        {
+            throw new OperationCanceledException("The send was cancelled.", ex, cancellationToken);
         }
         finally
         {
