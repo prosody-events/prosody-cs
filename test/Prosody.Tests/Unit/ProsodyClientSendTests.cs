@@ -15,6 +15,27 @@ internal sealed record SendTestPayload(string OrderTotal, int ItemCount);
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 internal sealed partial class SnakeCaseSendContext : JsonSerializerContext;
 
+// Payload whose converter cancels the token during serialization — after the entry
+// ThrowIfCancellationRequested, before the native signal is created — so the native
+// send starts with a pre-cancelled signal and deterministically reports Cancelled.
+internal sealed record CancelOnWritePayload;
+
+internal sealed class CancelOnWriteConverter(CancellationTokenSource cts) : JsonConverter<CancelOnWritePayload>
+{
+    public override CancelOnWritePayload Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options
+    ) => throw new NotSupportedException();
+
+    public override void Write(Utf8JsonWriter writer, CancelOnWritePayload value, JsonSerializerOptions options)
+    {
+        cts.Cancel();
+        writer.WriteStartObject();
+        writer.WriteEndObject();
+    }
+}
+
 // Payload with [JsonPropertyName] overrides so TypedEventMetadataExtractor can find id/type
 internal sealed record MetadataTestPayload
 {
@@ -65,6 +86,30 @@ public sealed class ProsodyClientSendTests : IDisposable
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             _client.SendAsync("topic", "key", new { }, cts.Token)
         );
+    }
+
+    [Fact]
+    public async Task SendAsyncThrowsOperationCanceledWhenCancelledMidSend()
+    {
+        using var cts = new CancellationTokenSource();
+        await using var client = new ProsodyClient(
+            new ClientOptions
+            {
+                Mock = true,
+                BootstrapServers = [TestDefaults.BootstrapServers],
+                GroupId = "test-group",
+                SourceSystem = "test",
+                ConfigureJsonOptions = options => options.Converters.Add(new CancelOnWriteConverter(cts)),
+            }
+        );
+
+        var ex = await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            client.SendAsync("topic", "key", new CancelOnWritePayload(), cts.Token)
+        );
+
+        // The inner exception proves the cancellation crossed the native boundary and was
+        // translated, rather than being caught by the entry-point token check.
+        Assert.IsType<Native.FfiException.Cancelled>(ex.InnerException);
     }
 
     [Fact]
