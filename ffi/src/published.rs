@@ -13,7 +13,7 @@ use prosody::high_level::erased::{
 use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
-use crate::state::ScanDirection;
+use crate::state::{ScanDirection, platform_index};
 
 fn direction(direction: ScanDirection) -> ErasedDirection {
     match direction {
@@ -195,8 +195,7 @@ impl PublishedDequeHandle {
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let index = usize::try_from(index)
-            .map_err(|_| FfiError::TransientState("index exceeds platform range".to_owned()))?;
+        let index = platform_index(index)?;
         let context = self.propagator.extract(&carrier);
         self.reader
             .get(key, index)

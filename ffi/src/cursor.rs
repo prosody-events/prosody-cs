@@ -14,6 +14,9 @@ use crate::error::FfiError;
 use crate::message::Message;
 
 /// Maximum number of immediately-ready scan items in one FFI vector.
+///
+/// Core owns ready draining, error ordering, and pull serialization. This
+/// binding owns only the transport cap and conversion.
 const READY_CHUNK_SIZE: NonZeroUsize = match NonZeroUsize::new(256) {
     Some(size) => size,
     None => NonZeroUsize::MIN,

@@ -307,6 +307,8 @@ impl Context {
         name: String,
     ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
         let handle = self.inner.message_value_state(&name)?;
+        // Consume each message collection name after lookup. This keeps the by-value
+        // FFI argument without a lint exception.
         drop(name);
         Ok(Arc::new(MessageValueStateHandle {
             state: handle,

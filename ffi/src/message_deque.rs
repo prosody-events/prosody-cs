@@ -12,7 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::MessageDequeCursor;
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{OwnedCarrier, ScanDirection};
+use crate::state::{OwnedCarrier, ScanDirection, platform_index};
 
 /// A Kafka-message deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -64,7 +64,7 @@ impl MessageDequeStateHandle {
     ) -> Result<Option<Arc<Message>>, FfiError> {
         let context = self.propagator.extract(&carrier);
         self.state
-            .get(usize::try_from(index).unwrap_or(usize::MAX))
+            .get(platform_index(index)?)
             .with_context(context)
             .await
             .map(|item| item.map(|message| Arc::new(Message::new(message))))

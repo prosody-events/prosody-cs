@@ -15,6 +15,10 @@ use crate::message::Message;
 use crate::state::{OwnedCarrier, ScanDirection, reject_null};
 
 /// One optional JSON value from an ordered batch read.
+///
+/// The C# generator emits `new byte[length][]?` for the nested optional byte
+/// vector. This syntax does not compile, so this record keeps the generated
+/// type valid.
 #[derive(uniffi::Record)]
 pub struct JsonMapValue {
     /// The JSON document bytes, or `None` when the key is absent.

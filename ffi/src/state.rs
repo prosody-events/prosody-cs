@@ -28,6 +28,9 @@ impl From<ScanDirection> for Direction {
 }
 
 /// A carrier consumed while its OpenTelemetry context is extracted.
+///
+/// The owned wrapper keeps synchronous scan methods compatible with the
+/// required by-value FFI argument without a lint exception.
 pub(crate) struct OwnedCarrier(HashMap<String, String>);
 
 impl OwnedCarrier {
@@ -40,6 +43,12 @@ impl OwnedCarrier {
     pub(crate) fn into_context(self, propagator: &TextMapCompositePropagator) -> Context {
         propagator.extract(&self.0)
     }
+}
+
+/// Converts an FFI deque index to the platform index type.
+pub(crate) fn platform_index(index: u64) -> Result<usize, FfiError> {
+    usize::try_from(index)
+        .map_err(|_| FfiError::TransientState("index exceeds platform range".to_owned()))
 }
 
 /// Rejects a JSON `null` document before it reaches the state codec.

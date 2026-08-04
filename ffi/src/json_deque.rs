@@ -10,7 +10,7 @@ use prosody::consumer::event_context::BoxDequeState;
 
 use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
-use crate::state::{OwnedCarrier, ScanDirection, reject_null};
+use crate::state::{OwnedCarrier, ScanDirection, platform_index, reject_null};
 
 /// A JSON deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -63,7 +63,7 @@ impl JsonDequeStateHandle {
     ) -> Result<Option<Vec<u8>>, FfiError> {
         let context = self.propagator.extract(&carrier);
         self.state
-            .get(usize::try_from(index).unwrap_or(usize::MAX))
+            .get(platform_index(index)?)
             .with_context(context)
             .await
             .map(|item| item.map(|payload| payload.bytes))
