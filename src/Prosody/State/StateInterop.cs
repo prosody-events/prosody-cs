@@ -133,44 +133,13 @@ internal static class StateInterop
         return bytes;
     }
 
-    /// <summary>
-    /// Projects a native key-only scan item into its key string. A wrong-shape item classifies
-    /// transient — matching the four value-bearing <c>Transform</c> methods — so the message retries
-    /// rather than being silently dropped.
-    /// </summary>
-    internal static string ItemKey(Native.StateScanItem item) =>
-        item is Native.StateScanItem.MapKey key
-            ? key.Key
-            : throw new TransientStateException("State scan item shape mismatch: expected a map key.");
-
     /// <summary>Projects a native JSON map entry into a typed key-value pair.</summary>
-    internal static KeyValuePair<string, T> JsonMapEntry<T>(Native.StateScanItem item, JsonTypeInfo<T> typeInfo)
-        where T : notnull =>
-        item is Native.StateScanItem.MapJson entry
-            ? KeyValuePair.Create(entry.Key, DeserializeJson(entry.Bytes, typeInfo))
-            : throw new TransientStateException("State scan item shape mismatch: expected a JSON map entry.");
+    internal static KeyValuePair<string, T> JsonMapEntry<T>(Native.JsonMapEntry item, JsonTypeInfo<T> typeInfo)
+        where T : notnull => KeyValuePair.Create(item.Key, DeserializeJson(item.Bytes, typeInfo));
 
-    /// <summary>Projects a native JSON deque item into its typed value.</summary>
-    internal static T JsonDequeItem<T>(Native.StateScanItem item, JsonTypeInfo<T> typeInfo)
-        where T : notnull =>
-        item is Native.StateScanItem.DequeJson element
-            ? DeserializeJson(element.Bytes, typeInfo)
-            : throw new TransientStateException("State scan item shape mismatch: expected a JSON deque element.");
-
-    /// <summary>Projects a native JSON state item into an optional typed value.</summary>
-    internal static StateValue<T> JsonToValue<T>(Native.StateItem? item, JsonTypeInfo<T> typeInfo)
-        where T : notnull
-    {
-        switch (item)
-        {
-            case null:
-                return StateValue<T>.None;
-            case Native.StateItem.Json json:
-                return new StateValue<T>(DeserializeJson(json.Bytes, typeInfo));
-            default:
-                throw new TransientStateException("State item shape mismatch: expected a JSON document.");
-        }
-    }
+    /// <summary>Projects optional JSON bytes into a typed value.</summary>
+    internal static StateValue<T> JsonToValue<T>(byte[]? bytes, JsonTypeInfo<T> typeInfo)
+        where T : notnull => bytes is null ? StateValue<T>.None : new StateValue<T>(DeserializeJson(bytes, typeInfo));
 
     internal static T DeserializeJson<T>(byte[] bytes, JsonTypeInfo<T> typeInfo)
         where T : notnull =>

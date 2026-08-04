@@ -1332,7 +1332,7 @@ Published JSON collections use the same definition for owned and read-only acces
 Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
-- `TransientStateException : StateException`: the default — a temporary store read/write failure, or any caller mistake (a `null`/unrepresentable write, item-shape mismatch, out-of-range index, invalid scan direction), classified transient so it retries rather than discarding the message.
+- `TransientStateException : StateException`: the default for a temporary store failure or caller mistake. Examples include a `null` write or invalid index.
 - `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
 - `PermanentStateException : StateException, IPermanentError`: reserved for failures a retry cannot resolve in-process (unregistered/identity-mismatched collection, duplicate/invalid name or TTL), or one a handler throws explicitly.
 - `StateErrorCategory`: `Permanent` or `Transient`.

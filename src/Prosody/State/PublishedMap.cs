@@ -41,7 +41,7 @@ public sealed class PublishedMap<TValue>
             async () =>
             {
                 var items = await _handle.GetMany(key, keys, StateInterop.CreateCarrier()).ConfigureAwait(false);
-                return Array.ConvertAll(items, item => StateInterop.JsonToValue(item, _typeInfo));
+                return Array.ConvertAll(items, item => StateInterop.JsonToValue(item.Bytes, _typeInfo));
             },
             cancellationToken
         );
@@ -58,7 +58,7 @@ public sealed class PublishedMap<TValue>
         );
     }
 
-    /// <summary>Enumerates keys using the shared key-only chunked cursor.</summary>
+    /// <summary>Enumerates keys without reading values.</summary>
     public IAsyncEnumerable<string> EnumerateKeysAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -67,21 +67,23 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<string>(
+        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
             () =>
-                StateInterop.RunAsync<Native.IStateCursor>(
+                StateInterop.RunAsync<Native.IMapKeyCursor>(
                     async () =>
                         await _handle
                             .Keys(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                             .ConfigureAwait(false),
                     cancellationToken
                 ),
-            StateInterop.ItemKey,
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            static item => item,
             cancellationToken
         );
     }
 
-    /// <summary>Enumerates entries using the shared chunked state cursor.</summary>
+    /// <summary>Enumerates entries with a typed JSON map cursor.</summary>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -90,15 +92,17 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<KeyValuePair<string, TValue>>(
+        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
             () =>
-                StateInterop.RunAsync<Native.IStateCursor>(
+                StateInterop.RunAsync<Native.IJsonMapCursor>(
                     async () =>
                         await _handle
                             .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                             .ConfigureAwait(false),
                     cancellationToken
                 ),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
             item => StateInterop.JsonMapEntry(item, _typeInfo),
             cancellationToken
         );

@@ -1,5 +1,3 @@
-using Native = Prosody.Native;
-
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
@@ -7,15 +5,16 @@ namespace Prosody.Tests.TestHelpers;
 /// <c>StateScanSequence</c> adapter. Records pull/close counts, tracks the maximum number of
 /// concurrently active pulls, and can gate a pull open or fault it on demand.
 /// </summary>
-internal sealed class FakeStateCursor : Native.IStateCursor
+internal sealed class FakeStateCursor<T>
+    where T : class
 {
-    private readonly Queue<Native.StateScanItem[]?> _chunks;
+    private readonly Queue<T[]?> _chunks;
     private readonly object _maxLock = new();
     private int _activePulls;
 
-    internal FakeStateCursor(params Native.StateScanItem[]?[] chunks)
+    internal FakeStateCursor(params T[]?[] chunks)
     {
-        _chunks = new Queue<Native.StateScanItem[]?>(chunks);
+        _chunks = new Queue<T[]?>(chunks);
     }
 
     /// <summary>The number of <c>NextChunk</c> calls.</summary>
@@ -37,7 +36,7 @@ internal sealed class FakeStateCursor : Native.IStateCursor
     public TaskCompletionSource? PullRelease { get; set; }
 
     /// <summary>When set, a pull throws this instead of returning a chunk.</summary>
-    public Func<Native.FfiException>? PullError { get; set; }
+    public Func<global::Prosody.Native.FfiException>? PullError { get; set; }
 
     /// <summary>When set, <c>Close</c> invokes this (for example to fault the close).</summary>
     public Func<Task>? CloseBehavior { get; set; }
@@ -45,7 +44,7 @@ internal sealed class FakeStateCursor : Native.IStateCursor
     /// <summary>The trace-propagation carrier of the most recent pull.</summary>
     public Dictionary<string, string>? LastCarrier { get; private set; }
 
-    public async Task<Native.StateScanItem[]?> NextChunk(Dictionary<string, string> carrier)
+    public async Task<T[]?> NextChunk(Dictionary<string, string> carrier)
     {
         NextChunkCalls++;
         LastCarrier = carrier;

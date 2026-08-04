@@ -21,10 +21,10 @@ use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
 
 use crate::error::FfiError;
-use crate::state::{
-    DequeStateHandle, DequeStateVariant, MapStateHandle, MapStateVariant, ValueStateHandle,
-    ValueStateVariant,
-};
+use crate::json_deque::JsonDequeStateHandle;
+use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
+use crate::message_deque::MessageDequeStateHandle;
+use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 
 /// Event context passed to message handlers during event processing.
 ///
@@ -245,11 +245,11 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
+    pub fn value_state(&self, name: String) -> Result<Arc<JsonValueStateHandle>, FfiError> {
         let handle = self.inner.value_state(&name)?;
-        Ok(Arc::new(ValueStateHandle {
+        Ok(Arc::new(JsonValueStateHandle {
             name,
-            state: ValueStateVariant::Json(handle),
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -264,11 +264,11 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
+    pub fn map_state(&self, name: String) -> Result<Arc<JsonMapStateHandle>, FfiError> {
         let handle = self.inner.map_state(&name)?;
-        Ok(Arc::new(MapStateHandle {
+        Ok(Arc::new(JsonMapStateHandle {
             name,
-            state: MapStateVariant::Json(handle),
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -283,11 +283,11 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
+    pub fn deque_state(&self, name: String) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
         let handle = self.inner.deque_state(&name)?;
-        Ok(Arc::new(DequeStateHandle {
+        Ok(Arc::new(JsonDequeStateHandle {
             name,
-            state: DequeStateVariant::Json(handle),
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -302,11 +302,14 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_value_state(&self, name: String) -> Result<Arc<ValueStateHandle>, FfiError> {
+    pub fn message_value_state(
+        &self,
+        name: String,
+    ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
         let handle = self.inner.message_value_state(&name)?;
-        Ok(Arc::new(ValueStateHandle {
-            name,
-            state: ValueStateVariant::Message(handle),
+        drop(name);
+        Ok(Arc::new(MessageValueStateHandle {
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -321,11 +324,11 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_map_state(&self, name: String) -> Result<Arc<MapStateHandle>, FfiError> {
+    pub fn message_map_state(&self, name: String) -> Result<Arc<MessageMapStateHandle>, FfiError> {
         let handle = self.inner.message_map_state(&name)?;
-        Ok(Arc::new(MapStateHandle {
-            name,
-            state: MapStateVariant::Message(handle),
+        drop(name);
+        Ok(Arc::new(MessageMapStateHandle {
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -340,11 +343,14 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_deque_state(&self, name: String) -> Result<Arc<DequeStateHandle>, FfiError> {
+    pub fn message_deque_state(
+        &self,
+        name: String,
+    ) -> Result<Arc<MessageDequeStateHandle>, FfiError> {
         let handle = self.inner.message_deque_state(&name)?;
-        Ok(Arc::new(DequeStateHandle {
-            name,
-            state: DequeStateVariant::Message(handle),
+        drop(name);
+        Ok(Arc::new(MessageDequeStateHandle {
+            state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
     }

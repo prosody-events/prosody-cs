@@ -9,10 +9,10 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload>>
 {
-    private readonly Native.IValueStateHandle _handle;
+    private readonly Native.IMessageValueStateHandle _handle;
     private readonly JsonTypeInfo<TPayload> _typeInfo;
 
-    internal MessageValueState(Native.IValueStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
+    internal MessageValueState(Native.IMessageValueStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -31,7 +31,7 @@ internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload
     public Task SetAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(() => _handle.SetMessage(native, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(() => _handle.Set(native, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>

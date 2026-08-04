@@ -42,7 +42,7 @@ public sealed class StateTracingTests : IDisposable
     [Fact]
     public async Task StateOp_InjectsCarrier_ParentedToActiveActivity()
     {
-        var handle = new FakeValueStateHandle();
+        var handle = new FakeJsonValueStateHandle();
         var state = new ValueState<int>(handle, TestJson.TypeInfo<int>());
 
         using var activity = _source.StartActivity("on_message", ActivityKind.Consumer);
@@ -59,17 +59,14 @@ public sealed class StateTracingTests : IDisposable
     [Fact]
     public async Task Scan_InjectsCarrierPerPull_NoExtraActivities()
     {
-        Native.StateScanItem[] Chunk(params string[] items) =>
-            [
-                .. items.Select(item =>
-                    (Native.StateScanItem)new Native.StateScanItem.DequeJson(Encoding.UTF8.GetBytes(item))
-                ),
-            ];
+        byte[][] Chunk(params string[] items) => [.. items.Select(Encoding.UTF8.GetBytes)];
 
-        var cursor = new FakeStateCursor(Chunk("a", "b"));
-        var sequence = new StateScanSequence<string>(
+        var cursor = new FakeStateCursor<byte[]>(Chunk("a", "b"));
+        var sequence = new StateScanSequence<FakeStateCursor<byte[]>, byte[], string>(
             () => cursor,
-            item => Encoding.UTF8.GetString(((Native.StateScanItem.DequeJson)item).Bytes),
+            static (nativeCursor, carrier) => nativeCursor.NextChunk(carrier),
+            static nativeCursor => nativeCursor.Close(),
+            Encoding.UTF8.GetString,
             CancellationToken.None
         );
 

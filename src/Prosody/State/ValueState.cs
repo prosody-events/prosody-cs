@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class ValueState<T> : IValueState<T>
     where T : notnull
 {
-    private readonly Native.IValueStateHandle _handle;
+    private readonly Native.IJsonValueStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal ValueState(Native.IValueStateHandle handle, JsonTypeInfo<T> typeInfo)
+    internal ValueState(Native.IJsonValueStateHandle handle, JsonTypeInfo<T> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -31,7 +31,7 @@ internal sealed class ValueState<T> : IValueState<T>
     public Task SetAsync(T value, CancellationToken cancellationToken = default)
     {
         var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "Use ClearAsync to delete instead.");
-        return StateInterop.RunAsync(() => _handle.SetJson(bytes, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(() => _handle.Set(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>

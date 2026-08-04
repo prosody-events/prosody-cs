@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class DequeState<T> : IDequeState<T>
     where T : notnull
 {
-    private readonly Native.IDequeStateHandle _handle;
+    private readonly Native.IJsonDequeStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal DequeState(Native.IDequeStateHandle handle, JsonTypeInfo<T> typeInfo)
+    internal DequeState(Native.IJsonDequeStateHandle handle, JsonTypeInfo<T> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -21,19 +21,13 @@ internal sealed class DequeState<T> : IDequeState<T>
     public Task PushBackAsync(T value, CancellationToken cancellationToken = default)
     {
         var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "A deque stores only concrete values.");
-        return StateInterop.RunAsync(
-            () => _handle.PushBackJson(bytes, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.PushBack(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task PushFrontAsync(T value, CancellationToken cancellationToken = default)
     {
         var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "A deque stores only concrete values.");
-        return StateInterop.RunAsync(
-            () => _handle.PushFrontJson(bytes, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.PushFront(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default) =>
@@ -111,12 +105,14 @@ internal sealed class DequeState<T> : IDequeState<T>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<T>(
+        return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            item => StateInterop.JsonDequeItem(item, _typeInfo),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            bytes => StateInterop.DeserializeJson(bytes, _typeInfo),
             cancellationToken
         );
     }

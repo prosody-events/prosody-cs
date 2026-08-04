@@ -15,7 +15,7 @@ public enum StateErrorCategory
 
     /// <summary>
     /// A retryable failure. Every caller or input mistake at the keyed-state boundary
-    /// (null or unrepresentable writes, wrong item shapes, invalid indices, invalid direction
+    /// (null or unrepresentable writes, invalid indices, invalid direction
     /// tokens) folds into this category so a data-dependent handler bug retries rather than
     /// committing the offset and silently losing the message.
     /// </summary>

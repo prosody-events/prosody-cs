@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class MapState<TValue> : IMapState<TValue>
     where TValue : notnull
 {
-    private readonly Native.IMapStateHandle _handle;
+    private readonly Native.IJsonMapStateHandle _handle;
     private readonly JsonTypeInfo<TValue> _typeInfo;
 
-    internal MapState(Native.IMapStateHandle handle, JsonTypeInfo<TValue> typeInfo)
+    internal MapState(Native.IJsonMapStateHandle handle, JsonTypeInfo<TValue> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -45,7 +45,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
                 var results = new StateValue<TValue>[items.Length];
                 for (var i = 0; i < items.Length; i++)
                 {
-                    results[i] = StateInterop.JsonToValue(items[i], _typeInfo);
+                    results[i] = StateInterop.JsonToValue(items[i].Bytes, _typeInfo);
                 }
 
                 return results;
@@ -58,10 +58,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "Use RemoveAsync to delete instead.");
-        return StateInterop.RunAsync(
-            () => _handle.SetJson(key, bytes, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.Set(key, bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)
@@ -85,12 +82,14 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<string>(
+        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            StateInterop.ItemKey,
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            static key => key,
             cancellationToken
         );
     }
@@ -101,11 +100,13 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<KeyValuePair<string, TValue>>(
+        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
             item => StateInterop.JsonMapEntry(item, _typeInfo),
             cancellationToken
         );

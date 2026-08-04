@@ -36,8 +36,7 @@
 //! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
 //! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
 //! - [`message`]: Kafka message wrapper for C# consumption
-//! - [`state`]: Keyed-state handles, cursor, and item types over the erased
-//!   seam
+//! - [`state`]: Shared keyed-state types and validation
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
 
@@ -53,14 +52,19 @@ pub mod cancellation;
 pub mod client;
 pub mod config;
 pub mod context;
+pub mod cursor;
 pub mod error;
 pub mod handler;
+pub mod json_deque;
 pub mod logging;
+pub mod map;
 pub mod message;
+pub mod message_deque;
 pub mod published;
 pub mod state;
 pub mod timer;
 pub mod types;
+pub mod value;
 
 /// OpenTelemetry context carrier for distributed tracing propagation.
 ///
@@ -80,18 +84,23 @@ pub use admin::AdminClient;
 pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
 pub use context::Context;
+pub use cursor::{
+    JsonDequeCursor, JsonMapCursor, JsonMapEntry, MapKeyCursor, MessageDequeCursor,
+    MessageMapCursor, MessageMapEntry,
+};
 pub use error::FfiError;
 pub use handler::{EventHandler, HandlerResultCode};
+pub use json_deque::JsonDequeStateHandle;
+pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
 pub use message::Message;
+pub use message_deque::MessageDequeStateHandle;
 pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
-pub use state::{
-    DequeStateHandle, MapStateHandle, ScanDirection, StateCursor, StateItem, StateScanItem,
-    ValueStateHandle,
-};
+pub use state::ScanDirection;
 pub use timer::Timer;
 pub use types::{
     ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,
 };
+pub use value::{JsonValueStateHandle, MessageValueStateHandle};
 
 // Initialize UniFFI scaffolding (proc-macro approach, no UDL file required).
 uniffi::setup_scaffolding!();
