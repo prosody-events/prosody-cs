@@ -11,7 +11,7 @@ use prosody::consumer::message::ConsumerMessage;
 
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::reject_null;
+use crate::state::{into_bytes, into_message, reject_null, traced};
 
 /// A JSON single-value state handle for one event.
 #[derive(uniffi::Object)]
@@ -29,13 +29,9 @@ impl JsonValueStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get(&self, carrier: HashMap<String, String>) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get())
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Buffers a JSON document write.
@@ -50,12 +46,7 @@ impl JsonValueStateHandle {
     ) -> Result<(), FfiError> {
         let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
         reject_null(&payload, &self.name, "; use ClearAsync to remove the value")?;
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .set(payload)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.set(payload)).await
     }
 
     /// Clears the current value.
@@ -64,12 +55,7 @@ impl JsonValueStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Commits the buffered operations.
@@ -78,12 +64,7 @@ impl JsonValueStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.
@@ -111,13 +92,9 @@ impl MessageValueStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get())
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Buffers a Kafka message write.
@@ -130,12 +107,12 @@ impl MessageValueStateHandle {
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .set(message.consumer_message())
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.set(message.consumer_message()),
+        )
+        .await
     }
 
     /// Clears the current value.
@@ -144,12 +121,7 @@ impl MessageValueStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Commits the buffered operations.
@@ -158,12 +130,7 @@ impl MessageValueStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.

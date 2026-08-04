@@ -12,7 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::MessageDequeCursor;
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{OwnedCarrier, ScanDirection, platform_index};
+use crate::state::{OwnedCarrier, ScanDirection, into_message, platform_index, traced};
 
 /// A Kafka-message deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -29,13 +29,9 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn len(&self, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .len()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.len())
             .await
             .map(|length| length as u64)
-            .map_err(FfiError::from)
     }
 
     /// Reports whether the deque has no live elements.
@@ -44,12 +40,7 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .is_empty()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.is_empty()).await
     }
 
     /// Reads the Kafka message at `index`.
@@ -62,13 +53,13 @@ impl MessageDequeStateHandle {
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get(platform_index(index)?)
-            .with_context(context)
-            .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.get(platform_index(index)?),
+        )
+        .await
+        .map(|item| item.map(into_message))
     }
 
     /// Appends one Kafka message.
@@ -81,12 +72,12 @@ impl MessageDequeStateHandle {
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .push_back(message.consumer_message())
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.push_back(message.consumer_message()),
+        )
+        .await
     }
 
     /// Prepends one Kafka message.
@@ -99,12 +90,12 @@ impl MessageDequeStateHandle {
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .push_front(message.consumer_message())
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.push_front(message.consumer_message()),
+        )
+        .await
     }
 
     /// Removes and returns the front Kafka message.
@@ -116,13 +107,9 @@ impl MessageDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .pop_front()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.pop_front())
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Removes and returns the back Kafka message.
@@ -134,13 +121,9 @@ impl MessageDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .pop_back()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.pop_back())
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Reads the front Kafka message.
@@ -152,13 +135,9 @@ impl MessageDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .peek_front()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.peek_front())
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Reads the back Kafka message.
@@ -170,13 +149,9 @@ impl MessageDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .peek_back()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.peek_back())
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Removes every element.
@@ -185,12 +160,7 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Opens a cursor over live elements.
@@ -214,12 +184,7 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.

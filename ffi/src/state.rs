@@ -1,13 +1,18 @@
 //! Shared keyed-state types and validation.
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::sync::Arc;
 
 use opentelemetry::Context;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
+use opentelemetry::trace::FutureExt;
 use prosody::codec::{BinaryPayload, ErasedStateCodec};
+use prosody::consumer::message::ConsumerMessage;
 use prosody::state::Direction;
 
 use crate::error::FfiError;
+use crate::message::Message;
 
 /// The direction of a collection scan.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -43,6 +48,31 @@ impl OwnedCarrier {
     pub(crate) fn into_context(self, propagator: &TextMapCompositePropagator) -> Context {
         propagator.extract(&self.0)
     }
+}
+
+/// Runs one state operation with the caller's trace context.
+pub(crate) async fn traced<T, E>(
+    propagator: &TextMapCompositePropagator,
+    carrier: HashMap<String, String>,
+    operation: impl Future<Output = Result<T, E>>,
+) -> Result<T, FfiError>
+where
+    E: Into<FfiError>,
+{
+    operation
+        .with_context(propagator.extract(&carrier))
+        .await
+        .map_err(Into::into)
+}
+
+/// Returns the bytes from an optional binary payload.
+pub(crate) fn into_bytes(payload: Option<BinaryPayload>) -> Option<Vec<u8>> {
+    payload.map(|payload| payload.bytes)
+}
+
+/// Wraps one resolved Kafka message for FFI.
+pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Arc<Message> {
+    Arc::new(Message::new(message))
 }
 
 /// Converts an FFI deque index to the platform index type.

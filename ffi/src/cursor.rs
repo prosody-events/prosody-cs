@@ -1,17 +1,20 @@
 //! Typed cursors for keyed-state scans.
+//!
+//! Keep concrete cursor types explicit because macros hide the exported
+//! `UniFFI` surface.
 
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxStateCursor;
 use prosody::consumer::message::ConsumerMessage;
 
 use crate::error::FfiError;
 use crate::message::Message;
+use crate::state::{into_message, traced};
 
 /// Maximum number of immediately-ready scan items in one FFI vector.
 ///
@@ -60,15 +63,13 @@ impl JsonDequeCursor {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<Vec<u8>>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.cursor
-            .next_ready_chunk(READY_CHUNK_SIZE)
-            .with_context(context)
-            .await
-            .map(|chunk| {
-                chunk.map(|items| items.into_iter().map(|payload| payload.bytes).collect())
-            })
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+        )
+        .await
+        .map(|chunk| chunk.map(|items| items.into_iter().map(|payload| payload.bytes).collect()))
     }
 
     /// Closes the cursor.
@@ -97,23 +98,23 @@ impl JsonMapCursor {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<JsonMapEntry>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.cursor
-            .next_ready_chunk(READY_CHUNK_SIZE)
-            .with_context(context)
-            .await
-            .map(|chunk| {
-                chunk.map(|items| {
-                    items
-                        .into_iter()
-                        .map(|(key, payload)| JsonMapEntry {
-                            key,
-                            bytes: payload.bytes,
-                        })
-                        .collect()
-                })
+        traced(
+            &self.propagator,
+            carrier,
+            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+        )
+        .await
+        .map(|chunk| {
+            chunk.map(|items| {
+                items
+                    .into_iter()
+                    .map(|(key, payload)| JsonMapEntry {
+                        key,
+                        bytes: payload.bytes,
+                    })
+                    .collect()
             })
-            .map_err(FfiError::from)
+        })
     }
 
     /// Closes the cursor.
@@ -142,20 +143,13 @@ impl MessageDequeCursor {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<Arc<Message>>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.cursor
-            .next_ready_chunk(READY_CHUNK_SIZE)
-            .with_context(context)
-            .await
-            .map(|chunk| {
-                chunk.map(|items| {
-                    items
-                        .into_iter()
-                        .map(|message| Arc::new(Message::new(message)))
-                        .collect()
-                })
-            })
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+        )
+        .await
+        .map(|chunk| chunk.map(|items| items.into_iter().map(into_message).collect()))
     }
 
     /// Closes the cursor.
@@ -184,23 +178,23 @@ impl MessageMapCursor {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<MessageMapEntry>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.cursor
-            .next_ready_chunk(READY_CHUNK_SIZE)
-            .with_context(context)
-            .await
-            .map(|chunk| {
-                chunk.map(|items| {
-                    items
-                        .into_iter()
-                        .map(|(key, message)| MessageMapEntry {
-                            key,
-                            message: Arc::new(Message::new(message)),
-                        })
-                        .collect()
-                })
+        traced(
+            &self.propagator,
+            carrier,
+            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+        )
+        .await
+        .map(|chunk| {
+            chunk.map(|items| {
+                items
+                    .into_iter()
+                    .map(|(key, message)| MessageMapEntry {
+                        key,
+                        message: into_message(message),
+                    })
+                    .collect()
             })
-            .map_err(FfiError::from)
+        })
     }
 
     /// Closes the cursor.
@@ -229,12 +223,12 @@ impl MapKeyCursor {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<String>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.cursor
-            .next_ready_chunk(READY_CHUNK_SIZE)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+        )
+        .await
     }
 
     /// Closes the cursor.

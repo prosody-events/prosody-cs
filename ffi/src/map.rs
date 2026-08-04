@@ -12,7 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::{JsonMapCursor, MapKeyCursor, MessageMapCursor};
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{OwnedCarrier, ScanDirection, reject_null};
+use crate::state::{OwnedCarrier, ScanDirection, into_bytes, into_message, reject_null, traced};
 
 /// One optional JSON value from an ordered batch read.
 ///
@@ -45,13 +45,9 @@ impl JsonMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get(key)
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get(key))
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Reads several JSON values in request order.
@@ -64,20 +60,16 @@ impl JsonMapStateHandle {
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<JsonMapValue>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get_many(keys)
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get_many(keys))
             .await
             .map(|items| {
                 items
                     .into_iter()
                     .map(|item| JsonMapValue {
-                        bytes: item.map(|payload| payload.bytes),
+                        bytes: into_bytes(item),
                     })
                     .collect()
             })
-            .map_err(FfiError::from)
     }
 
     /// Reports whether `key` exists.
@@ -90,12 +82,7 @@ impl JsonMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .contains_key(key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.contains_key(key)).await
     }
 
     /// Opens a cursor over live keys without reading values.
@@ -130,12 +117,7 @@ impl JsonMapStateHandle {
             &self.name,
             "; use RemoveAsync to remove the entry",
         )?;
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .set(key, payload)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.set(key, payload)).await
     }
 
     /// Removes `key`.
@@ -148,12 +130,7 @@ impl JsonMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .remove(key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.remove(key)).await
     }
 
     /// Removes every entry.
@@ -162,12 +139,7 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Opens a cursor over live entries.
@@ -191,12 +163,7 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.
@@ -225,13 +192,9 @@ impl MessageMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get(key)
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get(key))
             .await
-            .map(|item| item.map(|message| Arc::new(Message::new(message))))
-            .map_err(FfiError::from)
+            .map(|item| item.map(into_message))
     }
 
     /// Reads several Kafka messages in request order.
@@ -244,18 +207,14 @@ impl MessageMapStateHandle {
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<Option<Arc<Message>>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get_many(keys)
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.get_many(keys))
             .await
             .map(|items| {
                 items
                     .into_iter()
-                    .map(|item| item.map(|message| Arc::new(Message::new(message))))
+                    .map(|item| item.map(into_message))
                     .collect()
             })
-            .map_err(FfiError::from)
     }
 
     /// Reports whether `key` exists without resolving its message.
@@ -268,12 +227,7 @@ impl MessageMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .contains_key(key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.contains_key(key)).await
     }
 
     /// Opens a cursor over live keys without resolving messages.
@@ -302,12 +256,12 @@ impl MessageMapStateHandle {
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .set(key, message.consumer_message())
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.set(key, message.consumer_message()),
+        )
+        .await
     }
 
     /// Removes `key`.
@@ -320,12 +274,7 @@ impl MessageMapStateHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .remove(key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.remove(key)).await
     }
 
     /// Removes every entry.
@@ -334,12 +283,7 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Opens a cursor over live entries.
@@ -363,12 +307,7 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.

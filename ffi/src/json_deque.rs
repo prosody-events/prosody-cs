@@ -10,7 +10,7 @@ use prosody::consumer::event_context::BoxDequeState;
 
 use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
-use crate::state::{OwnedCarrier, ScanDirection, platform_index, reject_null};
+use crate::state::{OwnedCarrier, ScanDirection, into_bytes, platform_index, reject_null, traced};
 
 /// A JSON deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -28,13 +28,9 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn len(&self, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .len()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.len())
             .await
             .map(|length| length as u64)
-            .map_err(FfiError::from)
     }
 
     /// Reports whether the deque has no live elements.
@@ -43,12 +39,7 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .is_empty()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.is_empty()).await
     }
 
     /// Reads the JSON document bytes at `index`.
@@ -61,13 +52,13 @@ impl JsonDequeStateHandle {
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .get(platform_index(index)?)
-            .with_context(context)
-            .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.state.get(platform_index(index)?),
+        )
+        .await
+        .map(into_bytes)
     }
 
     /// Appends one JSON document.
@@ -82,12 +73,7 @@ impl JsonDequeStateHandle {
     ) -> Result<(), FfiError> {
         let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
         reject_null(&payload, &self.name, " in a deque")?;
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .push_back(payload)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.push_back(payload)).await
     }
 
     /// Prepends one JSON document.
@@ -102,12 +88,7 @@ impl JsonDequeStateHandle {
     ) -> Result<(), FfiError> {
         let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
         reject_null(&payload, &self.name, " in a deque")?;
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .push_front(payload)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.push_front(payload)).await
     }
 
     /// Removes and returns the front JSON document bytes.
@@ -119,13 +100,9 @@ impl JsonDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .pop_front()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.pop_front())
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Removes and returns the back JSON document bytes.
@@ -137,13 +114,9 @@ impl JsonDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .pop_back()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.pop_back())
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Reads the front JSON document bytes.
@@ -155,13 +128,9 @@ impl JsonDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .peek_front()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.peek_front())
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Reads the back JSON document bytes.
@@ -173,13 +142,9 @@ impl JsonDequeStateHandle {
         &self,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .peek_back()
-            .with_context(context)
+        traced(&self.propagator, carrier, self.state.peek_back())
             .await
-            .map(|item| item.map(|payload| payload.bytes))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Removes every element.
@@ -188,12 +153,7 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the clear fails.
     pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .clear()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.clear()).await
     }
 
     /// Opens a cursor over live elements.
@@ -217,12 +177,7 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.state
-            .commit()
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.state.commit()).await
     }
 
     /// Discards the buffered operations.
