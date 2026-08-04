@@ -25,14 +25,11 @@ public sealed class StateInteropTranslateTests
     }
 
     /// <summary>A native value handle whose <c>Commit</c> raises a generated permanent state failure.</summary>
-    private sealed class PermanentFaultingValueStateHandle : Native.IValueStateHandle
+    private sealed class PermanentFaultingValueStateHandle : Native.IJsonValueStateHandle
     {
-        public Task<Native.StateItem?> Get(Dictionary<string, string> carrier) =>
-            Task.FromResult<Native.StateItem?>(null);
+        public Task<byte[]?> Get(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
-        public Task SetJson(byte[] bytes, Dictionary<string, string> carrier) => Task.CompletedTask;
-
-        public Task SetMessage(Native.Message message, Dictionary<string, string> carrier) => Task.CompletedTask;
+        public Task Set(byte[] bytes, Dictionary<string, string> carrier) => Task.CompletedTask;
 
         public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
 

@@ -45,19 +45,19 @@ public sealed class PublishedStateTests
             return Task.FromResult(true);
         }
 
-        public Task<Native.StateItem?> Get(string key, string mapKey, Dictionary<string, string> carrier) =>
-            Task.FromResult<Native.StateItem?>(null);
+        public Task<byte[]?> Get(string key, string mapKey, Dictionary<string, string> carrier) =>
+            Task.FromResult<byte[]?>(null);
 
-        public Task<Native.StateItem?[]> GetMany(string key, string[] mapKeys, Dictionary<string, string> carrier) =>
-            Task.FromResult(Array.Empty<Native.StateItem?>());
+        public Task<Native.JsonMapValue[]> GetMany(string key, string[] mapKeys, Dictionary<string, string> carrier) =>
+            Task.FromResult(Array.Empty<Native.JsonMapValue>());
 
-        public Task<Native.StateCursor> Keys(
+        public Task<Native.MapKeyCursor> Keys(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier
         ) => throw new NotSupportedException();
 
-        public Task<Native.StateCursor> Scan(
+        public Task<Native.JsonMapCursor> Scan(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier
@@ -66,20 +66,20 @@ public sealed class PublishedStateTests
 
     private sealed class PublishedDequeHandle : Native.IPublishedDequeHandle
     {
-        public Task<Native.StateItem?> Get(string key, ulong index, Dictionary<string, string> carrier) =>
-            Task.FromResult<Native.StateItem?>(null);
+        public Task<byte[]?> Get(string key, ulong index, Dictionary<string, string> carrier) =>
+            Task.FromResult<byte[]?>(null);
 
         public Task<bool> IsEmpty(string key, Dictionary<string, string> carrier) => Task.FromResult(false);
 
         public Task<ulong> Len(string key, Dictionary<string, string> carrier) => Task.FromResult(2UL);
 
-        public Task<Native.StateItem?> PeekBack(string key, Dictionary<string, string> carrier) =>
-            Task.FromResult<Native.StateItem?>(new Native.StateItem.Json("\"back\""u8.ToArray()));
+        public Task<byte[]?> PeekBack(string key, Dictionary<string, string> carrier) =>
+            Task.FromResult<byte[]?>("\"back\""u8.ToArray());
 
-        public Task<Native.StateItem?> PeekFront(string key, Dictionary<string, string> carrier) =>
-            Task.FromResult<Native.StateItem?>(new Native.StateItem.Json("\"front\""u8.ToArray()));
+        public Task<byte[]?> PeekFront(string key, Dictionary<string, string> carrier) =>
+            Task.FromResult<byte[]?>("\"front\""u8.ToArray());
 
-        public Task<Native.StateCursor> Scan(
+        public Task<Native.JsonDequeCursor> Scan(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier

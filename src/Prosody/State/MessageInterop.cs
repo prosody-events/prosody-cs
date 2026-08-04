@@ -47,20 +47,12 @@ internal static class MessageInterop
             );
     }
 
-    /// <summary>Projects a native message state item into an optional typed message value.</summary>
+    /// <summary>Projects an optional native message into a typed message value.</summary>
     internal static StateValue<Message<TPayload>> MessageToValue<TPayload>(
-        Native.StateItem? item,
+        Native.Message? item,
         JsonTypeInfo<TPayload> typeInfo
-    )
-    {
-        switch (item)
-        {
-            case null:
-                return StateValue<Message<TPayload>>.None;
-            case Native.StateItem.MessageItem message:
-                return new StateValue<Message<TPayload>>(FromNative(message.Message, typeInfo));
-            default:
-                throw new TransientStateException("State item shape mismatch: expected a message.");
-        }
-    }
+    ) =>
+        item is null
+            ? StateValue<Message<TPayload>>.None
+            : new StateValue<Message<TPayload>>(FromNative(item, typeInfo));
 }

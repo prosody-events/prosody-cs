@@ -9,10 +9,10 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
 {
-    private readonly Native.IMapStateHandle _handle;
+    private readonly Native.IMessageMapStateHandle _handle;
     private readonly JsonTypeInfo<TPayload> _typeInfo;
 
-    internal MessageMapState(Native.IMapStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
+    internal MessageMapState(Native.IMessageMapStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -58,10 +58,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     {
         ArgumentNullException.ThrowIfNull(key);
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(
-            () => _handle.SetMessage(key, native, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.Set(key, native, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)
@@ -85,12 +82,14 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<string>(
+        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            StateInterop.ItemKey,
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            static key => key,
             cancellationToken
         );
     }
@@ -101,12 +100,18 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<KeyValuePair<string, Message<TPayload>>>(
+        return new StateScanSequence<
+            Native.IMessageMapCursor,
+            Native.MessageMapEntry,
+            KeyValuePair<string, Message<TPayload>>
+        >(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            Transform,
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            entry => KeyValuePair.Create(entry.Key, MessageInterop.FromNative(entry.Message, _typeInfo)),
             cancellationToken
         );
     }
@@ -120,9 +125,4 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
 
     public Task RollbackAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
-
-    private KeyValuePair<string, Message<TPayload>> Transform(Native.StateScanItem item) =>
-        item is Native.StateScanItem.MapMessage entry
-            ? KeyValuePair.Create(entry.Key, MessageInterop.FromNative(entry.Message, _typeInfo))
-            : throw new TransientStateException("State scan item shape mismatch: expected a message map entry.");
 }

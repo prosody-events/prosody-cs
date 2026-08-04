@@ -3,25 +3,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::JsonBinaryCodec;
 use prosody::high_level::erased::{
     ErasedDequeReader, ErasedDirection, ErasedMapReader, ErasedValueReader,
 };
 
+use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
 use crate::error::FfiError;
-use crate::state::{CursorVariant, ScanDirection, StateCursor, StateItem};
+use crate::map::JsonMapValue;
+use crate::state::{ScanDirection, into_bytes, platform_index, traced};
 
 fn direction(direction: ScanDirection) -> ErasedDirection {
     match direction {
         ScanDirection::Forward => ErasedDirection::Forward,
         ScanDirection::Backward => ErasedDirection::Backward,
     }
-}
-
-fn json_item(bytes: Vec<u8>) -> StateItem {
-    StateItem::Json { bytes }
 }
 
 #[derive(uniffi::Object)]
@@ -42,14 +39,10 @@ impl PublishedValueHandle {
         &self,
         key: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<StateItem>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .get(key)
-            .with_context(context)
+    ) -> Result<Option<Vec<u8>>, FfiError> {
+        traced(&self.propagator, carrier, self.reader.get(key))
             .await
-            .map(|value| value.map(|payload| json_item(payload.bytes)))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 }
 
@@ -72,14 +65,10 @@ impl PublishedMapHandle {
         key: String,
         map_key: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<StateItem>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .get(key, map_key)
-            .with_context(context)
+    ) -> Result<Option<Vec<u8>>, FfiError> {
+        traced(&self.propagator, carrier, self.reader.get(key, map_key))
             .await
-            .map(|value| value.map(|payload| json_item(payload.bytes)))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Reads several committed map entries in one batch.
@@ -92,19 +81,21 @@ impl PublishedMapHandle {
         key: String,
         map_keys: Vec<String>,
         carrier: HashMap<String, String>,
-    ) -> Result<Vec<Option<StateItem>>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .get_many(key, map_keys)
-            .with_context(context)
-            .await
-            .map(|values| {
-                values
-                    .into_iter()
-                    .map(|value| value.map(|payload| json_item(payload.bytes)))
-                    .collect()
-            })
-            .map_err(FfiError::from)
+    ) -> Result<Vec<JsonMapValue>, FfiError> {
+        traced(
+            &self.propagator,
+            carrier,
+            self.reader.get_many(key, map_keys),
+        )
+        .await
+        .map(|values| {
+            values
+                .into_iter()
+                .map(|value| JsonMapValue {
+                    bytes: into_bytes(value),
+                })
+                .collect()
+        })
     }
 
     /// Reports whether a committed map entry exists.
@@ -118,12 +109,12 @@ impl PublishedMapHandle {
         map_key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .contains_key(key, map_key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(
+            &self.propagator,
+            carrier,
+            self.reader.contains_key(key, map_key),
+        )
+        .await
     }
 
     /// Opens an ordered map cursor.
@@ -136,16 +127,15 @@ impl PublishedMapHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<StateCursor>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        let cursor = self
-            .reader
-            .stream(key, direction(direction_value))
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)?;
-        Ok(Arc::new(StateCursor {
-            cursor: CursorVariant::MapJson(cursor),
+    ) -> Result<Arc<JsonMapCursor>, FfiError> {
+        let cursor = traced(
+            &self.propagator,
+            carrier,
+            self.reader.stream(key, direction(direction_value)),
+        )
+        .await?;
+        Ok(Arc::new(JsonMapCursor {
+            cursor,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -160,16 +150,15 @@ impl PublishedMapHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<StateCursor>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        let cursor = self
-            .reader
-            .keys(key, direction(direction_value))
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)?;
-        Ok(Arc::new(StateCursor {
-            cursor: CursorVariant::MapKeys(cursor),
+    ) -> Result<Arc<MapKeyCursor>, FfiError> {
+        let cursor = traced(
+            &self.propagator,
+            carrier,
+            self.reader.keys(key, direction(direction_value)),
+        )
+        .await?;
+        Ok(Arc::new(MapKeyCursor {
+            cursor,
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -194,16 +183,11 @@ impl PublishedDequeHandle {
         key: String,
         index: u64,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<StateItem>, FfiError> {
-        let index = usize::try_from(index)
-            .map_err(|_| FfiError::TransientState("index exceeds platform range".to_owned()))?;
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .get(key, index)
-            .with_context(context)
+    ) -> Result<Option<Vec<u8>>, FfiError> {
+        let index = platform_index(index)?;
+        traced(&self.propagator, carrier, self.reader.get(key, index))
             .await
-            .map(|value| value.map(|payload| json_item(payload.bytes)))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Returns the committed deque length.
@@ -216,13 +200,9 @@ impl PublishedDequeHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<u64, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .len(key)
-            .with_context(context)
+        traced(&self.propagator, carrier, self.reader.len(key))
             .await
             .map(|length| length as u64)
-            .map_err(FfiError::from)
     }
 
     /// Reports whether the committed deque is empty.
@@ -235,12 +215,7 @@ impl PublishedDequeHandle {
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .is_empty(key)
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)
+        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
     }
 
     /// Reads the committed front element.
@@ -252,14 +227,10 @@ impl PublishedDequeHandle {
         &self,
         key: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<StateItem>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .peek_front(key)
-            .with_context(context)
+    ) -> Result<Option<Vec<u8>>, FfiError> {
+        traced(&self.propagator, carrier, self.reader.peek_front(key))
             .await
-            .map(|value| value.map(|payload| json_item(payload.bytes)))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Reads the committed back element.
@@ -271,14 +242,10 @@ impl PublishedDequeHandle {
         &self,
         key: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<StateItem>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        self.reader
-            .peek_back(key)
-            .with_context(context)
+    ) -> Result<Option<Vec<u8>>, FfiError> {
+        traced(&self.propagator, carrier, self.reader.peek_back(key))
             .await
-            .map(|value| value.map(|payload| json_item(payload.bytes)))
-            .map_err(FfiError::from)
+            .map(into_bytes)
     }
 
     /// Opens an ordered deque cursor.
@@ -291,16 +258,15 @@ impl PublishedDequeHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<StateCursor>, FfiError> {
-        let context = self.propagator.extract(&carrier);
-        let cursor = self
-            .reader
-            .stream(key, direction(direction_value))
-            .with_context(context)
-            .await
-            .map_err(FfiError::from)?;
-        Ok(Arc::new(StateCursor {
-            cursor: CursorVariant::DequeJson(cursor),
+    ) -> Result<Arc<JsonDequeCursor>, FfiError> {
+        let cursor = traced(
+            &self.propagator,
+            carrier,
+            self.reader.stream(key, direction(direction_value)),
+        )
+        .await?;
+        Ok(Arc::new(JsonDequeCursor {
+            cursor,
             propagator: Arc::clone(&self.propagator),
         }))
     }

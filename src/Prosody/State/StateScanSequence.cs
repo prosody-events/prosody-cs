@@ -16,32 +16,46 @@ namespace Prosody.State;
 /// compiler <c>yield</c> iterator because that state machine is single-consumer and cannot serialize
 /// the protocol the way this contract requires.
 /// </remarks>
-/// <typeparam name="T">The yielded element type.</typeparam>
-internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
+/// <typeparam name="TCursor">The native cursor type.</typeparam>
+/// <typeparam name="TNative">The native chunk element type.</typeparam>
+/// <typeparam name="T">The public element type.</typeparam>
+internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<T>
+    where TCursor : class
+    where TNative : class
 {
-    private readonly Func<Native.IStateCursor>? _cursorFactory;
-    private readonly Func<Task<Native.IStateCursor>>? _asyncCursorFactory;
-    private readonly Func<Native.StateScanItem, T> _transform;
+    private readonly Func<TCursor>? _cursorFactory;
+    private readonly Func<Task<TCursor>>? _asyncCursorFactory;
+    private readonly Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> _nextChunk;
+    private readonly Func<TCursor, Task> _close;
+    private readonly Func<TNative, T> _transform;
     private readonly CancellationToken _cancellationToken;
 
     internal StateScanSequence(
-        Func<Native.IStateCursor> cursorFactory,
-        Func<Native.StateScanItem, T> transform,
+        Func<TCursor> cursorFactory,
+        Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
+        Func<TCursor, Task> close,
+        Func<TNative, T> transform,
         CancellationToken cancellationToken
     )
     {
         _cursorFactory = cursorFactory;
+        _nextChunk = nextChunk;
+        _close = close;
         _transform = transform;
         _cancellationToken = cancellationToken;
     }
 
     internal StateScanSequence(
-        Func<Task<Native.IStateCursor>> cursorFactory,
-        Func<Native.StateScanItem, T> transform,
+        Func<Task<TCursor>> cursorFactory,
+        Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
+        Func<TCursor, Task> close,
+        Func<TNative, T> transform,
         CancellationToken cancellationToken
     )
     {
         _asyncCursorFactory = cursorFactory;
+        _nextChunk = nextChunk;
+        _close = close;
         _transform = transform;
         _cancellationToken = cancellationToken;
     }
@@ -49,9 +63,11 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         return _cursorFactory is { } cursorFactory
-            ? new Enumerator(cursorFactory(), _transform, _cancellationToken, cancellationToken)
+            ? new Enumerator(cursorFactory(), _nextChunk, _close, _transform, _cancellationToken, cancellationToken)
             : new Enumerator(
                 _asyncCursorFactory ?? throw new InvalidOperationException("A state scan must have a cursor factory."),
+                _nextChunk,
+                _close,
                 _transform,
                 _cancellationToken,
                 cancellationToken
@@ -60,35 +76,43 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
 
     private sealed class Enumerator : IAsyncEnumerator<T>
     {
-        private readonly Func<Task<Native.IStateCursor>> _cursorFactory;
-        private Native.IStateCursor? _cursor;
-        private readonly Func<Native.StateScanItem, T> _transform;
+        private readonly Func<Task<TCursor>> _cursorFactory;
+        private TCursor? _cursor;
+        private readonly Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> _nextChunk;
+        private readonly Func<TCursor, Task> _close;
+        private readonly Func<TNative, T> _transform;
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly CancellationTokenSource? _linkedCts;
         private readonly CancellationToken _cancellationToken;
-        private Native.StateScanItem[] _chunk = [];
+        private TNative[] _chunk = [];
         private int _offset;
         private bool _finished;
 
         internal Enumerator(
-            Native.IStateCursor cursor,
-            Func<Native.StateScanItem, T> transform,
+            TCursor cursor,
+            Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
+            Func<TCursor, Task> close,
+            Func<TNative, T> transform,
             CancellationToken sequenceToken,
             CancellationToken enumeratorToken
         )
-            : this(() => Task.FromResult(cursor), transform, sequenceToken, enumeratorToken)
+            : this(() => Task.FromResult(cursor), nextChunk, close, transform, sequenceToken, enumeratorToken)
         {
             _cursor = cursor;
         }
 
         internal Enumerator(
-            Func<Task<Native.IStateCursor>> cursorFactory,
-            Func<Native.StateScanItem, T> transform,
+            Func<Task<TCursor>> cursorFactory,
+            Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
+            Func<TCursor, Task> close,
+            Func<TNative, T> transform,
             CancellationToken sequenceToken,
             CancellationToken enumeratorToken
         )
         {
             _cursorFactory = cursorFactory;
+            _nextChunk = nextChunk;
+            _close = close;
             _transform = transform;
 
             if (sequenceToken.CanBeCanceled && enumeratorToken.CanBeCanceled)
@@ -125,11 +149,11 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
                     _chunk = [];
                     _offset = 0;
 
-                    Native.StateScanItem[]? pulled;
+                    TNative[]? pulled;
                     try
                     {
                         _cursor ??= await _cursorFactory().ConfigureAwait(false);
-                        pulled = await _cursor.NextChunk(StateInterop.CreateCarrier()).ConfigureAwait(false);
+                        pulled = await _nextChunk(_cursor, StateInterop.CreateCarrier()).ConfigureAwait(false);
                     }
                     catch (Native.FfiException ex)
                     {
@@ -192,8 +216,11 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
             }
         }
 
-        private ValueTask CloseQuietlyAsync() =>
-            _cursor is null ? ValueTask.CompletedTask : BestEffort.RunAsync(_cursor.Close);
+        private ValueTask CloseQuietlyAsync()
+        {
+            var cursor = _cursor;
+            return cursor is null ? ValueTask.CompletedTask : BestEffort.RunAsync(() => _close(cursor));
+        }
 
         private async ValueTask CloseOrThrowAsync()
         {
@@ -201,7 +228,7 @@ internal sealed class StateScanSequence<T> : IAsyncEnumerable<T>
             {
                 if (_cursor is not null)
                 {
-                    await _cursor.Close().ConfigureAwait(false);
+                    await _close(_cursor).ConfigureAwait(false);
                 }
             }
             catch (Native.FfiException ex)

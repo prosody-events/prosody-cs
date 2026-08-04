@@ -14,7 +14,7 @@ public sealed class MessageStateInteropTests
     [Fact]
     public async Task Set_NullMessage_ThrowsNullValueException_TransientCategory_StoreUntouched()
     {
-        var handle = new FakeValueStateHandle();
+        var handle = new FakeMessageValueStateHandle();
         var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
 
         var exception = await Assert.ThrowsAsync<NullValueException>(() =>
@@ -23,14 +23,14 @@ public sealed class MessageStateInteropTests
 
         Assert.Multiple(
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.SetMessageCalls)
+            () => Assert.Equal(0, handle.SetCalls)
         );
     }
 
     [Fact]
     public async Task Set_MessageWithoutNativeHandle_ThrowsTransient_StoreUntouched()
     {
-        var handle = new FakeValueStateHandle();
+        var handle = new FakeMessageValueStateHandle();
         var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
 
         // A hand-constructed message carries no native handle, so it cannot be written back.
@@ -42,7 +42,7 @@ public sealed class MessageStateInteropTests
 
         Assert.Multiple(
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.SetMessageCalls)
+            () => Assert.Equal(0, handle.SetCalls)
         );
     }
 }

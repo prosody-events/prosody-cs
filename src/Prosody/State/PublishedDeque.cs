@@ -75,7 +75,7 @@ public sealed class PublishedDeque<T>
         );
     }
 
-    /// <summary>Enumerates elements using the shared chunked state cursor.</summary>
+    /// <summary>Enumerates elements with a typed JSON deque cursor.</summary>
     public IAsyncEnumerable<T> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -84,16 +84,18 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<T>(
+        return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
             () =>
-                StateInterop.RunAsync<Native.IStateCursor>(
+                StateInterop.RunAsync<Native.IJsonDequeCursor>(
                     async () =>
                         await _handle
                             .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                             .ConfigureAwait(false),
                     cancellationToken
                 ),
-            item => StateInterop.JsonDequeItem(item, _typeInfo),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            bytes => StateInterop.DeserializeJson(bytes, _typeInfo),
             cancellationToken
         );
     }

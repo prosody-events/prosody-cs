@@ -6,50 +6,41 @@ namespace Prosody.Tests.TestHelpers;
 /// An in-memory fake of the internal native deque-state handle. Records whether a write reached the
 /// boundary so tests can prove a rejected write left the store untouched.
 /// </summary>
-internal sealed class FakeDequeStateHandle : Native.IDequeStateHandle
+internal sealed class FakeDequeStateHandle : Native.IJsonDequeStateHandle
 {
-    /// <summary>The number of <c>PushBackJson</c> calls.</summary>
-    public int PushBackJsonCalls { get; private set; }
+    /// <summary>The number of <c>PushBack</c> calls.</summary>
+    public int PushBackCalls { get; private set; }
 
-    /// <summary>The number of <c>PushFrontJson</c> calls.</summary>
-    public int PushFrontJsonCalls { get; private set; }
+    /// <summary>The number of <c>PushFront</c> calls.</summary>
+    public int PushFrontCalls { get; private set; }
 
-    public Task PushBackJson(byte[] bytes, Dictionary<string, string> carrier)
+    public Task PushBack(byte[] bytes, Dictionary<string, string> carrier)
     {
-        PushBackJsonCalls++;
+        PushBackCalls++;
         return Task.CompletedTask;
     }
 
-    public Task PushFrontJson(byte[] bytes, Dictionary<string, string> carrier)
+    public Task PushFront(byte[] bytes, Dictionary<string, string> carrier)
     {
-        PushFrontJsonCalls++;
+        PushFrontCalls++;
         return Task.CompletedTask;
     }
 
-    public Task PushBackMessage(Native.Message message, Dictionary<string, string> carrier) => Task.CompletedTask;
+    public Task<byte[]?> PopFront(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
-    public Task PushFrontMessage(Native.Message message, Dictionary<string, string> carrier) => Task.CompletedTask;
+    public Task<byte[]?> PopBack(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
-    public Task<Native.StateItem?> PopFront(Dictionary<string, string> carrier) =>
-        Task.FromResult<Native.StateItem?>(null);
+    public Task<byte[]?> Get(ulong index, Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
-    public Task<Native.StateItem?> PopBack(Dictionary<string, string> carrier) =>
-        Task.FromResult<Native.StateItem?>(null);
+    public Task<byte[]?> PeekFront(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
-    public Task<Native.StateItem?> Get(ulong index, Dictionary<string, string> carrier) =>
-        Task.FromResult<Native.StateItem?>(null);
-
-    public Task<Native.StateItem?> PeekFront(Dictionary<string, string> carrier) =>
-        Task.FromResult<Native.StateItem?>(null);
-
-    public Task<Native.StateItem?> PeekBack(Dictionary<string, string> carrier) =>
-        Task.FromResult<Native.StateItem?>(null);
+    public Task<byte[]?> PeekBack(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
     public Task<ulong> Len(Dictionary<string, string> carrier) => Task.FromResult(0UL);
 
     public Task<bool> IsEmpty(Dictionary<string, string> carrier) => Task.FromResult(true);
 
-    public Native.StateCursor Scan(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
+    public Native.JsonDequeCursor Scan(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
         throw new NotSupportedException("FakeDequeStateHandle does not support scanning.");
 
     public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;

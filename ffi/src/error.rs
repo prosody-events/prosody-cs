@@ -153,7 +153,7 @@ pub enum FfiError {
     /// Recovered structurally from the erased seam's
     /// [`ErasedCategory::Transient`], and the classification every caller/input
     /// mistake the glue detects folds into (null or unrepresentable writes,
-    /// wrong item shapes, invalid indices) so a data-dependent handler bug
+    /// invalid values or indices) so a data-dependent handler bug
     /// retries rather than silently committing the offset and losing the
     /// message.
     #[error("transient state error: {0}")]

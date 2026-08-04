@@ -9,10 +9,10 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload>>
 {
-    private readonly Native.IDequeStateHandle _handle;
+    private readonly Native.IMessageDequeStateHandle _handle;
     private readonly JsonTypeInfo<TPayload> _typeInfo;
 
-    internal MessageDequeState(Native.IDequeStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
+    internal MessageDequeState(Native.IMessageDequeStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -21,19 +21,13 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     public Task PushBackAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(
-            () => _handle.PushBackMessage(native, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.PushBack(native, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task PushFrontAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(
-            () => _handle.PushFrontMessage(native, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(() => _handle.PushFront(native, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task<StateValue<Message<TPayload>>> PopFrontAsync(CancellationToken cancellationToken = default) =>
@@ -111,12 +105,14 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Message<TPayload>>(
+        return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            Transform,
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            message => MessageInterop.FromNative(message, _typeInfo),
             cancellationToken
         );
     }
@@ -129,9 +125,4 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
 
     public Task RollbackAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
-
-    private Message<TPayload> Transform(Native.StateScanItem item) =>
-        item is Native.StateScanItem.DequeMessage element
-            ? MessageInterop.FromNative(element.Message, _typeInfo)
-            : throw new TransientStateException("State scan item shape mismatch: expected a message deque element.");
 }
