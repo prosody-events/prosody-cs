@@ -23,6 +23,11 @@ internal static class EventHandlerBridge
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
+    // Fixed capacity: covers typical handler concurrency. Wiring
+    // ClientOptions.MaxConcurrency in needs an instance-scoped bridge — a
+    // follow-up. Excess sources beyond this bound are disposed, not pooled.
+    private static readonly CancellationTokenSourcePool CtsPool = new(capacity: 128);
+
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
 
@@ -63,13 +68,14 @@ internal static class EventHandlerBridge
         };
 
     /// <summary>
-    /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
-    /// and classifies any exception as permanent or transient.
+    /// Shared handler invocation logic: rents a pooled CTS, registers the push
+    /// cancel watch, invokes the handler, and classifies any exception as
+    /// permanent or transient.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
         Func<Exception, bool> isPermanentError,
-        Func<Task> onCancel,
+        CancelWatch cancelWatch,
         Dictionary<string, string> carrier,
         string activityName,
         string eventType = "handler",
@@ -82,19 +88,12 @@ internal static class EventHandlerBridge
             ActivityKind.Consumer,
             propagation.ActivityContext
         );
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // Start the cancellation bridge — races OnCancel() against handler completion
-        // so the monitor exits promptly regardless of which finishes first.
-        // Awaited in finally to ensure the monitor itself completes before CTS disposal.
-#pragma warning disable CA2025 // CTS outlives the monitor: finally awaits the monitor before the using scope disposes the CTS
-        Task cancelMonitor = BridgeCancellationAsync(onCancel, cts, handlerDone.Task);
-#pragma warning restore CA2025
+        PooledCts slot = CtsPool.Rent();
+        WatchGuarded(cancelWatch, slot, slot.Epoch);
 
         try
         {
-            await handler(cts.Token).ConfigureAwait(false);
+            await handler(slot.Cts.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null);
         }
         catch (Exception ex) when (isPermanentError(ex))
@@ -118,12 +117,46 @@ internal static class EventHandlerBridge
 #pragma warning restore CA1031
         finally
         {
-            // Signal the monitor to stop waiting, then await it so no task leaks.
-            // The using-scoped CTS is disposed after this finally block completes,
-            // guaranteeing it outlives any CancelAsync() call inside the monitor.
-            handlerDone.TrySetResult();
-            await cancelMonitor.ConfigureAwait(false);
+            StopGuarded(cancelWatch);
+            CtsPool.Return(slot);
         }
+    }
+
+    /// <summary>
+    /// Registers the push cancel action for the slot's current rental. A watch
+    /// fault is logged and swallowed — the handler then runs without push
+    /// cancellation, as before the watch existed.
+    /// </summary>
+    private static void WatchGuarded(CancelWatch cancelWatch, PooledCts slot, int epoch)
+    {
+        try
+        {
+            cancelWatch.Watch(() => slot.CancelIfCurrent(epoch));
+        }
+#pragma warning disable CA1031 // FFI boundary: cancel watch faults must not affect the handler result
+        catch (Exception ex)
+        {
+            LogHelper.LogCancelWatchFault(Logger, ex);
+        }
+#pragma warning restore CA1031
+    }
+
+    /// <summary>
+    /// Stops the cancel watch. A fault is logged and swallowed so it never
+    /// masks the handler result.
+    /// </summary>
+    private static void StopGuarded(CancelWatch cancelWatch)
+    {
+        try
+        {
+            cancelWatch.Stop();
+        }
+#pragma warning disable CA1031 // FFI boundary: cancel watch faults must not mask the handler result
+        catch (Exception ex)
+        {
+            LogHelper.LogCancelWatchFault(Logger, ex);
+        }
+#pragma warning restore CA1031
     }
 
     /// <summary>
@@ -158,77 +191,6 @@ internal static class EventHandlerBridge
 
     internal static void RecordExceptionOnActivity(Activity? activity, Exception ex) =>
         activity?.SetStatus(ActivityStatusCode.Error, ex.Message).AddException(ex);
-
-    /// <summary>
-    /// Bridges a cancellation signal to a <see cref="CancellationTokenSource"/>.
-    /// </summary>
-    /// <remarks>
-    /// Races <paramref name="onCancel"/> against <paramref name="handlerDone"/> so the
-    /// monitor exits promptly whether cancellation arrives or the handler completes first.
-    /// When the handler completes first, the <c>OnCancel()</c> task (which may block
-    /// indefinitely in native code) is observed via a fault-swallowing continuation to
-    /// prevent <see cref="TaskScheduler.UnobservedTaskException"/>.
-    /// Callers must <c>await</c> the returned task in a <see langword="finally"/> block after signalling
-    /// <paramref name="handlerDone"/>.
-    /// </remarks>
-    internal static async Task BridgeCancellationAsync(
-        Func<Task> onCancel,
-        CancellationTokenSource cts,
-        Task handlerDone
-    )
-    {
-        Task cancelTask;
-        try
-        {
-            cancelTask = onCancel();
-        }
-#pragma warning disable CA1031 // Infrastructure — synchronous faults from OnCancel() must not propagate
-        catch (Exception ex)
-        {
-            LogHelper.LogOnCancelSyncFault(Logger, ex);
-            return;
-        }
-#pragma warning restore CA1031
-
-        try
-        {
-            var completed = await Task.WhenAny(cancelTask, handlerDone).ConfigureAwait(false);
-
-            if (completed != handlerDone)
-            {
-                // OnCancel() won the race — observe it (may have faulted) then trigger the CTS so the handler sees cancellation.
-                await cancelTask.ConfigureAwait(false);
-                try
-                {
-                    await cts.CancelAsync().ConfigureAwait(false);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // CTS already disposed — handler completed between WhenAny and here.
-                }
-            }
-            else
-            {
-                // Handler completed first.
-                // The cancelTask may still be running (native OnCancel() can block indefinitely) or may fault later.
-                // Attach a continuation to observe any future fault and prevent UnobservedTaskException.
-                _ = cancelTask.ContinueWith(
-                    static t => LogHelper.LogOnCancelLateFault(Logger, t.Exception),
-                    CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default
-                );
-            }
-        }
-#pragma warning disable CA1031, RCS1075 // Infrastructure — faults from OnCancel() must not propagate to the handler
-        catch (Exception ex)
-        {
-            // OnCancel() faulted (e.g., native context was torn down). Nothing useful to do —
-            // the handler will complete on its own or observe cancellation via ShouldCancel.
-            LogHelper.LogOnCancelFault(Logger, ex);
-        }
-#pragma warning restore CA1031, RCS1075
-    }
 }
 
 /// <summary>
@@ -329,7 +291,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             offset,
             timestamp,
             bytes,
-            context.OnCancel,
+            WatchOf(context),
             carrier,
             message
         );
@@ -340,9 +302,12 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         HandleTimerAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
             new ProsodyTimer(timer),
-            context.OnCancel,
+            WatchOf(context),
             carrier
         );
+
+    private static CancelWatch WatchOf(Native.Context context) =>
+        new(onCancelled => context.WatchCancel(new NativeCancelCallback(onCancelled)), context.StopCancelWatch);
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
@@ -357,7 +322,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         long offset,
         DateTimeOffset timestamp,
         byte[] payload,
-        Func<Task> onCancel,
+        CancelWatch cancelWatch,
         Dictionary<string, string> carrier,
         Native.Message? nativeMessage = null
     ) =>
@@ -369,7 +334,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                 return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
             },
             _isMessagePermanent,
-            onCancel,
+            cancelWatch,
             carrier,
             activityName: EventHandlerBridge.OnMessageActivityName,
             eventType: SentryConstants.TagValues.EventTypeMessage,
@@ -384,13 +349,13 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     internal Task<NativeResult> HandleTimerAsync(
         ProsodyContext prosodyContext,
         ProsodyTimer wrappedTimer,
-        Func<Task> onCancel,
+        CancelWatch cancelWatch,
         Dictionary<string, string> carrier
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
             _isTimerPermanent,
-            onCancel,
+            cancelWatch,
             carrier,
             activityName: EventHandlerBridge.OnTimerActivityName,
             eventType: SentryConstants.TagValues.EventTypeTimer,

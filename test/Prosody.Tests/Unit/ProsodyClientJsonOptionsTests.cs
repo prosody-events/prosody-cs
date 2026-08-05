@@ -193,7 +193,7 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
             0L,
             default,
             jsonBytes,
-            TestDefaults.NeverCancel,
+            TestDefaults.NoCancelWatch,
             TestDefaults.EmptyCarrier
         );
 

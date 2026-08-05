@@ -33,7 +33,7 @@ public sealed class EventHandlerBridgeTests
     private static Task<NativeResult> HandleMsg<T>(
         EventHandlerBridge<T> bridge,
         byte[]? payload = null,
-        Func<Task>? onCancel = null
+        CancelWatch? cancelWatch = null
     ) =>
         bridge.HandleMessageAsync(
             AnyContext,
@@ -43,7 +43,7 @@ public sealed class EventHandlerBridgeTests
             offset: 2L,
             DateTimeOffset.UnixEpoch,
             payload ?? AnyJson,
-            onCancel ?? NeverCancel,
+            cancelWatch ?? NoCancelWatch,
             EmptyCarrier
         );
 
@@ -272,7 +272,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new TypedLambdaHandler<JsonElement>(onTimer: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.Success, result.Code),
@@ -288,7 +288,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.TransientError, result.Code),
@@ -304,7 +304,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
@@ -318,7 +318,7 @@ public sealed class EventHandlerBridgeTests
         var handler = new AttributeOnTimerHandler(onTimer: (_, _, _) => throw new FormatException("bad timer format"));
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
@@ -334,7 +334,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.TransientError, result.Code),
@@ -399,7 +399,7 @@ public sealed class EventHandlerBridgeTests
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => true);
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options, classifier);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Equal(NativeResultCode.PermanentError, result.Code);
     }
@@ -437,34 +437,13 @@ public sealed class EventHandlerBridgeTests
 
     #endregion IPermanentErrorClassifier Tests
 
-    #region BridgeCancellationAsync Tests
-
-    [Fact]
-    public async Task BridgeCancellationCancelsCtsWhenOnCancelCompletes()
-    {
-        using var cts = new CancellationTokenSource();
-
-        // onCancel completes immediately — cancelTask is already completed when WhenAny
-        // evaluates, so the cancellation branch wins deterministically without needing
-        // handlerDone to complete.
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(
-            () => Task.CompletedTask,
-            cts,
-            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task
-        );
-#pragma warning restore CA2025
-
-        await monitor;
-
-        Assert.True(cts.IsCancellationRequested);
-    }
+    #region Cancel Watch Tests
 
     [Fact]
     public async Task HandleMessageCancelsTokenWhileHandlerIsRunning()
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = new FakeCancelWatch();
         var observedCancellation = false;
 
         var handler = new TypedLambdaHandler<JsonElement>(
@@ -484,16 +463,17 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
+        var handleTask = HandleMsg(bridge, cancelWatch: watch.Watch);
 
         await handlerStarted.Task;
-        cancelTcs.TrySetResult();
+        watch.Fire();
 
         var result = await handleTask;
 
         Assert.Multiple(
             () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
-            () => Assert.Equal(NativeResultCode.Success, result.Code)
+            () => Assert.Equal(NativeResultCode.Success, result.Code),
+            () => Assert.True(watch.Stopped)
         );
     }
 
@@ -501,7 +481,7 @@ public sealed class EventHandlerBridgeTests
     public async Task HandleTimerCancelsTokenWhileHandlerIsRunning()
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = new FakeCancelWatch();
         var observedCancellation = false;
 
         var handler = new TypedLambdaHandler<JsonElement>(
@@ -521,16 +501,17 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
+        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, watch.Watch, EmptyCarrier);
 
         await handlerStarted.Task;
-        cancelTcs.TrySetResult();
+        watch.Fire();
 
         var result = await handleTask;
 
         Assert.Multiple(
             () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
-            () => Assert.Equal(NativeResultCode.Success, result.Code)
+            () => Assert.Equal(NativeResultCode.Success, result.Code),
+            () => Assert.True(watch.Stopped)
         );
     }
 
@@ -538,7 +519,7 @@ public sealed class EventHandlerBridgeTests
     public async Task HandleMessageReturnsTransientErrorWhenHandlerPropagatesCancellation()
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = new FakeCancelWatch();
 
         var handler = new TypedLambdaHandler<JsonElement>(
             onMessage: async (_, _, ct) =>
@@ -553,10 +534,10 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
+        var handleTask = HandleMsg(bridge, cancelWatch: watch.Watch);
 
         await handlerStarted.Task;
-        cancelTcs.TrySetResult();
+        watch.Fire();
 
         var result = await handleTask;
 
@@ -567,7 +548,7 @@ public sealed class EventHandlerBridgeTests
     public async Task HandleTimerReturnsTransientErrorWhenHandlerPropagatesCancellation()
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = new FakeCancelWatch();
 
         var handler = new TypedLambdaHandler<JsonElement>(
             onTimer: async (_, _, ct) =>
@@ -578,10 +559,10 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
+        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, watch.Watch, EmptyCarrier);
 
         await handlerStarted.Task;
-        cancelTcs.TrySetResult();
+        watch.Fire();
 
         var result = await handleTask;
 
@@ -589,85 +570,24 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task BridgeCancellationDoesNotCancelCtsWhenHandlerCompletesFirst()
+    public async Task CancelPushAfterHandlerCompletedIsANoOp()
     {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = new FakeCancelWatch();
+        var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => Task.CompletedTask);
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        // onCancel never completes
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(NeverCancel, cts, handlerDone.Task);
-#pragma warning restore CA2025
+        var result = await HandleMsg(bridge, cancelWatch: watch.Watch);
 
-        handlerDone.TrySetResult();
-        await monitor;
+        // The Rust teardown race can push a cancel after the handler returned.
+        // The rented slot's epoch has moved on, so the push must not throw and
+        // must not affect the completed result.
+        watch.Fire();
 
-        Assert.False(cts.IsCancellationRequested);
+        Assert.Multiple(() => Assert.Equal(NativeResultCode.Success, result.Code), () => Assert.True(watch.Stopped));
     }
 
     [Fact]
-    public async Task BridgeCancellationSwallowsSynchronousOnCancelFault()
-    {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // onCancel throws synchronously — simulates native context torn down
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(
-            () => throw new InvalidOperationException("native context destroyed"),
-            cts,
-            handlerDone.Task
-        );
-#pragma warning restore CA2025
-
-        handlerDone.TrySetResult();
-
-        // Must not throw
-        await monitor;
-
-        Assert.False(cts.IsCancellationRequested);
-    }
-
-    [Fact]
-    public async Task BridgeCancellationSwallowsLateFaultWhenHandlerCompletesFirst()
-    {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // onCancel returns a task that will fault after the handler completes
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(() => cancelTcs.Task, cts, handlerDone.Task);
-#pragma warning restore CA2025
-
-        handlerDone.TrySetResult();
-        await monitor;
-
-        // Now fault the cancel task — should not trigger UnobservedTaskException
-        cancelTcs.TrySetException(new InvalidOperationException("late native fault"));
-
-        // Force GC + finalizers to flush any unobserved task exceptions
-        var unobservedFaulted = false;
-        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs e) => unobservedFaulted = true;
-        TaskScheduler.UnobservedTaskException += OnUnobserved;
-        try
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-
-            Assert.False(unobservedFaulted);
-        }
-        finally
-        {
-            TaskScheduler.UnobservedTaskException -= OnUnobserved;
-        }
-
-        Assert.False(cts.IsCancellationRequested);
-    }
-
-    [Fact]
-    public async Task HandleMessageCompletesWhenOnCancelFaults()
+    public async Task HandleMessageCompletesWhenWatchRegistrationFaults()
     {
         var handlerCalled = false;
         var handler = new TypedLambdaHandler<JsonElement>(
@@ -678,14 +598,18 @@ public sealed class EventHandlerBridgeTests
             }
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
+        var faultingWatch = new CancelWatch(
+            Watch: _ => throw new InvalidOperationException("context torn down"),
+            Stop: () => { }
+        );
 
-        var result = await HandleMsg(bridge, onCancel: () => throw new InvalidOperationException("context torn down"));
+        var result = await HandleMsg(bridge, cancelWatch: faultingWatch);
 
         Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
     }
 
     [Fact]
-    public async Task HandleTimerCompletesWhenOnCancelFaults()
+    public async Task HandleTimerCompletesWhenWatchStopFaults()
     {
         var handlerCalled = false;
         var handler = new TypedLambdaHandler<JsonElement>(
@@ -696,18 +620,17 @@ public sealed class EventHandlerBridgeTests
             }
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await bridge.HandleTimerAsync(
-            AnyContext,
-            AnyTimer,
-            () => throw new InvalidOperationException("context torn down"),
-            EmptyCarrier
+        var faultingStop = new CancelWatch(
+            Watch: _ => { },
+            Stop: () => throw new InvalidOperationException("context torn down")
         );
+
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, faultingStop, EmptyCarrier);
 
         Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
     }
 
-    #endregion BridgeCancellationAsync Tests
+    #endregion Cancel Watch Tests
 
     #region GetPermanentErrorAttribute Interface Map Fallback Tests
 
@@ -733,7 +656,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
+        var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
 
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
