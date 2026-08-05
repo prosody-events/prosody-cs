@@ -4,8 +4,11 @@ namespace Prosody.Infrastructure;
 /// Fixed pool of cancellation sources for concurrent handlers.
 /// </summary>
 /// <remarks>
-/// The slot count equals the configured maximum handler concurrency. The
-/// array owns every slot, so the pool has no unbounded active registry.
+/// The slot count equals the scheduler concurrency bound the native client
+/// resolved. The Rust scheduler never runs more concurrent handler
+/// invocations than that bound, so <see cref="Rent"/> always finds a free
+/// slot in correct operation; it throws instead of waiting. The array owns
+/// every slot, so the pool has no unbounded active registry.
 /// </remarks>
 internal sealed class CancellationTokenSourcePool
 {

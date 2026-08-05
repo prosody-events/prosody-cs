@@ -23,6 +23,7 @@
 //! [`CsHandlerError`]: crate::error::CsHandlerError
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -38,6 +39,7 @@ use uniffi::deps::async_compat::Compat;
 use crate::cancellation::CancellationSignal;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
+    resolve_max_concurrency,
 };
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
@@ -118,6 +120,49 @@ impl Clone for CsHandler {
     }
 }
 
+impl CsHandler {
+    /// Awaits a C# handler call and forwards cancellation to it.
+    ///
+    /// `handler_call` is the pending call into C#. When `context` reports
+    /// cancellation first, this method calls [`EventHandler::cancel`] with
+    /// `handler_id`, then waits for the C# call to finish. The C# call always
+    /// runs to completion, so the FFI arguments stay alive until C# releases
+    /// them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CsHandlerError`] when the FFI call fails or when the C# handler
+    /// reports a transient or permanent failure.
+    async fn invoke<C, F>(
+        &self,
+        context: C,
+        handler_id: u64,
+        handler_call: F,
+    ) -> Result<(), CsHandlerError>
+    where
+        C: EventContext<Payload = BinaryPayload>,
+        F: Future<Output = Result<HandlerResult, FfiError>>,
+    {
+        tokio::pin!(handler_call);
+
+        let result = tokio::select! {
+            // The C# shim runs the handler on the C# thread pool, so this
+            // select cannot make C# rent its cancellation slot before `cancel`
+            // runs. `biased` only fixes the poll order. The C# bridge reads
+            // `should_cancel` when it rents the slot, which covers a cancel
+            // that arrives first.
+            biased;
+            result = &mut handler_call => result?,
+            () = context.on_cancel() => {
+                self.handler.cancel(handler_id);
+                handler_call.await?
+            }
+        };
+
+        map_handler_result(result)
+    }
+}
+
 /// [`FallibleHandler`] implementation that delegates to the C# handler.
 ///
 /// Handles both message and timer events, injecting OpenTelemetry context
@@ -161,21 +206,9 @@ impl FallibleHandler for CsHandler {
             .handler
             .on_message(ctx, msg, carrier, handler_id)
             .instrument(span);
-        tokio::pin!(handler_call);
 
-        let result = tokio::select! {
-            // Poll the C# call first so it rents its cancellation slot before
-            // the Rust cancellation branch can call `cancel`.
-            biased;
-            result = &mut handler_call => result?,
-            () = cancellation_context.on_cancel() => {
-                self.handler.cancel(handler_id);
-                handler_call.await?
-            }
-        };
-
-        // Map result to our error type, preserving error messages
-        map_handler_result(result)
+        self.invoke(cancellation_context, handler_id, handler_call)
+            .await
     }
 
     /// Processes a timer event by delegating to the C# handler.
@@ -217,21 +250,9 @@ impl FallibleHandler for CsHandler {
             .handler
             .on_timer(ctx, tmr, carrier, handler_id)
             .instrument(span);
-        tokio::pin!(handler_call);
 
-        let result = tokio::select! {
-            // Poll the C# call first so it rents its cancellation slot before
-            // the Rust cancellation branch can call `cancel`.
-            biased;
-            result = &mut handler_call => result?,
-            () = cancellation_context.on_cancel() => {
-                self.handler.cancel(handler_id);
-                handler_call.await?
-            }
-        };
-
-        // Map result to our error type, preserving error messages
-        map_handler_result(result)
+        self.invoke(cancellation_context, handler_id, handler_call)
+            .await
     }
 
     /// Called when the handler is being shut down.
@@ -282,6 +303,11 @@ pub struct ProsodyClient {
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
     handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
+    /// Concurrency bound the scheduler resolved for this client.
+    ///
+    /// Set one time in [`ProsodyClient::new`] and read by
+    /// [`ProsodyClient::max_concurrency`].
+    max_concurrency: usize,
 }
 
 /// UniFFI-exported methods for [`ProsodyClient`].
@@ -310,9 +336,10 @@ impl ProsodyClient {
 
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
-        let consumer_builders = build_consumer_builders(&options)?;
+        let mut consumer_builders = build_consumer_builders(&options)?;
         let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
+        let max_concurrency = resolve_max_concurrency(&mut consumer_builders)?;
 
         // HighLevelClient::new calls spawn_telemetry_emitter which calls
         // tokio::spawn internally. The uniffi constructor scaffolding is a
@@ -327,6 +354,7 @@ impl ProsodyClient {
         Ok(Self {
             client,
             handler: ArcSwap::new(Arc::new(None)),
+            max_concurrency,
         })
     }
 
@@ -526,5 +554,15 @@ impl ProsodyClient {
     /// Returns the source system identifier configured for this client.
     pub fn source_system(&self) -> String {
         self.client.source_system().to_owned()
+    }
+
+    /// Returns the concurrency bound the scheduler resolved for this client.
+    ///
+    /// The value comes from the client options, the `PROSODY_MAX_CONCURRENCY`
+    /// environment variable, or the scheduler default. It is the maximum number
+    /// of handler invocations that run at the same time. The C# binding uses it
+    /// to size its pool of cancellation token sources.
+    pub fn max_concurrency(&self) -> u32 {
+        u32::try_from(self.max_concurrency).unwrap_or(u32::MAX)
     }
 }

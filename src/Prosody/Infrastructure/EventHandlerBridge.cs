@@ -6,7 +6,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Context.Propagation;
-using Prosody.Configuration;
 using Prosody.Errors;
 using Prosody.Logging;
 using Prosody.Messaging;
@@ -23,6 +22,13 @@ namespace Prosody.Infrastructure;
 internal static class EventHandlerBridge
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
+
+    /// <summary>
+    /// Mirrors the upstream scheduler's default concurrency for direct bridge
+    /// construction. Production code passes the value the native client
+    /// resolved (see <c>ProsodyClient.MaxConcurrency</c>).
+    /// </summary>
+    internal const int DefaultMaxConcurrency = 32;
 
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
@@ -75,7 +81,8 @@ internal static class EventHandlerBridge
         Dictionary<string, string> carrier,
         string activityName,
         string eventType = "handler",
-        Func<Dictionary<string, string>?>? buildSentryContext = null
+        Func<Dictionary<string, string>?>? buildSentryContext = null,
+        Func<bool>? shouldCancel = null
     )
     {
         PropagationContext propagation = TracePropagation.Extract(carrier);
@@ -85,6 +92,16 @@ internal static class EventHandlerBridge
             propagation.ActivityContext
         );
         PooledCts slot = cancellationSources.Rent(handlerId);
+
+        // Rust can signal cancellation before this invocation rents its slot:
+        // the generated shim starts handlers with Task.Run, so Cancel(handlerId)
+        // can run first and find no slot. Probe the pull-based signal once after
+        // the rent to close that window. The cancel completes inline because
+        // the source has no registrations yet.
+        if (shouldCancel?.Invoke() == true)
+        {
+            await slot.Cts.CancelAsync().ConfigureAwait(false);
+        }
 
         try
         {
@@ -179,7 +196,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
         IReadOnlySet<StateDefinition>? stateDefinitions = null,
-        int maxConcurrency = ClientOptions.DefaultMaxConcurrency
+        int maxConcurrency = EventHandlerBridge.DefaultMaxConcurrency
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -212,7 +229,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         JsonSerializerOptions jsonOptions,
         IPermanentErrorClassifier classifier,
         IReadOnlySet<StateDefinition>? stateDefinitions = null,
-        int maxConcurrency = ClientOptions.DefaultMaxConcurrency
+        int maxConcurrency = EventHandlerBridge.DefaultMaxConcurrency
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -256,7 +273,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             bytes,
             carrier,
             handlerId,
-            message
+            message,
+            context.ShouldCancel
         );
     }
 
@@ -271,7 +289,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
             new ProsodyTimer(timer),
             carrier,
-            handlerId
+            handlerId,
+            context.ShouldCancel
         );
 
     /// <inheritdoc/>
@@ -292,7 +311,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         byte[] payload,
         Dictionary<string, string> carrier,
         ulong handlerId,
-        Native.Message? nativeMessage = null
+        Native.Message? nativeMessage = null,
+        Func<bool>? shouldCancel = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct =>
@@ -309,7 +329,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () => EventHandlerBridge.BuildMessageSentryContext(topic, key, partition, offset)
-                : null
+                : null,
+            shouldCancel: shouldCancel
         );
 
     /// <summary>
@@ -319,7 +340,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ProsodyContext prosodyContext,
         ProsodyTimer wrappedTimer,
         Dictionary<string, string> carrier,
-        ulong handlerId
+        ulong handlerId,
+        Func<bool>? shouldCancel = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
@@ -331,6 +353,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () => EventHandlerBridge.BuildTimerSentryContext(wrappedTimer)
-                : null
+                : null,
+            shouldCancel: shouldCancel
         );
 }

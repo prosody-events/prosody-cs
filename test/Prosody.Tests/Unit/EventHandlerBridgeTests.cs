@@ -33,7 +33,8 @@ public sealed class EventHandlerBridgeTests
     private static Task<NativeResult> HandleMsg<T>(
         EventHandlerBridge<T> bridge,
         byte[]? payload = null,
-        ulong handlerId = 1
+        ulong handlerId = 1,
+        Func<bool>? shouldCancel = null
     ) =>
         bridge.HandleMessageAsync(
             AnyContext,
@@ -44,7 +45,8 @@ public sealed class EventHandlerBridgeTests
             DateTimeOffset.UnixEpoch,
             payload ?? AnyJson,
             EmptyCarrier,
-            handlerId
+            handlerId,
+            shouldCancel: shouldCancel
         );
 
     private static byte[] ToJson<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, TestJson.Options);
@@ -561,6 +563,30 @@ public sealed class EventHandlerBridgeTests
         var result = await handleTask;
 
         Assert.Equal(NativeResultCode.TransientError, result.Code);
+    }
+
+    [Fact]
+    public async Task HandlerTokenIsCancelledWhenCancellationPrecedesRent()
+    {
+        // Rust can call Cancel(handlerId) before the handler rents its slot —
+        // the generated shim starts handlers on the thread pool. The bridge
+        // probes the pull-based signal after renting to close that window.
+        var observedCancellation = false;
+        var handler = new TypedLambdaHandler<JsonElement>(
+            onMessage: (_, _, ct) =>
+            {
+                observedCancellation = ct.IsCancellationRequested;
+                return Task.CompletedTask;
+            }
+        );
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
+
+        var result = await HandleMsg(bridge, shouldCancel: () => true);
+
+        Assert.Multiple(
+            () => Assert.True(observedCancellation),
+            () => Assert.Equal(NativeResultCode.Success, result.Code)
+        );
     }
 
     [Fact]

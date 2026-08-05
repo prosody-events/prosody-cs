@@ -7,8 +7,29 @@ namespace Prosody.Tests.Unit;
 /// </summary>
 public sealed class CancellationTokenSourcePoolTests
 {
+    private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
+
+    private static Task WhenCancelled(CancellationToken token)
+    {
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        token.Register(() => cancelled.TrySetResult());
+        return cancelled.Task;
+    }
+
     [Fact]
-    public void StaleHandlerIdCannotCancelReRentedSlot()
+    public async Task CancelReachesTheActiveRenter()
+    {
+        var pool = new CancellationTokenSourcePool(capacity: 1);
+        var slot = pool.Rent(handlerId: 1);
+
+        pool.Cancel(handlerId: 1);
+
+        await WhenCancelled(slot.Cts.Token).WaitAsync(Deadline, TestContext.Current.CancellationToken);
+        slot.Return();
+    }
+
+    [Fact]
+    public async Task StaleHandlerIdCannotCancelReRentedSlot()
     {
         var pool = new CancellationTokenSourcePool(capacity: 1);
         var slot = pool.Rent(handlerId: 1);
@@ -20,20 +41,39 @@ public sealed class CancellationTokenSourcePoolTests
         Assert.False(rented.Cts.IsCancellationRequested);
 
         pool.Cancel(handlerId: 2);
-        Assert.True(rented.Cts.IsCancellationRequested);
+        await WhenCancelled(rented.Cts.Token).WaitAsync(Deadline, TestContext.Current.CancellationToken);
         rented.Return();
     }
 
     [Fact]
-    public void CancelledSourceIsReplacedBeforeNextRental()
+    public async Task CancelPendingSourceIsRetiredOnReturn()
     {
         var pool = new CancellationTokenSourcePool(capacity: 1);
         var slot = pool.Rent(handlerId: 1);
+        var retired = slot.Cts;
+
         pool.Cancel(handlerId: 1);
+        slot.Return();
+        var rented = pool.Rent(handlerId: 2);
+
+        // The queued cancellation lands on the retired source, never the next rental.
+        await WhenCancelled(retired.Token).WaitAsync(Deadline, TestContext.Current.CancellationToken);
+        Assert.NotSame(retired, rented.Cts);
+        Assert.False(rented.Cts.IsCancellationRequested);
+        rented.Return();
+    }
+
+    [Fact]
+    public void SynchronouslyCancelledSourceIsReplacedOnReturn()
+    {
+        var pool = new CancellationTokenSourcePool(capacity: 1);
+        var slot = pool.Rent(handlerId: 1);
+
+        // Mirrors the rent-time probe: a direct cancel with no queued work item.
+        slot.Cts.Cancel();
         slot.Return();
 
         var rented = pool.Rent(handlerId: 2);
-
         Assert.False(rented.Cts.IsCancellationRequested);
         rented.Return();
     }
@@ -53,50 +93,5 @@ public sealed class CancellationTokenSourcePoolTests
 
         Assert.Contains(reused, new[] { first, second });
         reused.Return();
-    }
-
-    [Fact]
-    public async Task ReturnWaitsForCancellationBeforeReset()
-    {
-        var pool = new CancellationTokenSourcePool(capacity: 1);
-        var slot = pool.Rent(handlerId: 1);
-        var cancellationEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var cancelTask = Task.Run(
-            () =>
-                slot.CancelIfCurrent(
-                    handlerId: 1,
-                    cancel: _ =>
-                    {
-                        cancellationEntered.TrySetResult();
-                        releaseCancellation.Task.GetAwaiter().GetResult();
-                    }
-                ),
-            TestContext.Current.CancellationToken
-        );
-
-        await cancellationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-
-        var returnStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var returnTask = Task.Run(
-            () => slot.Return(() => returnStarted.TrySetResult()),
-            TestContext.Current.CancellationToken
-        );
-
-        try
-        {
-            await returnStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-            Assert.False(returnTask.IsCompleted);
-        }
-        finally
-        {
-            releaseCancellation.TrySetResult();
-            await Task.WhenAll(cancelTask, returnTask);
-        }
-
-        var rented = pool.Rent(handlerId: 2);
-        Assert.False(rented.Cts.IsCancellationRequested);
-        rented.Return();
     }
 }

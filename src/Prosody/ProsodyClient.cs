@@ -24,15 +24,24 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     private ProsodyClient(
         Native.ProsodyClient native,
         JsonSerializerOptions jsonOptions,
-        IReadOnlySet<StateDefinition> stateDefinitions,
-        int maxConcurrency
+        IReadOnlySet<StateDefinition> stateDefinitions
     )
     {
         _native = native;
         JsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
-        _maxConcurrency = maxConcurrency;
+        _maxConcurrency = ResolvedMaxConcurrency(native);
         SourceSystem = native.SourceSystem();
+    }
+
+    /// <summary>
+    /// Reads the scheduler concurrency bound the native client resolved. The
+    /// cancellation source pool in each handler bridge is sized from it.
+    /// </summary>
+    private static int ResolvedMaxConcurrency(Native.ProsodyClient native)
+    {
+        var resolved = native.MaxConcurrency();
+        return resolved > int.MaxValue ? int.MaxValue : (int)resolved;
     }
 
     /// <summary>
@@ -57,8 +66,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        _maxConcurrency = options.ResolveMaxConcurrency();
         _native = new Native.ProsodyClient(options.ToNative());
+        _maxConcurrency = ResolvedMaxConcurrency(_native);
         JsonOptions = BuildJsonOptions(options);
         _stateDefinitions = RegisteredStateDefinitions(options);
         SourceSystem = _native.SourceSystem();
@@ -76,12 +85,10 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     internal static ProsodyClient FromValidatedOptions(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var maxConcurrency = options.ResolveMaxConcurrency();
         return new ProsodyClient(
             new Native.ProsodyClient(options.ToNative()),
             BuildJsonOptions(options),
-            RegisteredStateDefinitions(options),
-            maxConcurrency
+            RegisteredStateDefinitions(options)
         );
     }
 

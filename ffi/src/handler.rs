@@ -136,5 +136,9 @@ pub trait EventHandler: Send + Sync {
     /// The handler ID remains unique for the lifetime of the process. A
     /// completed handler has no active cancellation slot, so a late call is
     /// a no-op.
+    ///
+    /// This call can also arrive before the handler invocation registers its
+    /// cancellation slot. The C# implementation must make that case a no-op,
+    /// then read the cancellation state when it registers the slot.
     fn cancel(&self, handler_id: u64);
 }

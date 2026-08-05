@@ -125,22 +125,6 @@ public sealed class ClientOptionsTests
     }
 
     [Fact]
-    public void ResolveMaxConcurrencyUsesConfiguredValue()
-    {
-        var options = new ClientOptions { MaxConcurrency = 64 };
-
-        Assert.Equal(64, options.ResolveMaxConcurrency());
-    }
-
-    [Fact]
-    public void ResolveMaxConcurrencyRejectsZero()
-    {
-        var options = new ClientOptions { MaxConcurrency = 0 };
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => options.ResolveMaxConcurrency());
-    }
-
-    [Fact]
     public void LowLatencyModeWithFailureTopic()
     {
         var options = new ClientOptions
