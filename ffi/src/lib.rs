@@ -47,6 +47,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use std::collections::HashMap;
 
+mod adapter;
 pub mod admin;
 pub mod cancellation;
 pub mod client;

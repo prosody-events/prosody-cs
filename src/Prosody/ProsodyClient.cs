@@ -41,7 +41,14 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     private static int ResolvedMaxConcurrency(Native.ProsodyClient native)
     {
         var resolved = native.MaxConcurrency();
-        return resolved > int.MaxValue ? int.MaxValue : (int)resolved;
+        if (resolved is < 1 or > CancellationTokenSourcePool.MaximumCapacity)
+        {
+            throw new InvalidOperationException(
+                $"MaxConcurrency must be between 1 and {CancellationTokenSourcePool.MaximumCapacity}."
+            );
+        }
+
+        return (int)resolved;
     }
 
     /// <summary>

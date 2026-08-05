@@ -19,6 +19,8 @@ internal sealed class PooledCts
 {
     private static ILogger Logger => ProsodyLogging.CreateLogger($"Prosody.{nameof(PooledCts)}");
 
+    private readonly int _index;
+    private readonly CancellationTokenSourcePool _owner;
 #if NET9_0_OR_GREATER
     private readonly Lock _gate = new();
 #else
@@ -30,18 +32,23 @@ internal sealed class PooledCts
 
     internal CancellationTokenSource Cts { get; private set; } = new();
 
-    internal bool TryRent(ulong handlerId)
+    internal PooledCts(CancellationTokenSourcePool owner, int index)
+    {
+        _owner = owner;
+        _index = index;
+    }
+
+    internal void Rent(ulong handlerId)
     {
         lock (_gate)
         {
             if (_rented)
             {
-                return false;
+                throw new InvalidOperationException("The cancellation slot is already rented.");
             }
 
             _handlerId = handlerId;
             _rented = true;
-            return true;
         }
     }
 
@@ -69,8 +76,15 @@ internal sealed class PooledCts
 
     internal void Return()
     {
+        ulong handlerId;
         lock (_gate)
         {
+            if (!_rented)
+            {
+                throw new InvalidOperationException("The cancellation slot is not rented.");
+            }
+
+            handlerId = _handlerId;
             _rented = false;
             _handlerId = 0;
 
@@ -90,6 +104,8 @@ internal sealed class PooledCts
                 Cts = new CancellationTokenSource();
             }
         }
+
+        _owner.Return(_index, handlerId);
     }
 
     private static void CancelSafely(CancellationTokenSource source)

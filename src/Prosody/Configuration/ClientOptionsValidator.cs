@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Prosody.Infrastructure;
 using Prosody.State;
 
 namespace Prosody.Configuration;
@@ -11,10 +12,19 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         List<string> failures = [];
 
+        CheckMaxConcurrency(options, failures);
         CheckTimeSpans(options, failures);
         CheckStateCollections(options, failures);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private static void CheckMaxConcurrency(ClientOptions options, List<string> failures)
+    {
+        if (options.MaxConcurrency is < 1 or > CancellationTokenSourcePool.MaximumCapacity)
+        {
+            failures.Add($"MaxConcurrency must be between 1 and {CancellationTokenSourcePool.MaximumCapacity}.");
+        }
     }
 
     private static void CheckStateCollections(ClientOptions options, List<string> failures)

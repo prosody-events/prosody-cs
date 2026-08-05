@@ -101,6 +101,7 @@ public sealed class ClientOptions
     /// Maximum number of messages being processed simultaneously.
     /// The native client resolves the effective value: this option, then the
     /// <c>PROSODY_MAX_CONCURRENCY</c> environment variable, then 32.
+    /// The value must be from 1 through 10,000.
     /// </summary>
     public uint? MaxConcurrency { get; set; }
 

@@ -94,4 +94,25 @@ public sealed class CancellationTokenSourcePoolTests
         Assert.Contains(reused, new[] { first, second });
         reused.Return();
     }
+
+    [Fact]
+    public void ReturnedHandlerIdCanRentAgain()
+    {
+        var pool = new CancellationTokenSourcePool(capacity: 1);
+        var first = pool.Rent(handlerId: 1);
+        first.Return();
+
+        var second = pool.Rent(handlerId: 1);
+
+        Assert.Same(first, second);
+        second.Return();
+    }
+
+    [Fact]
+    public void PoolRejectsCapacityAboveTheAllocationLimit()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CancellationTokenSourcePool(CancellationTokenSourcePool.MaximumCapacity + 1)
+        );
+    }
 }
