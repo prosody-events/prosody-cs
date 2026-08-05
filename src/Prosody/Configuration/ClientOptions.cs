@@ -43,6 +43,9 @@ namespace Prosody.Configuration;
 /// </remarks>
 public sealed class ClientOptions
 {
+    internal const int DefaultMaxConcurrency = 32;
+    private const string _maxConcurrencyEnvironmentVariable = "PROSODY_MAX_CONCURRENCY";
+
     // ========================================================================
     // Core options
     // ========================================================================
@@ -99,9 +102,40 @@ public sealed class ClientOptions
 
     /// <summary>
     /// Maximum number of messages being processed simultaneously.
+    /// Falls back to <c>PROSODY_MAX_CONCURRENCY</c> when unset.
     /// Default: 32.
     /// </summary>
     public uint? MaxConcurrency { get; set; }
+
+    internal int ResolveMaxConcurrency()
+    {
+        if (MaxConcurrency is { } configured)
+        {
+            return ToPoolCapacity(configured);
+        }
+
+        var environmentValue = Environment.GetEnvironmentVariable(_maxConcurrencyEnvironmentVariable);
+        if (environmentValue is null)
+        {
+            return DefaultMaxConcurrency;
+        }
+
+        if (!uint.TryParse(environmentValue, out var parsed))
+        {
+            throw new InvalidOperationException($"{_maxConcurrencyEnvironmentVariable} must be a positive integer.");
+        }
+
+        return ToPoolCapacity(parsed);
+    }
+
+    private static int ToPoolCapacity(uint maxConcurrency) =>
+        maxConcurrency is 0 or > int.MaxValue
+            ? throw new ArgumentOutOfRangeException(
+                nameof(maxConcurrency),
+                maxConcurrency,
+                $"MaxConcurrency must be between 1 and {int.MaxValue}."
+            )
+            : (int)maxConcurrency;
 
     /// <summary>
     /// Maximum queued messages before pausing consumption.

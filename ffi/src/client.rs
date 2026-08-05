@@ -24,6 +24,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
@@ -57,6 +58,8 @@ use prosody::high_level::erased::{
 use prosody::propagator::new_propagator;
 use prosody::timers::{TimerType, Trigger};
 
+static NEXT_HANDLER_ID: AtomicU64 = AtomicU64::new(1);
+
 /// Converts a [`HandlerResult`] from C# into a Rust `Result`.
 ///
 /// Extracts and preserves the error message from the result when mapping
@@ -85,6 +88,12 @@ fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, 
         (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
         (None, false) => Ok(ErasedReadCache::Inherit),
     }
+}
+
+fn next_handler_id() -> Result<u64, CsHandlerError> {
+    NEXT_HANDLER_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map_err(|_| CsHandlerError::Transient("handler ID space is exhausted".to_owned()))
 }
 
 /// Adapter bridging C# [`EventHandler`] to prosody's [`FallibleHandler`] trait.
@@ -131,6 +140,8 @@ impl FallibleHandler for CsHandler {
     where
         C: EventContext<Payload = Self::Payload>,
     {
+        let handler_id = next_handler_id()?;
+
         // Get the span from the message for distributed tracing
         let span = message.span();
 
@@ -140,16 +151,28 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and message for C#
+        let cancellation_context = context.clone();
         let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
         let msg = Arc::new(Message::new(message));
 
         // Call the C# handler - it returns a result with code and optional error
         // message
-        let result = self
+        let handler_call = self
             .handler
-            .on_message(ctx, msg, carrier)
-            .instrument(span)
-            .await?;
+            .on_message(ctx, msg, carrier, handler_id)
+            .instrument(span);
+        tokio::pin!(handler_call);
+
+        let result = tokio::select! {
+            // Poll the C# call first so it rents its cancellation slot before
+            // the Rust cancellation branch can call `cancel`.
+            biased;
+            result = &mut handler_call => result?,
+            () = cancellation_context.on_cancel() => {
+                self.handler.cancel(handler_id);
+                handler_call.await?
+            }
+        };
 
         // Map result to our error type, preserving error messages
         map_handler_result(result)
@@ -173,6 +196,8 @@ impl FallibleHandler for CsHandler {
             return Ok(());
         }
 
+        let handler_id = next_handler_id()?;
+
         // Get the span from the trigger for distributed tracing
         let span = trigger.span();
 
@@ -182,16 +207,28 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and timer for C#
+        let cancellation_context = context.clone();
         let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
         let tmr = Arc::new(Timer::new(trigger));
 
         // Call the C# handler - it returns a result with code and optional error
         // message
-        let result = self
+        let handler_call = self
             .handler
-            .on_timer(ctx, tmr, carrier)
-            .instrument(span)
-            .await?;
+            .on_timer(ctx, tmr, carrier, handler_id)
+            .instrument(span);
+        tokio::pin!(handler_call);
+
+        let result = tokio::select! {
+            // Poll the C# call first so it rents its cancellation slot before
+            // the Rust cancellation branch can call `cancel`.
+            biased;
+            result = &mut handler_call => result?,
+            () = cancellation_context.on_cancel() => {
+                self.handler.cancel(handler_id);
+                handler_call.await?
+            }
+        };
 
         // Map result to our error type, preserving error messages
         map_handler_result(result)

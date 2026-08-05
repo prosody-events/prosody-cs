@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry.Context.Propagation;
+using Prosody.Configuration;
 using Prosody.Errors;
 using Prosody.Logging;
 using Prosody.Messaging;
@@ -22,11 +23,6 @@ namespace Prosody.Infrastructure;
 internal static class EventHandlerBridge
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
-
-    // Fixed capacity: covers typical handler concurrency. Wiring
-    // ClientOptions.MaxConcurrency in needs an instance-scoped bridge — a
-    // follow-up. Excess sources beyond this bound are disposed, not pooled.
-    private static readonly CancellationTokenSourcePool CtsPool = new(capacity: 128);
 
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
@@ -68,14 +64,14 @@ internal static class EventHandlerBridge
         };
 
     /// <summary>
-    /// Shared handler invocation logic: rents a pooled CTS, registers the push
-    /// cancel watch, invokes the handler, and classifies any exception as
-    /// permanent or transient.
+    /// Invokes a handler with a pooled cancellation source and classifies its
+    /// result as permanent or transient.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
         Func<Exception, bool> isPermanentError,
-        CancelWatch cancelWatch,
+        CancellationTokenSourcePool cancellationSources,
+        ulong handlerId,
         Dictionary<string, string> carrier,
         string activityName,
         string eventType = "handler",
@@ -88,8 +84,7 @@ internal static class EventHandlerBridge
             ActivityKind.Consumer,
             propagation.ActivityContext
         );
-        PooledCts slot = CtsPool.Rent();
-        WatchGuarded(cancelWatch, slot, slot.Epoch);
+        PooledCts slot = cancellationSources.Rent(handlerId);
 
         try
         {
@@ -117,46 +112,8 @@ internal static class EventHandlerBridge
 #pragma warning restore CA1031
         finally
         {
-            StopGuarded(cancelWatch);
-            CtsPool.Return(slot);
+            slot.Return();
         }
-    }
-
-    /// <summary>
-    /// Registers the push cancel action for the slot's current rental. A watch
-    /// fault is logged and swallowed — the handler then runs without push
-    /// cancellation, as before the watch existed.
-    /// </summary>
-    private static void WatchGuarded(CancelWatch cancelWatch, PooledCts slot, int epoch)
-    {
-        try
-        {
-            cancelWatch.Watch(() => slot.CancelIfCurrent(epoch));
-        }
-#pragma warning disable CA1031 // FFI boundary: cancel watch faults must not affect the handler result
-        catch (Exception ex)
-        {
-            LogHelper.LogCancelWatchFault(Logger, ex);
-        }
-#pragma warning restore CA1031
-    }
-
-    /// <summary>
-    /// Stops the cancel watch. A fault is logged and swallowed so it never
-    /// masks the handler result.
-    /// </summary>
-    private static void StopGuarded(CancelWatch cancelWatch)
-    {
-        try
-        {
-            cancelWatch.Stop();
-        }
-#pragma warning disable CA1031 // FFI boundary: cancel watch faults must not mask the handler result
-        catch (Exception ex)
-        {
-            LogHelper.LogCancelWatchFault(Logger, ex);
-        }
-#pragma warning restore CA1031
     }
 
     /// <summary>
@@ -210,6 +167,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
+    private readonly CancellationTokenSourcePool _cancellationSources;
 
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
@@ -220,7 +178,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     public EventHandlerBridge(
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
-        IReadOnlySet<StateDefinition>? stateDefinitions = null
+        IReadOnlySet<StateDefinition>? stateDefinitions = null,
+        int maxConcurrency = ClientOptions.DefaultMaxConcurrency
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -229,6 +188,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
+        _cancellationSources = new CancellationTokenSourcePool(maxConcurrency);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
 
         var handlerType = userHandler.GetType();
@@ -251,7 +211,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
         IPermanentErrorClassifier classifier,
-        IReadOnlySet<StateDefinition>? stateDefinitions = null
+        IReadOnlySet<StateDefinition>? stateDefinitions = null,
+        int maxConcurrency = ClientOptions.DefaultMaxConcurrency
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -261,6 +222,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
+        _cancellationSources = new CancellationTokenSourcePool(maxConcurrency);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
@@ -270,7 +232,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     public Task<NativeResult> OnMessage(
         Native.Context context,
         Native.Message message,
-        Dictionary<string, string> carrier
+        Dictionary<string, string> carrier,
+        ulong handlerId
     )
     {
         // Eagerly capture all native fields before any async suspension — each accessor
@@ -291,23 +254,28 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             offset,
             timestamp,
             bytes,
-            WatchOf(context),
             carrier,
+            handlerId,
             message
         );
     }
 
     /// <inheritdoc/>
-    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
+    public Task<NativeResult> OnTimer(
+        Native.Context context,
+        Native.Timer timer,
+        Dictionary<string, string> carrier,
+        ulong handlerId
+    ) =>
         HandleTimerAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
             new ProsodyTimer(timer),
-            WatchOf(context),
-            carrier
+            carrier,
+            handlerId
         );
 
-    private static CancelWatch WatchOf(Native.Context context) =>
-        new(onCancelled => context.WatchCancel(new NativeCancelCallback(onCancelled)), context.StopCancelWatch);
+    /// <inheritdoc/>
+    public void Cancel(ulong handlerId) => _cancellationSources.Cancel(handlerId);
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
@@ -322,8 +290,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         long offset,
         DateTimeOffset timestamp,
         byte[] payload,
-        CancelWatch cancelWatch,
         Dictionary<string, string> carrier,
+        ulong handlerId,
         Native.Message? nativeMessage = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
@@ -334,7 +302,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                 return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
             },
             _isMessagePermanent,
-            cancelWatch,
+            _cancellationSources,
+            handlerId,
             carrier,
             activityName: EventHandlerBridge.OnMessageActivityName,
             eventType: SentryConstants.TagValues.EventTypeMessage,
@@ -349,13 +318,14 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     internal Task<NativeResult> HandleTimerAsync(
         ProsodyContext prosodyContext,
         ProsodyTimer wrappedTimer,
-        CancelWatch cancelWatch,
-        Dictionary<string, string> carrier
+        Dictionary<string, string> carrier,
+        ulong handlerId
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
             _isTimerPermanent,
-            cancelWatch,
+            _cancellationSources,
+            handlerId,
             carrier,
             activityName: EventHandlerBridge.OnTimerActivityName,
             eventType: SentryConstants.TagValues.EventTypeTimer,

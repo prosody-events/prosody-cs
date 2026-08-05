@@ -1,40 +1,81 @@
 namespace Prosody.Infrastructure;
 
 /// <summary>
-/// A pooled <see cref="CancellationTokenSource"/> slot with a rental epoch.
+/// Owns one reusable cancellation source for the handler pool.
 /// </summary>
 /// <remarks>
-/// Invariant: <see cref="Epoch"/> advances on every rental, so a cancel
-/// callback captured for an earlier rental can never cancel a later one.
-/// Cancel through <see cref="CancelIfCurrent"/>, never through
-/// <see cref="Cts"/> directly. <see cref="CancellationTokenSourcePool"/>
-/// owns disposal; a retired slot is never reused.
+/// The gate protects the active handler ID and the source as one state. A
+/// return invalidates the ID before it resets the source. A cancellation that
+/// starts first completes before the return can reset the source.
 /// </remarks>
-internal sealed class PooledCts : IDisposable
+internal sealed class PooledCts
 {
-    internal CancellationTokenSource Cts = new();
-    internal int Epoch;
+    private static readonly Action<CancellationTokenSource> CancelSource = static source => source.Cancel();
+#if NET9_0_OR_GREATER
+    private readonly Lock _gate = new();
+#else
+    private readonly object _gate = new();
+#endif
+    private ulong _handlerId;
+    private bool _rented;
 
-    /// <summary>
-    /// Cancels the source when <paramref name="epoch"/> is still the current
-    /// rental. A stale epoch or a retired source is a no-op.
-    /// </summary>
-    internal void CancelIfCurrent(int epoch)
+    internal CancellationTokenSource Cts { get; private set; } = new();
+
+    internal bool TryRent(ulong handlerId)
     {
-        if (Volatile.Read(ref Epoch) != epoch)
+        lock (_gate)
         {
-            return;
-        }
+            if (_rented)
+            {
+                return false;
+            }
 
-        try
-        {
-            Cts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The slot was retired between the epoch check and Cancel.
+            _handlerId = handlerId;
+            _rented = true;
+            return true;
         }
     }
 
-    public void Dispose() => Cts.Dispose();
+    internal bool CancelIfCurrent(ulong handlerId) => CancelIfCurrent(handlerId, CancelSource);
+
+    internal bool CancelIfCurrent(ulong handlerId, Action<CancellationTokenSource> cancel)
+    {
+        lock (_gate)
+        {
+            if (!_rented || _handlerId != handlerId)
+            {
+                return false;
+            }
+
+            try
+            {
+                cancel(Cts);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The source was retired after a failed reset.
+            }
+
+            return true;
+        }
+    }
+
+    internal void Return() => Return(beforeLock: null);
+
+    internal void Return(Action? beforeLock)
+    {
+        beforeLock?.Invoke();
+
+        lock (_gate)
+        {
+            _rented = false;
+            _handlerId = 0;
+
+            if (!Cts.TryReset())
+            {
+                Cts.Dispose();
+                Cts = new CancellationTokenSource();
+            }
+        }
+    }
 }

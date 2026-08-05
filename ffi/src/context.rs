@@ -19,10 +19,7 @@ use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
-use tokio::runtime::Handle;
-use tokio::sync::Notify;
 
-use crate::cancel_callback::CancelCallback;
 use crate::error::FfiError;
 use crate::json_deque::JsonDequeStateHandle;
 use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
@@ -39,16 +36,8 @@ use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 /// context propagation, allowing traces to span across service boundaries.
 #[derive(uniffi::Object)]
 pub struct Context {
-    /// Shared so the cancel watcher task can hold the context after
-    /// [`Self::watch_cancel`] returns.
-    inner: Arc<BoxEventContext<BinaryPayload>>,
+    inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
-    /// Signals the cancel watcher task to exit. `notify_one` stores a
-    /// permit, so a stop that arrives before the watch is not lost.
-    cancel_stop: Arc<Notify>,
-    /// Runtime handle captured at construction. [`Self::watch_cancel`]
-    /// spawns its watcher task on this handle.
-    runtime: Handle,
 }
 
 #[expect(
@@ -57,22 +46,12 @@ pub struct Context {
 )]
 impl Context {
     /// Creates a new context wrapping the given event context and propagator.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called outside a tokio runtime context. Both call sites
-    /// are async handler methods that run on the tokio runtime.
     #[must_use]
     pub fn new(
         inner: BoxEventContext<BinaryPayload>,
         propagator: Arc<TextMapCompositePropagator>,
     ) -> Self {
-        Self {
-            inner: Arc::new(inner),
-            propagator,
-            cancel_stop: Arc::new(Notify::new()),
-            runtime: Handle::current(),
-        }
+        Self { inner, propagator }
     }
 }
 
@@ -95,34 +74,6 @@ impl Context {
     /// has already been requested.
     pub async fn on_cancel(&self) {
         self.inner.on_cancel().await;
-    }
-
-    /// Registers a callback that fires when cancellation is requested.
-    ///
-    /// Spawns a watcher task that calls `callback.cancel()` at most once.
-    /// Call [`Self::stop_cancel_watch`] after the handler returns; the
-    /// watcher then exits without a callback.
-    ///
-    /// A teardown race can invoke the callback after the handler returned.
-    /// The caller guards each callback registration, so a stale callback is
-    /// a no-op. The watcher detaches; upstream `invalidate()` completes
-    /// abandoned `on_cancel` futures, so the task always exits.
-    pub fn watch_cancel(&self, callback: Arc<dyn CancelCallback>) {
-        let inner = Arc::clone(&self.inner);
-        let stop = Arc::clone(&self.cancel_stop);
-        drop(self.runtime.spawn(async move {
-            tokio::select! {
-                () = stop.notified() => {}
-                () = inner.on_cancel() => callback.cancel(),
-            }
-        }));
-    }
-
-    /// Stops the watcher started by [`Self::watch_cancel`].
-    ///
-    /// `notify_one` stores a permit, so a stop before the watch is safe.
-    pub fn stop_cancel_watch(&self) {
-        self.cancel_stop.notify_one();
     }
 
     /// Schedules a new timer to fire at the specified time.

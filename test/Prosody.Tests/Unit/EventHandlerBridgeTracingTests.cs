@@ -24,19 +24,9 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     private static readonly ProsodyContext AnyContext = new();
     private static readonly ProsodyTimer AnyTimer = new("t", default);
 
-    // Wraps the 9-param HandleMessageAsync with dummy metadata; tracing tests don't inspect message contents.
+    // Wraps HandleMessageAsync with dummy metadata; tracing tests do not inspect message contents.
     private static Task<NativeResult> HandleMsgAsync(EventHandlerBridge<JsonElement> bridge) =>
-        bridge.HandleMessageAsync(
-            AnyContext,
-            "t",
-            "k",
-            0,
-            0L,
-            default,
-            "null"u8.ToArray(),
-            NoCancelWatch,
-            EmptyCarrier
-        );
+        bridge.HandleMessageAsync(AnyContext, "t", "k", 0, 0L, default, "null"u8.ToArray(), EmptyCarrier, handlerId: 1);
 
     public EventHandlerBridgeTracingTests()
     {
@@ -70,7 +60,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
         var handler = new LambdaHandler(onTimer: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
+        await bridge.HandleTimerAsync(AnyContext, AnyTimer, EmptyCarrier, handlerId: 1);
 
         Activity activity = Assert.Single(_activities);
         Assert.Equal("on_timer", activity.DisplayName);
@@ -151,7 +141,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
     {
         var handler = new LambdaHandler(onTimer: (_, _, _) => throw new InvalidOperationException("timer boom"));
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-        await bridge.HandleTimerAsync(AnyContext, AnyTimer, NoCancelWatch, EmptyCarrier);
+        await bridge.HandleTimerAsync(AnyContext, AnyTimer, EmptyCarrier, handlerId: 1);
 
         Activity activity = Assert.Single(_activities);
         Assert.Equal(ActivityStatusCode.Error, activity.Status);

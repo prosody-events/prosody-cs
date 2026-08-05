@@ -1,59 +1,56 @@
-using System.Collections.Concurrent;
-
 namespace Prosody.Infrastructure;
 
 /// <summary>
-/// Bounded pool of reusable <see cref="CancellationTokenSource"/> slots.
+/// Fixed pool of cancellation sources for concurrent handlers.
 /// </summary>
 /// <remarks>
-/// Invariant: at most <c>capacity</c> slots are pooled. The dispose branch in
-/// <see cref="Return"/> and the retire loop in <see cref="Rent"/> are the
-/// pool's removal paths.
+/// The slot count equals the configured maximum handler concurrency. The
+/// array owns every slot, so the pool has no unbounded active registry.
 /// </remarks>
-internal sealed class CancellationTokenSourcePool(int capacity)
+internal sealed class CancellationTokenSourcePool
 {
-    private readonly ConcurrentQueue<PooledCts> _pool = new();
-    private int _pooledCount;
+    private readonly PooledCts[] _slots;
 
-    /// <summary>Rents a slot with an uncancelled source and a fresh epoch.</summary>
-    internal PooledCts Rent()
+    internal CancellationTokenSourcePool(int capacity)
     {
-        while (_pool.TryDequeue(out var slot))
+        if (capacity < 1)
         {
-            Interlocked.Decrement(ref _pooledCount);
-            Interlocked.Increment(ref slot.Epoch);
-            if (!slot.Cts.IsCancellationRequested)
+            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must be positive.");
+        }
+
+        _slots = new PooledCts[capacity];
+        for (var index = 0; index < _slots.Length; index++)
+        {
+            _slots[index] = new PooledCts();
+        }
+    }
+
+    /// <summary>Rents an uncancelled source for <paramref name="handlerId"/>.</summary>
+    internal PooledCts Rent(ulong handlerId)
+    {
+        foreach (var slot in _slots)
+        {
+            if (slot.TryRent(handlerId))
             {
                 return slot;
             }
-
-            // A stale cancel fired while the slot was pooled. Retire the slot
-            // so the next handler does not start with a cancelled token.
-            slot.Dispose();
         }
 
-        var fresh = new PooledCts();
-        Interlocked.Increment(ref fresh.Epoch);
-        return fresh;
+        throw new InvalidOperationException("The cancellation pool has no available slot.");
     }
 
     /// <summary>
-    /// Returns a slot to the pool. Disposes the slot instead when its source
-    /// cannot reset or the pool is full.
+    /// Cancels the active source for <paramref name="handlerId"/>.
+    /// A completed handler has no active source, so the call is a no-op.
     /// </summary>
-    internal void Return(PooledCts slot)
+    internal void Cancel(ulong handlerId)
     {
-        if (slot.Cts.TryReset())
+        foreach (var slot in _slots)
         {
-            if (Interlocked.Increment(ref _pooledCount) <= capacity)
+            if (slot.CancelIfCurrent(handlerId))
             {
-                _pool.Enqueue(slot);
                 return;
             }
-
-            Interlocked.Decrement(ref _pooledCount);
         }
-
-        slot.Dispose();
     }
 }

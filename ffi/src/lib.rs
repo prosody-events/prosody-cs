@@ -27,7 +27,6 @@
 //! # Modules
 //!
 //! - [`admin`]: Admin client for Kafka topic management (create, delete)
-//! - [`cancel_callback`]: Push-style cancellation callback for handlers
 //! - [`cancellation`]: Cancellation signaling for cooperative async
 //!   cancellation
 //! - [`client`]: Core [`ProsodyClient`] service implementation
@@ -49,7 +48,6 @@ static GLOBAL: MiMalloc = MiMalloc;
 use std::collections::HashMap;
 
 pub mod admin;
-pub mod cancel_callback;
 pub mod cancellation;
 pub mod client;
 pub mod config;
@@ -83,7 +81,6 @@ pub type Carrier = HashMap<String, String>;
 // ensure all public FFI types are visible for binding generation.
 
 pub use admin::AdminClient;
-pub use cancel_callback::CancelCallback;
 pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
 pub use context::Context;
