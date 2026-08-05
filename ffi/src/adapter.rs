@@ -73,7 +73,8 @@ impl CsHandler {
 
         let result = tokio::select! {
             // The C# shim runs the handler on the C# thread pool. The bridge
-            // reads should_cancel after it rents the slot to cover this race.
+            // reads should_cancel after it registers its cancellation source
+            // to cover this race.
             biased;
             result = &mut handler_call => result?,
             () = context.on_cancel() => {

@@ -38,7 +38,6 @@ use crate::adapter::CsHandler;
 use crate::cancellation::CancellationSignal;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
-    resolve_max_concurrency,
 };
 use crate::error::FfiError;
 use crate::handler::EventHandler;
@@ -103,11 +102,6 @@ pub struct ProsodyClient {
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
     handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
-    /// Concurrency bound the scheduler resolved for this client.
-    ///
-    /// Set one time in [`ProsodyClient::new`] and read by
-    /// [`ProsodyClient::max_concurrency`].
-    max_concurrency: usize,
 }
 
 /// UniFFI-exported methods for [`ProsodyClient`].
@@ -136,10 +130,9 @@ impl ProsodyClient {
 
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
-        let mut consumer_builders = build_consumer_builders(&options)?;
+        let consumer_builders = build_consumer_builders(&options)?;
         let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
-        let max_concurrency = resolve_max_concurrency(&mut consumer_builders)?;
 
         // HighLevelClient::new calls spawn_telemetry_emitter which calls
         // tokio::spawn internally. The uniffi constructor scaffolding is a
@@ -154,7 +147,6 @@ impl ProsodyClient {
         Ok(Self {
             client,
             handler: ArcSwap::new(Arc::new(None)),
-            max_concurrency,
         })
     }
 
@@ -351,15 +343,5 @@ impl ProsodyClient {
     /// Returns the source system identifier configured for this client.
     pub fn source_system(&self) -> String {
         self.client.source_system().to_owned()
-    }
-
-    /// Returns the concurrency bound the scheduler resolved for this client.
-    ///
-    /// The value comes from the client options, the `PROSODY_MAX_CONCURRENCY`
-    /// environment variable, or the scheduler default. It is the maximum number
-    /// of handler invocations that run at the same time. The C# binding uses it
-    /// to size its pool of cancellation token sources.
-    pub fn max_concurrency(&self) -> u32 {
-        u32::try_from(self.max_concurrency).unwrap_or(u32::MAX)
     }
 }

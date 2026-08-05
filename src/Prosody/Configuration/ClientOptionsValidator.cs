@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using Prosody.Infrastructure;
 using Prosody.State;
 
 namespace Prosody.Configuration;
@@ -19,11 +18,13 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
+    // The native scheduler validates the same bound; this check reports the
+    // failure before any native resources are created.
     private static void CheckMaxConcurrency(ClientOptions options, List<string> failures)
     {
-        if (options.MaxConcurrency is < 1 or > CancellationTokenSourcePool.MaximumCapacity)
+        if (options.MaxConcurrency is < 1)
         {
-            failures.Add($"MaxConcurrency must be between 1 and {CancellationTokenSourcePool.MaximumCapacity}.");
+            failures.Add("MaxConcurrency must be at least 1.");
         }
     }
 

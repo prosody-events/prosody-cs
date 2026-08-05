@@ -265,30 +265,6 @@ pub fn build_scheduler_config(options: &ClientOptions) -> SchedulerConfiguration
     builder
 }
 
-/// Resolves the scheduler concurrency bound and pins it into the builder.
-///
-/// The scheduler builder takes `max_concurrency` from the client options, the
-/// `PROSODY_MAX_CONCURRENCY` environment variable, or its own default. This
-/// function does that resolution one time and writes the result back into the
-/// builder. The consumer and the reported bound are therefore the same number.
-///
-/// # Errors
-///
-/// Returns [`FfiError::PermanentState`] when the scheduler configuration does
-/// not finalize, for example when `PROSODY_MAX_CONCURRENCY` holds a value that
-/// is not a number.
-pub fn resolve_max_concurrency(builders: &mut ConsumerBuilders) -> Result<usize, FfiError> {
-    let resolved = builders
-        .scheduler
-        .build()
-        .map_err(|error| permanent_config(error.to_string()))?
-        .max_concurrency;
-
-    builders.scheduler.max_concurrency(resolved);
-
-    Ok(resolved)
-}
-
 /// Creates a monopolization configuration builder from client options.
 ///
 /// Configures monopolization detection which prevents a single message key

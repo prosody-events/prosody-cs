@@ -37,7 +37,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("transient"),
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",
@@ -53,7 +53,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new PermanentException("permanent"),
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",
@@ -71,7 +71,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("error"),
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",
@@ -93,7 +93,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => Task.CompletedTask,
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",
@@ -115,7 +115,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         var result = await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new OperationCanceledException("shutdown"),
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",
@@ -140,7 +140,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         await EventHandlerBridge.InvokeHandlerAsync(
             _ => throw new InvalidOperationException("error"),
             isPermanentError: ex => ex is IPermanentError,
-            new CancellationTokenSourcePool(1),
+            new CancellationRegistry(),
             handlerId: 1,
             EmptyCarrier,
             activityName: "test",

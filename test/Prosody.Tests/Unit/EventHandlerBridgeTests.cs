@@ -566,11 +566,12 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task HandlerTokenIsCancelledWhenCancellationPrecedesRent()
+    public async Task HandlerTokenIsCancelledWhenCancellationPrecedesRegistration()
     {
-        // Rust can call Cancel(handlerId) before the handler rents its slot —
-        // the generated shim starts handlers on the thread pool. The bridge
-        // probes the pull-based signal after renting to close that window.
+        // Rust can call Cancel(handlerId) before the handler registers its
+        // source — the generated shim starts handlers on the thread pool. The
+        // bridge probes the pull-based signal after registration to close that
+        // window.
         var observedCancellation = false;
         var handler = new TypedLambdaHandler<JsonElement>(
             onMessage: (_, _, ct) =>

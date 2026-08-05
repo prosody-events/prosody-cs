@@ -17,7 +17,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
-    private readonly int _maxConcurrency;
 
     internal JsonSerializerOptions JsonOptions { get; }
 
@@ -30,25 +29,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         _native = native;
         JsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
-        _maxConcurrency = ResolvedMaxConcurrency(native);
         SourceSystem = native.SourceSystem();
-    }
-
-    /// <summary>
-    /// Reads the scheduler concurrency bound the native client resolved. The
-    /// cancellation source pool in each handler bridge is sized from it.
-    /// </summary>
-    private static int ResolvedMaxConcurrency(Native.ProsodyClient native)
-    {
-        var resolved = native.MaxConcurrency();
-        if (resolved is < 1 or > CancellationTokenSourcePool.MaximumCapacity)
-        {
-            throw new InvalidOperationException(
-                $"MaxConcurrency must be between 1 and {CancellationTokenSourcePool.MaximumCapacity}."
-            );
-        }
-
-        return (int)resolved;
     }
 
     /// <summary>
@@ -74,7 +55,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _native = new Native.ProsodyClient(options.ToNative());
-        _maxConcurrency = ResolvedMaxConcurrency(_native);
         JsonOptions = BuildJsonOptions(options);
         _stateDefinitions = RegisteredStateDefinitions(options);
         SourceSystem = _native.SourceSystem();
@@ -424,7 +404,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     )]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
-        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions, _maxConcurrency);
+        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions);
         return _native.Subscribe(bridge);
     }
 
@@ -446,13 +426,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </remarks>
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier)
     {
-        var bridge = new EventHandlerBridge<TPayload>(
-            handler,
-            JsonOptions,
-            classifier,
-            _stateDefinitions,
-            _maxConcurrency
-        );
+        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions);
         return _native.Subscribe(bridge);
     }
 

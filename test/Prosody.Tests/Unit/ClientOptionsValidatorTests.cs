@@ -37,16 +37,14 @@ public sealed class ClientOptionsValidatorTests
         Assert.Contains($"{propertyName} must not be negative", result.FailureMessage, StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(0u)]
-    [InlineData(10_001u)]
-    public void MaxConcurrencyOutsidePoolCapacityFails(uint maxConcurrency)
+    [Fact]
+    public void MaxConcurrencyOfZeroFails()
     {
-        var options = new ClientOptions { MaxConcurrency = maxConcurrency };
+        var options = new ClientOptions { MaxConcurrency = 0 };
 
         var result = _validator.Validate(name: null, options);
 
         Assert.True(result.Failed);
-        Assert.Contains("MaxConcurrency must be between 1 and 10000", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("MaxConcurrency must be at least 1", result.FailureMessage, StringComparison.Ordinal);
     }
 }

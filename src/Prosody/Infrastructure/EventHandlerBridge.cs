@@ -23,13 +23,6 @@ internal static class EventHandlerBridge
 {
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
-    /// <summary>
-    /// Mirrors the upstream scheduler's default concurrency for direct bridge
-    /// construction. Production code passes the value the native client
-    /// resolved (see <c>ProsodyClient.MaxConcurrency</c>).
-    /// </summary>
-    internal const int DefaultMaxConcurrency = 32;
-
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
 
@@ -70,13 +63,13 @@ internal static class EventHandlerBridge
         };
 
     /// <summary>
-    /// Invokes a handler with a pooled cancellation source and classifies its
-    /// result as permanent or transient.
+    /// Invokes a handler with a registered cancellation source and classifies
+    /// its result as permanent or transient.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task> handler,
         Func<Exception, bool> isPermanentError,
-        CancellationTokenSourcePool cancellationSources,
+        CancellationRegistry cancellations,
         ulong handlerId,
         Dictionary<string, string> carrier,
         string activityName,
@@ -91,21 +84,21 @@ internal static class EventHandlerBridge
             ActivityKind.Consumer,
             propagation.ActivityContext
         );
-        PooledCts slot = cancellationSources.Rent(handlerId);
+        CancellationTokenSource source = cancellations.Register(handlerId);
 
-        // Rust can signal cancellation before this invocation rents its slot:
-        // the generated shim starts handlers with Task.Run, so Cancel(handlerId)
-        // can run first and find no slot. Probe the pull-based signal once after
-        // the rent to close that window. The cancel completes inline because
-        // the source has no registrations yet.
+        // Rust can signal cancellation before this invocation registers its
+        // source: the generated shim starts handlers with Task.Run, so
+        // Cancel(handlerId) can run first and find nothing. Probe the
+        // pull-based signal once after the registration to close that window.
+        // The cancel completes inline because the source has no registrations.
         if (shouldCancel?.Invoke() == true)
         {
-            await slot.Cts.CancelAsync().ConfigureAwait(false);
+            await source.CancelAsync().ConfigureAwait(false);
         }
 
         try
         {
-            await handler(slot.Cts.Token).ConfigureAwait(false);
+            await handler(source.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null);
         }
         catch (Exception ex) when (isPermanentError(ex))
@@ -129,7 +122,7 @@ internal static class EventHandlerBridge
 #pragma warning restore CA1031
         finally
         {
-            slot.Return();
+            cancellations.Complete(handlerId);
         }
     }
 
@@ -184,7 +177,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
-    private readonly CancellationTokenSourcePool _cancellationSources;
+    private readonly CancellationRegistry _cancellations = new();
 
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
@@ -195,8 +188,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     public EventHandlerBridge(
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
-        IReadOnlySet<StateDefinition>? stateDefinitions = null,
-        int maxConcurrency = EventHandlerBridge.DefaultMaxConcurrency
+        IReadOnlySet<StateDefinition>? stateDefinitions = null
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -205,7 +197,6 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
-        _cancellationSources = new CancellationTokenSourcePool(maxConcurrency);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
 
         var handlerType = userHandler.GetType();
@@ -228,8 +219,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
         IPermanentErrorClassifier classifier,
-        IReadOnlySet<StateDefinition>? stateDefinitions = null,
-        int maxConcurrency = EventHandlerBridge.DefaultMaxConcurrency
+        IReadOnlySet<StateDefinition>? stateDefinitions = null
     )
     {
         ArgumentNullException.ThrowIfNull(userHandler);
@@ -239,7 +229,6 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _userHandler = userHandler;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
-        _cancellationSources = new CancellationTokenSourcePool(maxConcurrency);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
@@ -294,7 +283,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         );
 
     /// <inheritdoc/>
-    public void Cancel(ulong handlerId) => _cancellationSources.Cancel(handlerId);
+    public void Cancel(ulong handlerId) => _cancellations.Cancel(handlerId);
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
@@ -322,7 +311,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                 return _userHandler.OnMessageAsync(prosodyContext, msg, ct);
             },
             _isMessagePermanent,
-            _cancellationSources,
+            _cancellations,
             handlerId,
             carrier,
             activityName: EventHandlerBridge.OnMessageActivityName,
@@ -346,7 +335,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         EventHandlerBridge.InvokeHandlerAsync(
             ct => _userHandler.OnTimerAsync(prosodyContext, wrappedTimer, ct),
             _isTimerPermanent,
-            _cancellationSources,
+            _cancellations,
             handlerId,
             carrier,
             activityName: EventHandlerBridge.OnTimerActivityName,
