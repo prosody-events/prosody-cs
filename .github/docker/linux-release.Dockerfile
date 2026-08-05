@@ -15,7 +15,8 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 ARG RUST_TARGET
-ENV RUSTFLAGS="-C link-arg=-fuse-ld=mold"
+ARG RUSTFLAGS
+ENV RUSTFLAGS="${RUSTFLAGS}"
 
 COPY --from=planner /workspace/recipe.json recipe.json
 RUN rustup target add "${RUST_TARGET}"
