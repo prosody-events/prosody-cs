@@ -1,3 +1,8 @@
+# Shared dev stack. This project name matches the prosody repo's compose project,
+# so both repos drive one set of containers. That repo declares no name, so its
+# project name comes from its directory: keep it checked out as `prosody`.
+# Keep the service definitions in the two files identical.
+name: prosody
 services:
   lgtm:
     image: grafana/otel-lgtm:latest
@@ -32,6 +37,13 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Local dev: don't hold the initial rebalance of a new consumer group (default 3000ms) —
+      # shaves ~3s off first delivery for every fresh group id.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Point the log dir at the mounted volume — the image's default log dir is NOT
+      # /var/lib/kafka/data, so without this the kafka_data volume persists nothing and
+      # every container recreate silently drops all topics.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     healthcheck:
       test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list" ]
       interval: 15s
@@ -41,6 +53,11 @@ services:
     image: cassandra:latest
     ports:
       - "9042:9042"
+    environment:
+      # Advertise the host-reachable address. Without this the node reports its
+      # internal Docker IP, and host-run tests fail after driver peer discovery.
+      CASSANDRA_BROADCAST_ADDRESS: 127.0.0.1
+      CASSANDRA_BROADCAST_RPC_ADDRESS: 127.0.0.1
     volumes:
       - cassandra_data:/var/lib/cassandra
     healthcheck:
