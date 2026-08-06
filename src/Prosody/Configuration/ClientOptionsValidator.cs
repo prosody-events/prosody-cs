@@ -11,10 +11,21 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         List<string> failures = [];
 
+        CheckMaxConcurrency(options, failures);
         CheckTimeSpans(options, failures);
         CheckStateCollections(options, failures);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    // The native scheduler validates the same bound; this check reports the
+    // failure before any native resources are created.
+    private static void CheckMaxConcurrency(ClientOptions options, List<string> failures)
+    {
+        if (options.MaxConcurrency is < 1)
+        {
+            failures.Add("MaxConcurrency must be at least 1.");
+        }
     }
 
     private static void CheckStateCollections(ClientOptions options, List<string> failures)

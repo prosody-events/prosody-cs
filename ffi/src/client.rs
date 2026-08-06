@@ -28,53 +28,27 @@ use std::time::Duration;
 
 use arc_swap::ArcSwap;
 use futures::executor::block_on;
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
+use opentelemetry::propagation::TextMapPropagator;
 use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use uniffi::deps::async_compat::Compat;
 
+use crate::adapter::CsHandler;
 use crate::cancellation::CancellationSignal;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
-use crate::context::Context;
-use crate::error::{CsHandlerError, FfiError};
-use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
+use crate::error::FfiError;
+use crate::handler::EventHandler;
 use crate::logging::ensure_tracing_initialized;
-use crate::message::Message;
 use crate::published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
-use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::{BinaryPayload, JsonBinaryCodec};
-use prosody::consumer::DemandType;
-use prosody::consumer::event_context::EventContext;
-use prosody::consumer::message::ConsumerMessage;
-use prosody::consumer::middleware::FallibleHandler;
 use prosody::high_level::erased::{
     ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
 };
 use prosody::propagator::new_propagator;
-use prosody::timers::{TimerType, Trigger};
-
-/// Converts a [`HandlerResult`] from C# into a Rust `Result`.
-///
-/// Extracts and preserves the error message from the result when mapping
-/// to [`CsHandlerError`].
-///
-/// # Errors
-///
-/// Returns [`CsHandlerError::Transient`] for retriable failures.
-/// Returns [`CsHandlerError::Permanent`] for non-retriable failures.
-fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
-    let error_msg = result.error_message.unwrap_or_default();
-
-    match result.code {
-        HandlerResultCode::Success => Ok(()),
-        HandlerResultCode::TransientError => Err(CsHandlerError::Transient(error_msg)),
-        HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent(error_msg)),
-    }
-}
 
 fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, FfiError> {
     match (ttl, disabled) {
@@ -85,123 +59,6 @@ fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, 
         (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
         (None, false) => Ok(ErasedReadCache::Inherit),
     }
-}
-
-/// Adapter bridging C# [`EventHandler`] to prosody's [`FallibleHandler`] trait.
-///
-/// This struct wraps a C# event handler and handles:
-/// - Distributed tracing context propagation via OpenTelemetry
-/// - Conversion between prosody message types and FFI-friendly wrappers
-/// - Error classification for retry logic
-struct CsHandler {
-    /// C# event handler implementation receiving messages and timers.
-    handler: Arc<dyn EventHandler>,
-    /// OpenTelemetry propagator for distributed tracing context injection.
-    propagator: Arc<TextMapCompositePropagator>,
-}
-
-impl Clone for CsHandler {
-    fn clone(&self) -> Self {
-        Self {
-            handler: Arc::clone(&self.handler),
-            propagator: Arc::clone(&self.propagator),
-        }
-    }
-}
-
-/// [`FallibleHandler`] implementation that delegates to the C# handler.
-///
-/// Handles both message and timer events, injecting OpenTelemetry context
-/// for distributed tracing continuity across the FFI boundary.
-impl FallibleHandler for CsHandler {
-    type Error = CsHandlerError;
-    type Output = ();
-    type Payload = BinaryPayload;
-
-    /// Processes an incoming Kafka message by delegating to the C# handler.
-    ///
-    /// Injects the message's tracing span context into a carrier map that
-    /// C# can use to continue the distributed trace.
-    async fn on_message<C>(
-        &self,
-        context: C,
-        message: ConsumerMessage<Self::Payload>,
-        _demand_type: DemandType,
-    ) -> Result<Self::Output, Self::Error>
-    where
-        C: EventContext<Payload = Self::Payload>,
-    {
-        // Get the span from the message for distributed tracing
-        let span = message.span();
-
-        // Inject span context into carrier for C#
-        let mut carrier = HashMap::with_capacity(2);
-        self.propagator
-            .inject_context(&span.context(), &mut carrier);
-
-        // Wrap the context and message for C#
-        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let msg = Arc::new(Message::new(message));
-
-        // Call the C# handler - it returns a result with code and optional error
-        // message
-        let result = self
-            .handler
-            .on_message(ctx, msg, carrier)
-            .instrument(span)
-            .await?;
-
-        // Map result to our error type, preserving error messages
-        map_handler_result(result)
-    }
-
-    /// Processes a timer event by delegating to the C# handler.
-    ///
-    /// Only application timers are forwarded to C#; internal prosody timers
-    /// (e.g., heartbeat, rebalance) are silently acknowledged.
-    async fn on_timer<C>(
-        &self,
-        context: C,
-        trigger: Trigger,
-        _demand_type: DemandType,
-    ) -> Result<Self::Output, Self::Error>
-    where
-        C: EventContext<Payload = Self::Payload>,
-    {
-        // Only process Application timers - other types are internal to prosody
-        if trigger.timer_type != TimerType::Application {
-            return Ok(());
-        }
-
-        // Get the span from the trigger for distributed tracing
-        let span = trigger.span();
-
-        // Inject span context into carrier for C#
-        let mut carrier = HashMap::with_capacity(2);
-        self.propagator
-            .inject_context(&span.context(), &mut carrier);
-
-        // Wrap the context and timer for C#
-        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let tmr = Arc::new(Timer::new(trigger));
-
-        // Call the C# handler - it returns a result with code and optional error
-        // message
-        let result = self
-            .handler
-            .on_timer(ctx, tmr, carrier)
-            .instrument(span)
-            .await?;
-
-        // Map result to our error type, preserving error messages
-        map_handler_result(result)
-    }
-
-    /// Called when the handler is being shut down.
-    ///
-    /// No cleanup is needed since the C# handler lifetime is managed by
-    /// [`ProsodyClient::handler`] field via `ArcSwap`.
-    async fn shutdown(self) {}
 }
 
 /// Native Prosody client exposed to C# via `UniFFI`.
@@ -377,10 +234,7 @@ impl ProsodyClient {
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
         // Create the internal handler with propagator for distributed tracing
-        let cs_handler = CsHandler {
-            handler,
-            propagator: Arc::new(new_propagator()),
-        };
+        let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
         self.client.subscribe(cs_handler).await?;
 
         Ok(())

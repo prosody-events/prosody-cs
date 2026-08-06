@@ -27,8 +27,8 @@ public sealed class StateExceptionBridgeTests
             offset: 0L,
             DateTimeOffset.UnixEpoch,
             AnyJson,
-            NeverCancel,
-            EmptyCarrier
+            EmptyCarrier,
+            handlerId: 1
         );
 
     [Fact]

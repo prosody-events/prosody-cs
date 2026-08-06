@@ -36,4 +36,15 @@ public sealed class ClientOptionsValidatorTests
         Assert.True(result.Failed);
         Assert.Contains($"{propertyName} must not be negative", result.FailureMessage, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void MaxConcurrencyOfZeroFails()
+    {
+        var options = new ClientOptions { MaxConcurrency = 0 };
+
+        var result = _validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains("MaxConcurrency must be at least 1", result.FailureMessage, StringComparison.Ordinal);
+    }
 }

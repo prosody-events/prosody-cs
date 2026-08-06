@@ -89,6 +89,7 @@ pub trait EventHandler: Send + Sync {
     /// * `message` - The Kafka message containing topic, key, value, and
     ///   headers.
     /// * `carrier` - Distributed tracing context headers for span propagation.
+    /// * `handler_id` - Unique ID for this active handler invocation.
     ///
     /// # Errors
     ///
@@ -100,6 +101,7 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
+        handler_id: u64,
     ) -> Result<HandlerResult, FfiError>;
 
     /// Handles a fired timer.
@@ -114,6 +116,7 @@ pub trait EventHandler: Send + Sync {
     /// * `timer` - The timer that fired, containing its ID and any associated
     ///   payload.
     /// * `carrier` - Distributed tracing context headers for span propagation.
+    /// * `handler_id` - Unique ID for this active handler invocation.
     ///
     /// # Errors
     ///
@@ -125,5 +128,17 @@ pub trait EventHandler: Send + Sync {
         context: Arc<Context>,
         timer: Arc<Timer>,
         carrier: HashMap<String, String>,
+        handler_id: u64,
     ) -> Result<HandlerResult, FfiError>;
+
+    /// Cancels the handler identified by `handler_id`.
+    ///
+    /// The handler ID remains unique for the lifetime of the process. A
+    /// completed handler has no active cancellation slot, so a late call is
+    /// a no-op.
+    ///
+    /// This call can also arrive before the handler invocation registers its
+    /// cancellation slot. The C# implementation must make that case a no-op,
+    /// then read the cancellation state when it registers the slot.
+    fn cancel(&self, handler_id: u64);
 }
