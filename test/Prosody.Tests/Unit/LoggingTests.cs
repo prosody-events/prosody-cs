@@ -30,7 +30,7 @@ public sealed class LoggingTests : IDisposable
 
         // Verify the logging pipeline is working before we test Clear
         CreateProducerOnlyClient();
-        AssertContainsDisablingConsumerLog(collector);
+        AssertContainsDisabledConsumerLog(collector);
 
         // Clear logging and reset the collector
         ProsodyLogging.Clear();
@@ -70,7 +70,7 @@ public sealed class LoggingTests : IDisposable
 
         // Assert - logs should go to collector2
         Assert.Empty(collector1.GetSnapshot());
-        AssertContainsDisablingConsumerLog(collector2);
+        AssertContainsDisabledConsumerLog(collector2);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class LoggingTests : IDisposable
             ProsodyLogging.Clear();
             ProsodyLogging.Configure(factory);
             CreateProducerOnlyClient();
-            AssertContainsDisablingConsumerLog(collector);
+            AssertContainsDisabledConsumerLog(collector);
 
             ProsodyLogging.Clear();
         }
@@ -151,7 +151,7 @@ public sealed class LoggingTests : IDisposable
         await hostedService.StartAsync(CancellationToken.None);
         CreateProducerOnlyClient();
 
-        AssertContainsDisablingConsumerLog(factory.Collector);
+        AssertContainsDisabledConsumerLog(factory.Collector);
         await hostedService.StopAsync(CancellationToken.None);
     }
 
@@ -178,7 +178,7 @@ public sealed class LoggingTests : IDisposable
         using var factory = new FakeLoggerFactory(collector);
         ProsodyLogging.Configure(factory);
         CreateProducerOnlyClient();
-        AssertContainsDisablingConsumerLog(collector);
+        AssertContainsDisabledConsumerLog(collector);
     }
 
     [Fact]
@@ -193,13 +193,13 @@ public sealed class LoggingTests : IDisposable
         // Assert - verify structured fields are captured
         FakeLogRecord record = collector
             .GetSnapshot()
-            .First(r => r.Message.Contains("disabling consumer", StringComparison.Ordinal));
+            .First(r => r.Message.Contains("consumer is disabled", StringComparison.Ordinal));
 
         Assert.True(record.GetStructuredStateValue("Target") is not null, "Should have Target field");
         Assert.True(record.GetStructuredStateValue("Message") is not null, "Should have Message field");
     }
 
-    // Creates a producer-only client, which triggers a "disabling consumer" info log.
+    // Creates a producer-only client, which reports that the consumer is disabled.
     private static void CreateProducerOnlyClient()
     {
         using var client = new ProsodyClient(
@@ -226,7 +226,7 @@ public sealed class LoggingTests : IDisposable
         return provider.GetServices<IHostedService>().First(s => s.GetType().Name == "ProsodyLoggingHostedService");
     }
 
-    private static void AssertContainsDisablingConsumerLog(FakeLogCollector collector)
+    private static void AssertContainsDisabledConsumerLog(FakeLogCollector collector)
     {
         var snapshot = collector.GetSnapshot();
         Assert.NotEmpty(snapshot);
@@ -234,7 +234,7 @@ public sealed class LoggingTests : IDisposable
             snapshot,
             r =>
                 r.Level == LogLevel.Information
-                && r.Message.Contains("disabling consumer", StringComparison.OrdinalIgnoreCase)
+                && r.Message.Contains("consumer is disabled", StringComparison.OrdinalIgnoreCase)
         );
     }
 }
