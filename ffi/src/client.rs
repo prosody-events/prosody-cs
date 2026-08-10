@@ -302,15 +302,12 @@ impl ProsodyClient {
         // Compat enters the same runtime that uniffi uses for async methods
         // (async_compat's global TOKIO1), so tokio::spawn succeeds without
         // creating a second runtime.
-        let client = block_on(Compat::new(async {
-            Box::pin(new_erased(
-                mode,
-                &mut producer_config,
-                &consumer_builders,
-                &cassandra,
-            ))
-            .await
-        }))?;
+        let client = block_on(Compat::new(new_erased(
+            mode,
+            &mut producer_config,
+            &consumer_builders,
+            &cassandra,
+        )))?;
 
         Ok(Self {
             client,
