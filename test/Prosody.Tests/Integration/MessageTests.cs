@@ -40,6 +40,29 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     }
 
     [Fact(Timeout = 60_000)]
+    public async Task SendsAndReceivesExciseRecord()
+    {
+        await using var ctx = await CreateTestContextAsync();
+        var messages = new MessageChannel<Message<TestPayload>>();
+        var handler = new TestProsodyHandler<TestPayload>(
+            onExcise: (_, message, _) =>
+            {
+                messages.Send(message);
+                return Task.CompletedTask;
+            }
+        );
+
+        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.ExciseAsync(ctx.Topic, "obsolete-key", TestContext.Current.CancellationToken);
+        var message = await messages.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Multiple(() => Assert.Equal("obsolete-key", message.Key), () => Assert.Null(message.Payload));
+    }
+
+    [Fact(Timeout = 60_000)]
     public async Task HandlesMultipleMessagesWithCorrectOrdering()
     {
         await using var ctx = await CreateTestContextAsync();

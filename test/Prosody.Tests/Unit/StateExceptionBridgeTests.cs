@@ -73,6 +73,12 @@ public sealed class StateExceptionBridgeTests
             CancellationToken cancellationToken
         ) => onMessage(prosodyContext, message, cancellationToken);
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,

@@ -51,6 +51,7 @@ await client.SubscribeAsync(messageHandler);
 
 // Send a message to a topic
 await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!" });
+await client.ExciseAsync("my-topic", "obsolete-key");
 
 // Ensure proper shutdown when done
 await client.UnsubscribeAsync();
@@ -58,6 +59,12 @@ await client.UnsubscribeAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"Excise key: {message.Key}");
+        return Task.CompletedTask;
+    }
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Process the received message
@@ -80,6 +87,12 @@ public class MyHandler : IProsodyHandler<MyPayload>
     }
 }
 ```
+
+## Excise records
+
+Call `ExciseAsync(topic, key)` to send a Kafka record with a key and no payload. Use this record to delete the key from compacted views.
+
+Each handler must implement `OnExciseAsync`. It receives the same arguments as `OnMessageAsync`. The message payload is `null`.
 
 ## Architecture
 
@@ -1189,6 +1202,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
+- `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
@@ -1211,6 +1225,7 @@ Interface for handling messages and timers:
 public interface IProsodyHandler<TPayload>
 {
     Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+    Task OnExciseAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
     Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }
 ```

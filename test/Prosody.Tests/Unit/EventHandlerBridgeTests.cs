@@ -759,6 +759,12 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<T> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -770,6 +776,12 @@ public sealed class EventHandlerBridgeTests
     {
         [PermanentError(typeof(JsonException))]
         public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<BridgePayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
+        public Task OnExciseAsync(
             ProsodyContext prosodyContext,
             Message<BridgePayload> message,
             CancellationToken cancellationToken
@@ -796,6 +808,12 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage(prosodyContext, message, cancellationToken);
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -810,6 +828,12 @@ public sealed class EventHandlerBridgeTests
         : IProsodyHandler<JsonElement>
     {
         public Task OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
+        public Task OnExciseAsync(
             ProsodyContext prosodyContext,
             Message<JsonElement> message,
             CancellationToken cancellationToken
@@ -837,6 +861,12 @@ public sealed class EventHandlerBridgeTests
     private sealed class ExplicitInterfaceHandler(Action? onMessage = null, Action? onTimer = null)
         : IProsodyHandler<JsonElement>
     {
+        Task IProsodyHandler<JsonElement>.OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         [PermanentError(typeof(FormatException))]
         Task IProsodyHandler<JsonElement>.OnMessageAsync(
             ProsodyContext prosodyContext,

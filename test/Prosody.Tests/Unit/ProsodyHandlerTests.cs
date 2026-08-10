@@ -18,6 +18,12 @@ public sealed class ProsodyHandlerTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -133,6 +139,12 @@ public sealed class ProsodyHandlerTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -188,6 +200,12 @@ public sealed class ProsodyHandlerTests
         {
             throw new OrderValidationException("Order is invalid");
         }
+
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
 
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,

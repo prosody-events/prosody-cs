@@ -256,6 +256,32 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
     }
 
+    /// <summary>Sends an excise record for a key.</summary>
+    public async Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        try
+        {
+            await _native.Excise(topic, key, carrier, linked?.Signal).ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Cancelled ex)
+        {
+            throw new OperationCanceledException("The excise was cancelled.", ex, cancellationToken);
+        }
+        finally
+        {
+            if (linked is { } value)
+            {
+                await value.Registration.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <summary>
     /// Sends a message to a topic, serializing <paramref name="payload"/> using the supplied
     /// <paramref name="typeInfo"/> (trim-safe; no reflection resolver is consulted).

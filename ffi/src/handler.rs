@@ -102,6 +102,14 @@ pub trait EventHandler: Send + Sync {
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 
+    /// Handles an excise record.
+    async fn on_excise(
+        &self,
+        context: Arc<Context>,
+        message: Arc<Message>,
+        carrier: HashMap<String, String>,
+    ) -> Result<HandlerResult, FfiError>;
+
     /// Handles a fired timer.
     ///
     /// Prosody calls this method when a previously scheduled timer fires.

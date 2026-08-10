@@ -155,6 +155,29 @@ impl FallibleHandler for CsHandler {
         map_handler_result(result)
     }
 
+    async fn on_excise<C>(
+        &self,
+        context: C,
+        message: ConsumerMessage<Self::Payload>,
+        _demand_type: DemandType,
+    ) -> Result<Self::Output, Self::Error>
+    where
+        C: EventContext<Payload = Self::Payload>,
+    {
+        let span = message.span();
+        let mut carrier = HashMap::with_capacity(2);
+        self.propagator
+            .inject_context(&span.context(), &mut carrier);
+        let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
+        let message = Arc::new(Message::new(message));
+        let result = self
+            .handler
+            .on_excise(context, message, carrier)
+            .instrument(span)
+            .await?;
+        map_handler_result(result)
+    }
+
     /// Processes a timer event by delegating to the C# handler.
     ///
     /// Only application timers are forwarded to C#; internal prosody timers
@@ -461,6 +484,43 @@ impl ProsodyClient {
             span.record("aborted", false);
         }
 
+        Ok(())
+    }
+
+    /// Sends an excise record for a key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Prosody cannot send the record or the caller
+    /// cancels the operation.
+    pub async fn excise(
+        &self,
+        topic: String,
+        key: String,
+        carrier: HashMap<String, String>,
+        cancel: Option<Arc<CancellationSignal>>,
+    ) -> Result<(), FfiError> {
+        let context = self.client.propagator().extract(&carrier);
+        let span = info_span!("csharp-Excise", %topic, %key, aborted = Empty);
+        if let Err(err) = span.set_parent(context) {
+            debug!("failed to set parent span: {err:#}");
+        }
+        let excise_future = self
+            .client
+            .excise(topic.as_str().into(), key)
+            .instrument(span.clone());
+        if let Some(signal) = cancel {
+            tokio::select! {
+                result = excise_future => { span.record("aborted", false); result?; }
+                () = signal.cancelled() => {
+                    span.record("aborted", true);
+                    return Err(FfiError::Cancelled);
+                }
+            }
+        } else {
+            excise_future.await?;
+            span.record("aborted", false);
+        }
         Ok(())
     }
 

@@ -118,6 +118,12 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
             return Task.CompletedTask;
         }
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,

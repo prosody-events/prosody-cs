@@ -121,6 +121,12 @@ public sealed class NormativeExampleCompileTests
             }
         }
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<OrderEvent> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -158,6 +164,12 @@ public sealed class NormativeExampleCompileTests
                 await pending.PushBackAsync(message, cancellationToken); // capacity bounds the buffer
             }
         }
+
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            Message<Activity> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
 
         public async Task OnTimerAsync(
             ProsodyContext prosodyContext,

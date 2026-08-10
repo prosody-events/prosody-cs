@@ -91,6 +91,9 @@ public interface IProsodyHandler<TPayload>
     /// </remarks>
     Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
 
+    /// <summary>Handles an excise record.</summary>
+    Task OnExciseAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+
     /// <summary>
     /// Called when a timer fires.
     /// </summary>

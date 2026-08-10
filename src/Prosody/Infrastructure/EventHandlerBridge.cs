@@ -24,6 +24,7 @@ internal static class EventHandlerBridge
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
     internal const string OnMessageActivityName = "on_message";
+    internal const string OnExciseActivityName = "on_excise";
     internal const string OnTimerActivityName = "on_timer";
 
     // follow-up (AOT): Assembly.GetCustomAttribute is trim-unsafe; replace with a
@@ -244,6 +245,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 {
     private readonly IProsodyHandler<TPayload> _userHandler;
     private readonly Func<Exception, bool> _isMessagePermanent;
+    private readonly Func<Exception, bool> _isExcisePermanent;
     private readonly Func<Exception, bool> _isTimerPermanent;
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
     private readonly JsonSerializerOptions _jsonOptions;
@@ -281,7 +283,13 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             interfaceType,
             nameof(IProsodyHandler<TPayload>.OnTimerAsync)
         );
+        var onExciseAttr = PermanentErrorResolver.GetAttribute(
+            handlerType,
+            interfaceType,
+            nameof(IProsodyHandler<TPayload>.OnExciseAsync)
+        );
         _isMessagePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onMsgAttr);
+        _isExcisePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onExciseAttr);
         _isTimerPermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onTimerAttr);
     }
 
@@ -301,6 +309,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isExcisePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
     }
 
@@ -319,7 +328,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var partition = message.Partition();
         var offset = message.Offset();
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
-        var bytes = message.Payload();
+        var bytes = message.Payload() ?? throw new InvalidOperationException("A message record must have a payload.");
 
         return HandleMessageAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
@@ -332,6 +341,41 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             context.OnCancel,
             carrier,
             message
+        );
+    }
+
+    /// <inheritdoc/>
+    public Task<NativeResult> OnExcise(
+        Native.Context context,
+        Native.Message message,
+        Dictionary<string, string> carrier
+    )
+    {
+        var record = new Message<TPayload>(
+            message.Topic(),
+            message.Key(),
+            message.Partition(),
+            message.Offset(),
+            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero),
+            default,
+            message
+        );
+        return EventHandlerBridge.InvokeHandlerAsync(
+            ct => _userHandler.OnExciseAsync(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
+            _isExcisePermanent,
+            context.OnCancel,
+            carrier,
+            activityName: EventHandlerBridge.OnExciseActivityName,
+            eventType: "excise",
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () =>
+                    EventHandlerBridge.BuildMessageSentryContext(
+                        record.Topic,
+                        record.Key,
+                        record.Partition,
+                        record.Offset
+                    )
+                : null
         );
     }
 
