@@ -86,6 +86,16 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `Mode` / - | Processing mode: `Pipeline`, `LowLatency`, or `BestEffort` | `Pipeline` |
 | - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info` |
 
+## Peer requests
+
+| Property / Environment Variable | Description | Default |
+|---------------------------------|-------------|---------|
+| `PeerBindAddress` / `PROSODY_PEER_BIND_ADDRESS` | Address for the peer listener | `0.0.0.0:0` |
+| `PeerAdvertisedConnect` / `PROSODY_PEER_ADVERTISED_CONNECT` | gRPC connect URI that other clients use | - |
+| `PeerNetworkName` / `PROSODY_PEER_NETWORK_NAME` | Network name used to identify direct routes | - |
+| `PeerCacheCapacity` / `PROSODY_PEER_CACHE_CAPACITY` | Peer channels and registrations held in each cache | 256 |
+| `PeerRegistrationTtl` / `PROSODY_PEER_REGISTRATION_TTL` | Duration of each peer registration lease | 30s |
+
 ## Consumer
 
 | Property / Environment Variable | Description | Default |

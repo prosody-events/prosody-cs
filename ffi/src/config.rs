@@ -17,6 +17,7 @@
 //!   which can reject invalid caller input.
 
 use prosody::ByteSize;
+use prosody::PeerConfiguration;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::codec::{JsonBinaryCodec, JsonPassthroughStateCodec};
 use prosody::consumer::ConsumerConfigurationBuilder;
@@ -44,9 +45,11 @@ use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
 };
 use prosody::timers::duration::CompactDuration;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
+use tonic::transport::Endpoint;
 use validator::{ValidationError, ValidationErrors};
 
 use crate::error::FfiError;
@@ -702,8 +705,41 @@ pub fn build_consumer_builders(options: &ClientOptions) -> Result<ConsumerBuilde
         timeout: build_timeout_config(options),
         dedup: build_dedup_config(options)?,
         keyed_state: build_keyed_state_config(options)?,
+        peer: build_peer_config(options)?,
         emitter: build_telemetry_emitter_config(options).build()?,
     })
+}
+
+fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiError> {
+    let mut builder = PeerConfiguration::builder();
+    if let Some(value) = &options.peer_bind_address {
+        builder.bind_address(
+            value
+                .parse::<SocketAddr>()
+                .map_err(|error| permanent_config(format!("peer_bind_address: {error}")))?,
+        );
+    }
+    if let Some(value) = &options.peer_advertised_connect {
+        builder.advertised_connect(
+            Endpoint::from_shared(value.clone())
+                .map_err(|error| permanent_config(format!("peer_advertised_connect: {error}")))?,
+        );
+    }
+    if let Some(value) = &options.peer_network_name {
+        builder.network_name(value.clone());
+    }
+    if let Some(value) = options.peer_cache_capacity {
+        builder.peer_cache_capacity(
+            usize::try_from(value)
+                .map_err(|error| permanent_config(format!("peer_cache_capacity: {error}")))?,
+        );
+    }
+    if let Some(value) = options.peer_registration_ttl {
+        builder.registration_ttl(value);
+    }
+    builder
+        .build()
+        .map_err(|error| permanent_config(error.to_string()))
 }
 
 /// Creates a Cassandra configuration builder from client options.

@@ -40,7 +40,10 @@ use crate::config::{
 };
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
-use crate::handler::{EventHandler, HandlerResult, HandlerResultCode};
+use crate::handler::{
+    EventHandler, HandlerResult, HandlerResultCode, NativeRequest, NativeRequestResult,
+    NativeResponseErrorCategory,
+};
 use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
 use crate::published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
@@ -51,10 +54,14 @@ use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
+use prosody::error::ErrorCategory;
 use prosody::high_level::erased::{
     ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
 };
+use prosody::high_level::{ClientHandler, Codecs};
 use prosody::propagator::new_propagator;
+use prosody::requester::ResponseError;
+use prosody::subsystem::SubsystemName;
 use prosody::timers::{TimerType, Trigger};
 
 /// Converts a [`HandlerResult`] from C# into a Rust `Result`.
@@ -66,11 +73,15 @@ use prosody::timers::{TimerType, Trigger};
 ///
 /// Returns [`CsHandlerError::Transient`] for retriable failures.
 /// Returns [`CsHandlerError::Permanent`] for non-retriable failures.
-fn map_handler_result(result: HandlerResult) -> Result<(), CsHandlerError> {
+fn map_handler_result(result: HandlerResult) -> Result<BinaryPayload, CsHandlerError> {
     let error_msg = result.error_message.unwrap_or_default();
 
     match result.code {
-        HandlerResultCode::Success => Ok(()),
+        HandlerResultCode::Success => Ok(BinaryPayload::new(
+            result.response,
+            None::<String>,
+            None::<String>,
+        )),
         HandlerResultCode::TransientError => Err(CsHandlerError::Transient(error_msg)),
         HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent(error_msg)),
     }
@@ -115,7 +126,7 @@ impl Clone for CsHandler {
 /// for distributed tracing continuity across the FFI boundary.
 impl FallibleHandler for CsHandler {
     type Error = CsHandlerError;
-    type Output = ();
+    type Output = BinaryPayload;
     type Payload = BinaryPayload;
 
     /// Processes an incoming Kafka message by delegating to the C# handler.
@@ -170,7 +181,11 @@ impl FallibleHandler for CsHandler {
     {
         // Only process Application timers - other types are internal to prosody
         if trigger.timer_type != TimerType::Application {
-            return Ok(());
+            return Ok(BinaryPayload::new(
+                b"null".to_vec(),
+                None::<String>,
+                None::<String>,
+            ));
         }
 
         // Get the span from the trigger for distributed tracing
@@ -202,6 +217,10 @@ impl FallibleHandler for CsHandler {
     /// No cleanup is needed since the C# handler lifetime is managed by
     /// [`ProsodyClient::handler`] field via `ArcSwap`.
     async fn shutdown(self) {}
+}
+
+impl ClientHandler for CsHandler {
+    type Codecs = Codecs<JsonBinaryCodec, JsonBinaryCodec>;
 }
 
 /// Native Prosody client exposed to C# via `UniFFI`.
@@ -240,7 +259,7 @@ impl FallibleHandler for CsHandler {
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
-    client: SharedHighLevelClient<CsHandler, JsonBinaryCodec>,
+    client: SharedHighLevelClient<CsHandler>,
     /// Holds the C# handler reference to prevent premature deallocation.
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
@@ -284,7 +303,13 @@ impl ProsodyClient {
         // (async_compat's global TOKIO1), so tokio::spawn succeeds without
         // creating a second runtime.
         let client = block_on(Compat::new(async {
-            new_erased(mode, &mut producer_config, &consumer_builders, &cassandra)
+            Box::pin(new_erased(
+                mode,
+                &mut producer_config,
+                &consumer_builders,
+                &cassandra,
+            ))
+            .await
         }))?;
 
         Ok(Self {
@@ -464,6 +489,42 @@ impl ProsodyClient {
         Ok(())
     }
 
+    /// Sends one request and returns one result per subsystem.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid arguments, a send failure, or shutdown.
+    pub async fn request(
+        &self,
+        request: NativeRequest,
+    ) -> Result<Vec<NativeRequestResult>, FfiError> {
+        let subsystems = request
+            .subsystems
+            .into_iter()
+            .map(SubsystemName::try_new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        let context = self.client.propagator().extract(&request.carrier);
+        let span = info_span!("csharp-request", topic = %request.topic, key = %request.key);
+        if let Err(error) = span.set_parent(context) {
+            debug!("failed to set parent span: {error:#}");
+        }
+        let payload = BinaryPayload::new(request.payload, None::<String>, None::<String>);
+        let results = self
+            .client
+            .request(
+                request.headers.into_iter().collect(),
+                request.topic.as_str().into(),
+                request.key,
+                payload,
+                subsystems,
+                request.timeout,
+            )
+            .instrument(span)
+            .await?;
+        Ok(results.into_iter().map(native_request_result).collect())
+    }
+
     /// Returns the current consumer state.
     pub async fn consumer_state(&self) -> ConsumerState {
         match self.client.consumer_state().await {
@@ -489,5 +550,22 @@ impl ProsodyClient {
     /// Returns the source system identifier configured for this client.
     pub fn source_system(&self) -> String {
         self.client.source_system().to_owned()
+    }
+}
+
+fn native_request_result(result: Result<BinaryPayload, ResponseError>) -> NativeRequestResult {
+    match result {
+        Ok(value) => NativeRequestResult::Ok { value: value.bytes },
+        Err(ResponseError::Handler { category, message }) => NativeRequestResult::HandlerError {
+            category: match category {
+                ErrorCategory::Transient => NativeResponseErrorCategory::Transient,
+                ErrorCategory::Permanent => NativeResponseErrorCategory::Permanent,
+                ErrorCategory::Terminal => NativeResponseErrorCategory::Terminal,
+            },
+            message,
+        },
+        Err(ResponseError::Timeout) => NativeRequestResult::Timeout,
+        Err(ResponseError::FormatMismatch) => NativeRequestResult::FormatMismatch,
+        Err(ResponseError::Malformed) => NativeRequestResult::Malformed,
     }
 }

@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::context::Context;
 use crate::error::FfiError;
@@ -61,6 +62,62 @@ pub struct HandlerResult {
     /// [`HandlerResultCode::PermanentError`], containing the exception message
     /// from the C# handler. It is `None` on success.
     pub error_message: Option<String>,
+
+    /// Encoded JSON response on success.
+    pub response: Vec<u8>,
+}
+
+/// Values needed to send one peer request.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeRequest {
+    /// Kafka topic.
+    pub topic: String,
+    /// Kafka key.
+    pub key: String,
+    /// Encoded JSON payload.
+    pub payload: Vec<u8>,
+    /// Requested subsystem names.
+    pub subsystems: Vec<String>,
+    /// Request timeout.
+    pub timeout: Duration,
+    /// User Kafka headers.
+    pub headers: HashMap<String, String>,
+    /// Trace propagation fields.
+    pub carrier: HashMap<String, String>,
+}
+
+/// Handler error category.
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum NativeResponseErrorCategory {
+    /// Retry can succeed.
+    Transient,
+    /// Retry cannot succeed for this message.
+    Permanent,
+    /// The client must stop.
+    Terminal,
+}
+
+/// One subsystem result returned by a peer request.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum NativeRequestResult {
+    /// The handler returned encoded JSON.
+    Ok {
+        /// Encoded JSON response.
+        value: Vec<u8>,
+    },
+    /// The handler returned a classified error.
+    HandlerError {
+        /// Retry category.
+        category: NativeResponseErrorCategory,
+        /// Handler error text.
+        message: String,
+    },
+    /// No response arrived before the deadline.
+    Timeout,
+    /// The responder used another response format.
+    FormatMismatch,
+    /// The response payload did not decode.
+    Malformed,
 }
 
 /// Callback trait for handling Kafka messages and timers.

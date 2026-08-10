@@ -375,6 +375,68 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>Sends one request and returns one result per subsystem.</summary>
+    public async Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(subsystems);
+        cancellationToken.ThrowIfCancellationRequested();
+        var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
+        var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
+        var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
+        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+        var nativeResults = await _native
+            .Request(
+                new Native.NativeRequest(
+                    topic,
+                    key,
+                    encoded,
+                    [.. subsystems],
+                    timeout,
+                    headers is null
+                        ? new Dictionary<string, string>(StringComparer.Ordinal)
+                        : new Dictionary<string, string>(headers, StringComparer.Ordinal),
+                    carrier
+                )
+            )
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return nativeResults.Select(result => RequestResult(result, responseType)).ToArray();
+    }
+
+    private static RequestResult<T> RequestResult<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>
+        result switch
+        {
+            Native.NativeRequestResult.Ok ok => new Ok<T>(JsonSerializer.Deserialize(ok.Value.AsSpan(), responseType)!),
+            Native.NativeRequestResult.HandlerError error => new Err<T>(
+                new HandlerResponseError(ResponseErrorCategory(error.Category), error.Message)
+            ),
+            Native.NativeRequestResult.Timeout => new Err<T>(new ResponseTimeoutError()),
+            Native.NativeRequestResult.FormatMismatch => new Err<T>(new ResponseFormatMismatchError()),
+            Native.NativeRequestResult.Malformed => new Err<T>(new MalformedResponseError()),
+            _ => throw new InvalidOperationException("Unknown response result"),
+        };
+
+    private static ResponseErrorCategory ResponseErrorCategory(Native.NativeResponseErrorCategory category) =>
+        category switch
+        {
+            Native.NativeResponseErrorCategory.Transient => Messaging.ResponseErrorCategory.Transient,
+            Native.NativeResponseErrorCategory.Permanent => Messaging.ResponseErrorCategory.Permanent,
+            Native.NativeResponseErrorCategory.Terminal => Messaging.ResponseErrorCategory.Terminal,
+            _ => throw new InvalidOperationException("Unknown response error category"),
+        };
+
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler.
     /// </summary>
@@ -405,6 +467,15 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
         var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions);
+        return _native.Subscribe(bridge);
+    }
+
+    /// <summary>Subscribes with a handler that returns peer responses.</summary>
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
+    [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
+    public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)
+    {
+        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions);
         return _native.Subscribe(bridge);
     }
 

@@ -22,6 +22,7 @@ use prosody::high_level::HighLevelClientError;
 use prosody::high_level::erased::ErasedClientBuildError;
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
+use prosody::requester::RequestError;
 use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
@@ -110,6 +111,10 @@ pub enum FfiError {
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
     Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+
+    /// A peer request failed before it returned subsystem results.
+    #[error("request failed: {0:#}")]
+    Request(#[from] RequestError<BinaryCodecError<JsonExtractError>>),
 
     /// Construction of the backend-erased FFI client failed.
     #[error("client construction failed: {0:#}")]

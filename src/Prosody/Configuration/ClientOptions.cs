@@ -93,6 +93,21 @@ public sealed class ClientOptions
     /// </summary>
     public bool? Mock { get; set; }
 
+    /// <summary>Address for the peer listener.</summary>
+    public string? PeerBindAddress { get; set; }
+
+    /// <summary>gRPC connect URI that other clients use for this client.</summary>
+    public string? PeerAdvertisedConnect { get; set; }
+
+    /// <summary>Network name used to identify direct routes.</summary>
+    public string? PeerNetworkName { get; set; }
+
+    /// <summary>Maximum peer channels and registrations in each cache. Default: 256.</summary>
+    public ulong? PeerCacheCapacity { get; set; }
+
+    /// <summary>Duration of each peer registration lease. Default: 30 seconds.</summary>
+    public TimeSpan? PeerRegistrationTtl { get; set; }
+
     // ========================================================================
     // Consumer options
     // ========================================================================
@@ -569,6 +584,11 @@ public sealed class ClientOptions
             AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
+            PeerBindAddress: PeerBindAddress,
+            PeerAdvertisedConnect: PeerAdvertisedConnect,
+            PeerNetworkName: PeerNetworkName,
+            PeerCacheCapacity: PeerCacheCapacity,
+            PeerRegistrationTtl: PeerRegistrationTtl,
             MaxConcurrency: MaxConcurrency,
             MaxUncommitted: MaxUncommitted,
             IdempotenceCacheSize: IdempotenceCacheSize,

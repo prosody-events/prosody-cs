@@ -89,7 +89,10 @@ pub use cursor::{
     MessageMapCursor, MessageMapEntry,
 };
 pub use error::FfiError;
-pub use handler::{EventHandler, HandlerResultCode};
+pub use handler::{
+    EventHandler, HandlerResultCode, NativeRequest, NativeRequestResult,
+    NativeResponseErrorCategory,
+};
 pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
 pub use message::Message;

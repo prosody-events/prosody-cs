@@ -243,6 +243,26 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub mock: Option<bool>,
 
+    /// Address for the peer listener.
+    #[uniffi(default = None)]
+    pub peer_bind_address: Option<String>,
+
+    /// gRPC connect URI that other clients use for this client.
+    #[uniffi(default = None)]
+    pub peer_advertised_connect: Option<String>,
+
+    /// Network name used to identify direct routes.
+    #[uniffi(default = None)]
+    pub peer_network_name: Option<String>,
+
+    /// Maximum number of peer channels and registrations in each cache.
+    #[uniffi(default = None)]
+    pub peer_cache_capacity: Option<u64>,
+
+    /// Duration of each peer registration lease.
+    #[uniffi(default = None)]
+    pub peer_registration_ttl: Option<Duration>,
+
     // ========================================================================
     // Consumer options
     // ========================================================================

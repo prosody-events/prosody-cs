@@ -238,6 +238,43 @@ if (await client.IsStalledAsync())
 
 ## Advanced Usage
 
+### Peer Requests
+
+Peer requests collect one result from each named subsystem. The result order matches the subsystem order.
+
+Return a JSON response from each handler:
+
+```csharp
+public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryResponse>
+{
+    public Task<InventoryResponse> OnMessageAsync(
+        ProsodyContext context,
+        Message<Order> message,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(message.Key));
+
+    public Task<InventoryResponse> OnTimerAsync(
+        ProsodyContext context,
+        ProsodyTimer timer,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(timer.Key));
+}
+```
+
+Send a request without a subscription on the requester:
+
+```csharp
+IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAsync<Order, InventoryResponse>(
+    "orders",
+    "order-1",
+    new Order("order.created"),
+    ["inventory", "billing"],
+    TimeSpan.FromSeconds(2)
+);
+```
+
+Each error identifies a handler failure, timeout, format mismatch, or malformed response. Handler failures also include their category and message.
+
 ### Pipeline Mode
 
 Pipeline mode is the default mode. Ensures ordered processing, retrying failed operations indefinitely:
