@@ -17,7 +17,7 @@ internal sealed partial class JsonOptionsTestPayloadContext : JsonSerializerCont
 /// <summary>
 /// Tests that <see cref="ProsodyClient"/> builds and exposes the correct <see cref="JsonSerializerOptions"/>.
 /// </summary>
-public sealed class ProsodyClientJsonOptionsTests : IDisposable
+public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
 {
     private readonly ProsodyClient _client = new(
         new ClientOptions
@@ -29,7 +29,9 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
         }
     );
 
-    public void Dispose() => _client.Dispose();
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+
+    public ValueTask DisposeAsync() => _client.DisposeAsync();
 
     [Fact]
     public void Defaults_UseCamelCaseNaming()
@@ -51,12 +53,12 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureJsonOptions_MutatorRunsAfterDefaults()
+    public async Task ConfigureJsonOptions_MutatorRunsAfterDefaults()
     {
         var invoked = false;
         JsonNamingPolicy? capturedPolicy = null;
 
-        using var client = new ProsodyClient(
+        await using var client = new ProsodyClient(
             new ClientOptions
             {
                 Mock = true,
@@ -78,9 +80,9 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     }
 
     [Fact]
-    public void NullConfigureJsonOptions_LeavesDefaultsIntact()
+    public async Task NullConfigureJsonOptions_LeavesDefaultsIntact()
     {
-        using var client = new ProsodyClient(
+        await using var client = new ProsodyClient(
             new ClientOptions
             {
                 Mock = true,
@@ -104,11 +106,11 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureJsonOptions_SecondBuilderCallWinsOverFirst()
+    public async Task ConfigureJsonOptions_SecondBuilderCallWinsOverFirst()
     {
         // Two consecutive .ConfigureJsonOptions calls on the builder: the second assignment overwrites the first
         // because ConfigureJsonOptions is a simple property, not a chain/accumulator.
-        using var client = ProsodyClientBuilder
+        await using var client = ProsodyClientBuilder
             .Create()
             .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("test-group")
@@ -122,9 +124,9 @@ public sealed class ProsodyClientJsonOptionsTests : IDisposable
     }
 
     [Fact]
-    public void ConfigureJsonOptions_CanSetTypeInfoResolver()
+    public async Task ConfigureJsonOptions_CanSetTypeInfoResolver()
     {
-        using var client = new ProsodyClient(
+        await using var client = new ProsodyClient(
             new ClientOptions
             {
                 Mock = true,
