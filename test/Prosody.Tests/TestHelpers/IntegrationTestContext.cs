@@ -96,7 +96,7 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
     /// Builds a second client bound to this context's topic and group id (not a fresh group), sharing
     /// the same bootstrap and Cassandra options. Identity persistence requires a shared group, so this
     /// is the seam the same-name-different-kind identity-mismatch scenario runs across two clients.
-    /// The caller owns the returned client: unsubscribe and dispose it before this context disposes.
+    /// The caller owns the returned client. Dispose it before this context disposes.
     /// </summary>
     /// <param name="configure">Optional callback to override client options before construction.</param>
     /// <returns>A client subscribed to the same topic and group as this context.</returns>
@@ -105,10 +105,6 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (await Client.GetConsumerStateAsync() == ConsumerState.Running)
-        {
-            await Client.UnsubscribeAsync();
-        }
         await Client.DisposeAsync();
 
         try

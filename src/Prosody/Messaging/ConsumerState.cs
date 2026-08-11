@@ -19,4 +19,9 @@ public enum ConsumerState
     /// Consumer is actively processing messages.
     /// </summary>
     Running = 2,
+
+    /// <summary>
+    /// Client is shut down.
+    /// </summary>
+    ShutDown = 3,
 }

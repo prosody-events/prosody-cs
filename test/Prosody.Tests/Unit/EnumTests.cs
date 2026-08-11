@@ -28,10 +28,11 @@ public sealed class EnumTests
         var values = Enum.GetValues<ConsumerState>();
 
         Assert.Multiple(
-            () => Assert.Equal(3, values.Length),
+            () => Assert.Equal(4, values.Length),
             () => Assert.Contains(ConsumerState.Unconfigured, values),
             () => Assert.Contains(ConsumerState.Configured, values),
-            () => Assert.Contains(ConsumerState.Running, values)
+            () => Assert.Contains(ConsumerState.Running, values),
+            () => Assert.Contains(ConsumerState.ShutDown, values)
         );
     }
 

@@ -17,6 +17,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
+    private readonly Lazy<Task> _shutdown;
 
     internal JsonSerializerOptions JsonOptions { get; }
 
@@ -29,6 +30,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         _native = native;
         JsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
+        _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
         SourceSystem = native.SourceSystem();
     }
 
@@ -57,6 +59,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         _native = new Native.ProsodyClient(options.ToNative());
         JsonOptions = BuildJsonOptions(options);
         _stateDefinitions = RegisteredStateDefinitions(options);
+        _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
         SourceSystem = _native.SourceSystem();
     }
 
@@ -192,6 +195,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         Native.ConsumerState state = await _native.ConsumerState();
         return state switch
         {
+            Native.ConsumerState.ShutDown => ConsumerState.ShutDown,
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
             Native.ConsumerState.Running => ConsumerState.Running,
@@ -521,36 +525,35 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </summary>
     public Task UnsubscribeAsync() => _native.Unsubscribe();
 
+    /// <summary>
+    /// Shuts down the consumer and all client services.
+    /// </summary>
+    public Task ShutdownAsync() => _shutdown.Value;
+
+    private Task ShutdownCoreAsync() => _native.Shutdown();
+
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         try
         {
-            await _native.Unsubscribe().ConfigureAwait(false);
+            await ShutdownAsync().ConfigureAwait(false);
         }
-        catch (Native.FfiException.Client)
+        finally
         {
-            // Ignore - consumer was not running or already unsubscribed
-        }
-        catch (ObjectDisposedException)
-        {
-            // Ignore - already disposed
-        }
+            // Flush this client's final telemetry before native teardown.
+            // Telemetry is process-global, so sibling clients can still use it.
+            try
+            {
+                ProsodyLogging.FlushTelemetry();
+            }
+            catch (Native.FfiException)
+            {
+                // Telemetry flush is best-effort during disposal.
+            }
 
-        // Flush this client's final telemetry (including the unsubscribe span above)
-        // before native teardown so a promptly-exiting process does not lose it.
-        // Flush, not shutdown: telemetry is process-global and sibling clients may
-        // still be running. Best-effort — a flush failure must not fault disposal.
-        try
-        {
-            ProsodyLogging.FlushTelemetry();
+            _native.Dispose();
         }
-        catch (Native.FfiException)
-        {
-            // Ignore - telemetry flush is best-effort during disposal
-        }
-
-        _native.Dispose();
     }
 
     /// <inheritdoc/>

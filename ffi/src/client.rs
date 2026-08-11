@@ -426,6 +426,18 @@ impl ProsodyClient {
         Ok(())
     }
 
+    /// Shuts down the client and all its services.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FfiError::Client`] if shutdown fails.
+    pub async fn shutdown(&self) -> Result<(), FfiError> {
+        let result = self.client.clone().shutdown().await;
+        self.handler.store(Arc::new(None));
+        result?;
+        Ok(())
+    }
+
     /// Sends a message to a Kafka topic.
     ///
     /// The payload bytes are forwarded to Kafka verbatim; this method does
@@ -533,6 +545,7 @@ impl ProsodyClient {
     /// Returns the current consumer state.
     pub async fn consumer_state(&self) -> ConsumerState {
         match self.client.consumer_state().await {
+            ErasedConsumerState::ShutDown => ConsumerState::ShutDown,
             ErasedConsumerState::Unconfigured => ConsumerState::Unconfigured,
             ErasedConsumerState::ConfigurationFailed(error) => {
                 ConsumerState::ConfigurationFailed { message: error }

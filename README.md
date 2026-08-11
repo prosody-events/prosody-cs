@@ -53,7 +53,7 @@ await client.SubscribeAsync(messageHandler);
 await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!" });
 
 // Ensure proper shutdown when done
-await client.UnsubscribeAsync();
+await client.ShutdownAsync();
 
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
@@ -805,11 +805,11 @@ Strategies for achieving idempotence:
 
 ### Proper Shutdown
 
-Always unsubscribe from topics before exiting your application:
+Shut down the client before your application exits:
 
 ```csharp
 // Ensure proper shutdown
-await client.UnsubscribeAsync();
+await client.ShutdownAsync();
 ```
 
 This ensures:
@@ -848,7 +848,7 @@ public class ProsodyWorker : BackgroundService
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         Console.WriteLine("Shutting down gracefully...");
-        await _client.UnsubscribeAsync();
+        await _client.ShutdownAsync();
         _client.Dispose();
         await base.StopAsync(cancellationToken);
     }
@@ -1231,9 +1231,10 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
-- `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
+- `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
+- `Task ShutdownAsync()`: Stop the consumer and all client services.
 - `void Dispose()`: Dispose of client resources synchronously.
-- `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
+- `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 
 ### AdminClient
 

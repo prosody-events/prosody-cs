@@ -82,6 +82,9 @@ pub enum ConsumerState {
     /// Actively polling and processing messages.
     Running,
 
+    /// The client is shut down.
+    ShutDown,
+
     /// Configuration failed during build.
     ConfigurationFailed {
         /// The error message describing the configuration failure.
