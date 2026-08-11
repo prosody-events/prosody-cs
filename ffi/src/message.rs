@@ -55,28 +55,24 @@ impl Message {
     }
 
     /// The partition number within the topic.
-    /// Returns the partition.
     #[must_use]
     pub fn partition(&self) -> i32 {
         self.inner.partition()
     }
 
     /// The offset of this message within its partition.
-    /// Returns the offset.
     #[must_use]
     pub fn offset(&self) -> i64 {
         self.inner.offset()
     }
 
     /// The timestamp when the message was produced.
-    /// Returns the timestamp.
     #[must_use]
     pub fn timestamp(&self) -> SystemTime {
         (*self.inner.timestamp()).into()
     }
 
     /// The message key used for partitioning.
-    /// Returns the key.
     #[must_use]
     pub fn key(&self) -> String {
         self.inner.key().to_string()
