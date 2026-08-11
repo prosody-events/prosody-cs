@@ -10,7 +10,7 @@ public interface IProsodyRequestHandler<TPayload, TResponse>
         CancellationToken cancellationToken
     );
 
-    /// <summary>Handles one timer and returns its response.</summary>
+    /// <summary>Handles one timer. The result is not a peer response.</summary>
     Task<TResponse> OnTimerAsync(
         ProsodyContext prosodyContext,
         ProsodyTimer timer,

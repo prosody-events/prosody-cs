@@ -242,7 +242,7 @@ if (await client.IsStalledAsync())
 
 Peer requests collect one result from each named subsystem. The result order matches the subsystem order.
 
-Return a JSON response from each handler:
+Return a JSON response from each message handler:
 
 ```csharp
 public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryResponse>
@@ -260,6 +260,8 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
     ) => Task.FromResult(new InventoryResponse(timer.Key));
 }
 ```
+
+Only message results become peer responses. Timer results are not peer responses.
 
 Send a request without a subscription on the requester:
 

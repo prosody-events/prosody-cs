@@ -395,24 +395,39 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
         var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
-        var nativeResults = await _native
-            .Request(
-                new Native.NativeRequest(
-                    topic,
-                    key,
-                    encoded,
-                    [.. subsystems],
-                    timeout,
-                    headers is null
-                        ? new Dictionary<string, string>(StringComparer.Ordinal)
-                        : new Dictionary<string, string>(headers, StringComparer.Ordinal),
-                    carrier
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        try
+        {
+            var nativeResults = await _native
+                .Request(
+                    new Native.NativeRequest(
+                        topic,
+                        key,
+                        encoded,
+                        [.. subsystems],
+                        timeout,
+                        headers is null
+                            ? new Dictionary<string, string>(StringComparer.Ordinal)
+                            : new Dictionary<string, string>(headers, StringComparer.Ordinal),
+                        carrier
+                    ),
+                    linked?.Signal
                 )
-            )
-            .WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        return nativeResults.Select(result => RequestResult(result, responseType)).ToArray();
+                .ConfigureAwait(false);
+            return nativeResults.Select(result => RequestResult(result, responseType)).ToArray();
+        }
+        catch (Native.FfiException.Cancelled ex)
+        {
+            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
+        }
+        finally
+        {
+            if (linked is { } l)
+            {
+                await l.Registration.DisposeAsync().ConfigureAwait(false);
+                l.Signal.Dispose();
+            }
+        }
     }
 
     private static RequestResult<T> RequestResult<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>

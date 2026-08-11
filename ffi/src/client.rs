@@ -494,6 +494,7 @@ impl ProsodyClient {
     pub async fn request(
         &self,
         request: NativeRequest,
+        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<Vec<NativeRequestResult>, FfiError> {
         let subsystems = request
             .subsystems
@@ -507,7 +508,7 @@ impl ProsodyClient {
             debug!("failed to set parent span: {error:#}");
         }
         let payload = BinaryPayload::new(request.payload, None::<String>, None::<String>);
-        let results = self
+        let request = self
             .client
             .request(
                 request.headers.into_iter().collect(),
@@ -517,8 +518,15 @@ impl ProsodyClient {
                 subsystems,
                 request.timeout,
             )
-            .instrument(span)
-            .await?;
+            .instrument(span);
+        let results = if let Some(signal) = cancel {
+            tokio::select! {
+                result = request => result?,
+                () = signal.cancelled() => return Err(FfiError::Cancelled),
+            }
+        } else {
+            request.await?
+        };
         Ok(results.into_iter().map(native_request_result).collect())
     }
 
