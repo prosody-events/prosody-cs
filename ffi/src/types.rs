@@ -83,7 +83,7 @@ pub enum ConsumerState {
     Running,
 
     /// The client is shut down.
-    ShutDown,
+    Shutdown,
 
     /// Configuration failed during build.
     ConfigurationFailed {

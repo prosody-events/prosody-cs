@@ -545,7 +545,7 @@ impl ProsodyClient {
     /// Returns the current consumer state.
     pub async fn consumer_state(&self) -> ConsumerState {
         match self.client.consumer_state().await {
-            ErasedConsumerState::ShutDown => ConsumerState::ShutDown,
+            ErasedConsumerState::Shutdown => ConsumerState::Shutdown,
             ErasedConsumerState::Unconfigured => ConsumerState::Unconfigured,
             ErasedConsumerState::ConfigurationFailed(error) => {
                 ConsumerState::ConfigurationFailed { message: error }

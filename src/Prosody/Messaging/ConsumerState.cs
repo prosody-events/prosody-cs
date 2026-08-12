@@ -23,5 +23,5 @@ public enum ConsumerState
     /// <summary>
     /// Client is shut down.
     /// </summary>
-    ShutDown = 3,
+    Shutdown = 3,
 }

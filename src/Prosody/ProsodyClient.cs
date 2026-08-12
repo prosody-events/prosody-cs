@@ -195,7 +195,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         Native.ConsumerState state = await _native.ConsumerState();
         return state switch
         {
-            Native.ConsumerState.ShutDown => ConsumerState.ShutDown,
+            Native.ConsumerState.Shutdown => ConsumerState.Shutdown,
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
             Native.ConsumerState.Running => ConsumerState.Running,

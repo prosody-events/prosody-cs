@@ -32,7 +32,7 @@ public sealed class EnumTests
             () => Assert.Contains(ConsumerState.Unconfigured, values),
             () => Assert.Contains(ConsumerState.Configured, values),
             () => Assert.Contains(ConsumerState.Running, values),
-            () => Assert.Contains(ConsumerState.ShutDown, values)
+            () => Assert.Contains(ConsumerState.Shutdown, values)
         );
     }
 
