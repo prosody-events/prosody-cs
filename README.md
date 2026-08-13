@@ -1055,6 +1055,8 @@ var host = builder.Build();
 
 Inject `ProsodyClientProvider` into hosted services. Call `GetAsync` to get the shared client.
 The provider disposes the client when the host stops.
+A failed `GetAsync` call does not poison the provider. A later call retries client construction.
+Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
 
 Log messages are emitted under the `Prosody.Native` category.
 

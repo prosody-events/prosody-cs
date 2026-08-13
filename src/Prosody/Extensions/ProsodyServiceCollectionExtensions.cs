@@ -159,7 +159,7 @@ public static class ProsodyServiceCollectionExtensions
         services.TryAddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value.Clone();
-            return new ProsodyClientProvider(options);
+            return new ProsodyClientProvider(() => ProsodyClient.FromValidatedOptionsAsync(options));
         });
 
         return services;

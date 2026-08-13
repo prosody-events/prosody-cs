@@ -455,14 +455,19 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken
     )
     {
+        if (timeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
+        }
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
         var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
         var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        Native.NativeRequestResult[] nativeResults;
         try
         {
-            var nativeResults = await _native
+            nativeResults = await _native
                 .Request(
                     new Native.NativeRequest(
                         topic,
@@ -479,7 +484,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                     linked?.Signal
                 )
                 .ConfigureAwait(false);
-            return nativeResults.Select(result => MapRequestResult(result, responseType)).ToArray();
         }
         catch (Native.FfiException.Cancelled ex)
         {
@@ -497,6 +501,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                 l.Signal.Dispose();
             }
         }
+        return nativeResults.Select(result => MapRequestResult(result, responseType)).ToArray();
     }
 
     internal static RequestResult<T> MapRequestResult<T>(
@@ -522,6 +527,10 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             return new Ok<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
         }
         catch (JsonException)
+        {
+            return new Err<T>(new MalformedResponseError());
+        }
+        catch (NotSupportedException)
         {
             return new Err<T>(new MalformedResponseError());
         }

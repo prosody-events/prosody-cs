@@ -1,36 +1,86 @@
 using System.Diagnostics.CodeAnalysis;
-using Prosody.Configuration;
+#if NET9_0_OR_GREATER
+using ProviderLock = System.Threading.Lock;
+#else
+using ProviderLock = System.Object;
+#endif
 
 namespace Prosody;
 
-/// <summary>Owns one asynchronously constructed client for dependency injection.</summary>
-public sealed class ProsodyClientProvider : IAsyncDisposable
+/// <summary>Owns one shared client for dependency injection and retries failed construction.</summary>
+public sealed class ProsodyClientProvider : IDisposable, IAsyncDisposable
 {
-    private readonly Lazy<Task<ProsodyClient>> _client;
+    private readonly ProviderLock _gate = new();
+    private readonly Func<Task<ProsodyClient>> _create;
+    private Task<ProsodyClient>? _client;
+    private bool _disposed;
 
-    [RequiresUnreferencedCode(
-        "Uses the JSON type information configured for the Prosody client. Configure a source-generated JsonSerializerContext for trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Uses the JSON type information configured for the Prosody client. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
-    internal ProsodyClientProvider(ClientOptions options)
+    internal ProsodyClientProvider(Func<Task<ProsodyClient>> create)
     {
-        _client = new(
-            () => ProsodyClient.FromValidatedOptionsAsync(options),
-            LazyThreadSafetyMode.ExecutionAndPublication
-        );
+        _create = create;
     }
 
     /// <summary>Gets the shared client without blocking the calling thread.</summary>
-    public Task<ProsodyClient> GetAsync() => _client.Value;
+    public async Task<ProsodyClient> GetAsync()
+    {
+        Task<ProsodyClient> pending;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            pending = _client ??= _create();
+        }
+
+        try
+        {
+            return await pending.ConfigureAwait(false);
+        }
+        catch
+        {
+            lock (_gate)
+            {
+                if (ReferenceEquals(_client, pending))
+                {
+                    _client = null;
+                }
+            }
+            throw;
+        }
+    }
 
     /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() =>
+        TryTakeClient(out var client) ? new ValueTask(DisposeClientAsync(client)) : ValueTask.CompletedTask;
+
+    /// <inheritdoc/>
+    public void Dispose()
     {
-        if (_client.IsValueCreated)
+        if (TryTakeClient(out var client))
         {
-            var client = await _client.Value.ConfigureAwait(false);
+            _ = DisposeClientAsync(client);
+        }
+    }
+
+    private bool TryTakeClient([NotNullWhen(true)] out Task<ProsodyClient>? client)
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                client = null;
+                return false;
+            }
+            _disposed = true;
+            client = _client;
+            return client is not null;
+        }
+    }
+
+    private static async Task DisposeClientAsync(Task<ProsodyClient> pending)
+    {
+        await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        if (pending.IsCompletedSuccessfully)
+        {
+            var client = await pending.ConfigureAwait(false);
             await client.DisposeAsync().ConfigureAwait(false);
         }
     }
