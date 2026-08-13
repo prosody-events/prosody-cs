@@ -270,23 +270,24 @@ Only message results become peer responses. Timer results are not peer responses
 Send a request without a subscription on the requester:
 
 ```csharp
+string[] subsystems = ["inventory", "billing"];
 IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAsync<Order, InventoryResponse>(
     "orders",
     "order-1",
     new Order("order.created"),
-    ["inventory", "billing"],
+    subsystems,
     TimeSpan.FromSeconds(2)
 );
 
-foreach (RequestResult<InventoryResponse> result in results)
+foreach (var (subsystem, result) in subsystems.Zip(results))
 {
     if (result is Ok<InventoryResponse> ok)
     {
-        Console.WriteLine(ok.Value);
+        Console.WriteLine($"{subsystem}: {ok.Value}");
     }
     else if (result is Err<InventoryResponse> error)
     {
-        Console.Error.WriteLine(error.Error);
+        Console.Error.WriteLine($"{subsystem}: {error.Error}");
     }
 }
 ```
