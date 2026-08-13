@@ -277,6 +277,18 @@ IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAs
     ["inventory", "billing"],
     TimeSpan.FromSeconds(2)
 );
+
+foreach (RequestResult<InventoryResponse> result in results)
+{
+    if (result is Ok<InventoryResponse> ok)
+    {
+        Console.WriteLine(ok.Value);
+    }
+    else if (result is Err<InventoryResponse> error)
+    {
+        Console.Error.WriteLine(error.Error);
+    }
+}
 ```
 
 Each error identifies a handler failure, timeout, format mismatch, or malformed response. Handler failures also include their category and message.
