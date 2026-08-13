@@ -202,7 +202,7 @@ public sealed class LoggingTests : IDisposable
     // Creates a producer-only client, which reports that the consumer is disabled.
     private static async Task CreateProducerOnlyClientAsync()
     {
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,

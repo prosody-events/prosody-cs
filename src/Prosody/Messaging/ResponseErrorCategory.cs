@@ -9,6 +9,6 @@ public enum ResponseErrorCategory
     /// <summary>Retry cannot succeed for this message.</summary>
     Permanent = 1,
 
-    /// <summary>The client must stop.</summary>
+    /// <summary>The responding client cannot continue.</summary>
     Terminal = 2,
 }

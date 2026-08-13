@@ -35,7 +35,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Creates a new ProsodyClient with the given options.
+    /// Creates a new Prosody client with the given options.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
@@ -52,15 +52,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresDynamicCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
     )]
-    public ProsodyClient(ClientOptions options)
+    public static async Task<ProsodyClient> CreateAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        _native = new Native.ProsodyClient(options.ToNative());
-        JsonOptions = BuildJsonOptions(options);
-        _stateDefinitions = RegisteredStateDefinitions(options);
-        _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
-        SourceSystem = _native.SourceSystem();
+        return await FromValidatedOptionsAsync(options).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -72,11 +68,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresDynamicCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
     )]
-    internal static ProsodyClient FromValidatedOptions(ClientOptions options)
+    internal static async Task<ProsodyClient> FromValidatedOptionsAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new ProsodyClient(
-            new Native.ProsodyClient(options.ToNative()),
+            await Native.ProsodyClient.ProsodyClientAsync(options.ToNative()).ConfigureAwait(false),
             BuildJsonOptions(options),
             RegisteredStateDefinitions(options)
         );
@@ -380,7 +376,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sends one request and returns one result per subsystem.</summary>
-    public async Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
+    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutError"/> for that subsystem.</remarks>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    public Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
         string key,
         TPayload payload,
@@ -396,7 +396,67 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
         var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
+        return RequestCoreAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            headers,
+            cancellationToken
+        );
+    }
+
+    /// <summary>Sends one trim-safe request and returns one result per subsystem.</summary>
+    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutError"/> for that subsystem.</remarks>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    public Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(payloadType);
+        ArgumentNullException.ThrowIfNull(responseType);
+        ArgumentNullException.ThrowIfNull(subsystems);
+        cancellationToken.ThrowIfCancellationRequested();
+        return RequestCoreAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            headers,
+            cancellationToken
+        );
+    }
+
+    private async Task<IReadOnlyList<RequestResult<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers,
+        CancellationToken cancellationToken
+    )
+    {
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
+        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
         var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
@@ -408,6 +468,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                         topic,
                         key,
                         encoded,
+                        new Native.EventMetadata(EventId: eventId, EventType: eventType),
                         [.. subsystems],
                         timeout,
                         headers is null
@@ -418,11 +479,15 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                     linked?.Signal
                 )
                 .ConfigureAwait(false);
-            return nativeResults.Select(result => RequestResult(result, responseType)).ToArray();
+            return nativeResults.Select(result => MapRequestResult(result, responseType)).ToArray();
         }
         catch (Native.FfiException.Cancelled ex)
         {
             throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
+        }
+        catch (Native.FfiException.PermanentState ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(subsystems), ex);
         }
         finally
         {
@@ -434,10 +499,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
     }
 
-    private static RequestResult<T> RequestResult<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>
+    internal static RequestResult<T> MapRequestResult<T>(
+        Native.NativeRequestResult result,
+        JsonTypeInfo<T> responseType
+    ) =>
         result switch
         {
-            Native.NativeRequestResult.Ok ok => new Ok<T>(JsonSerializer.Deserialize(ok.Value.AsSpan(), responseType)!),
+            Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
             Native.NativeRequestResult.HandlerError error => new Err<T>(
                 new HandlerResponseError(ResponseErrorCategory(error.Category), error.Message)
             ),
@@ -446,6 +514,18 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             Native.NativeRequestResult.Malformed => new Err<T>(new MalformedResponseError()),
             _ => throw new InvalidOperationException("Unknown response result"),
         };
+
+    private static RequestResult<T> DecodeResult<T>(byte[] value, JsonTypeInfo<T> responseType)
+    {
+        try
+        {
+            return new Ok<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
+        }
+        catch (JsonException)
+        {
+            return new Err<T>(new MalformedResponseError());
+        }
+    }
 
     private static ResponseErrorCategory ResponseErrorCategory(Native.NativeResponseErrorCategory category) =>
         category switch
@@ -521,7 +601,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Unsubscribes from receiving messages and shuts down the consumer.
+    /// Stops the consumer. You can subscribe again later.
     /// </summary>
     public Task UnsubscribeAsync() => _native.Unsubscribe();
 
@@ -538,6 +618,14 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         try
         {
             await ShutdownAsync().ConfigureAwait(false);
+        }
+        catch (Native.FfiException error)
+        {
+            LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
+        }
+        catch (ObjectDisposedException)
+        {
+            // A prior synchronous disposal already released the native client.
         }
         finally
         {

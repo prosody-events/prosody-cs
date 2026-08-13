@@ -12,13 +12,13 @@ namespace Prosody.Configuration;
 /// </para>
 /// <example>
 /// <code>
-/// await using var client = ProsodyClientBuilder.Create()
+/// await using var client = await ProsodyClientBuilder.Create()
 ///     .WithBootstrapServers("localhost:9092")
 ///     .WithGroupId("my-app")
 ///     .WithSubscribedTopics("my-topic")
 ///     .WithMode(ClientMode.LowLatency)
 ///     .WithFailureTopic("dead-letters")
-///     .Build();
+///     .BuildAsync();
 /// </code>
 /// </example>
 /// <para>
@@ -37,7 +37,7 @@ namespace Prosody.Configuration;
 ///     Mode = ClientMode.LowLatency,
 ///     FailureTopic = "dead-letters"
 /// };
-/// await using var client = new ProsodyClient(options);
+/// await using var client = await ProsodyClient.CreateAsync(options);
 /// </code>
 /// </example>
 /// </remarks>

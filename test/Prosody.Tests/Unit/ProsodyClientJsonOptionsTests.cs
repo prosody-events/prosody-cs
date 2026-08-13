@@ -19,17 +19,20 @@ internal sealed partial class JsonOptionsTestPayloadContext : JsonSerializerCont
 /// </summary>
 public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
 {
-    private readonly ProsodyClient _client = new(
-        new ClientOptions
-        {
-            Mock = true,
-            BootstrapServers = [TestDefaults.BootstrapServers],
-            GroupId = "test-group",
-            SourceSystem = "test",
-        }
-    );
+    private ProsodyClient _client = null!;
 
-    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public async ValueTask InitializeAsync()
+    {
+        _client = await ProsodyClient.CreateAsync(
+            new ClientOptions
+            {
+                Mock = true,
+                BootstrapServers = [TestDefaults.BootstrapServers],
+                GroupId = "test-group",
+                SourceSystem = "test",
+            }
+        );
+    }
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 
@@ -58,7 +61,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
         var invoked = false;
         JsonNamingPolicy? capturedPolicy = null;
 
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,
@@ -82,7 +85,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
     [Fact]
     public async Task NullConfigureJsonOptions_LeavesDefaultsIntact()
     {
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,
@@ -110,7 +113,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
     {
         // Two consecutive .ConfigureJsonOptions calls on the builder: the second assignment overwrites the first
         // because ConfigureJsonOptions is a simple property, not a chain/accumulator.
-        await using var client = ProsodyClientBuilder
+        await using var client = await ProsodyClientBuilder
             .Create()
             .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithGroupId("test-group")
@@ -118,7 +121,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
             .WithMock(true)
             .ConfigureJsonOptions(_ => { })
             .ConfigureJsonOptions(opts => opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
-            .Build();
+            .BuildAsync();
 
         Assert.Equal(JsonNamingPolicy.SnakeCaseLower, client.JsonOptions.PropertyNamingPolicy);
     }
@@ -126,7 +129,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
     [Fact]
     public async Task ConfigureJsonOptions_CanSetTypeInfoResolver()
     {
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,
@@ -162,7 +165,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
         var received = false;
         RecordWithSnakeCaseField? payload = null;
 
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,

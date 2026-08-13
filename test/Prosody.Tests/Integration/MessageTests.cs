@@ -1,3 +1,4 @@
+using Prosody.Errors;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
@@ -25,6 +26,21 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         ) => Task.FromResult(new RequestResponse(timer.Key, true));
     }
 
+    private sealed class RejectingRequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
+    {
+        public Task<RequestResponse> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+
+        public Task<RequestResponse> OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+    }
+
     [Fact(Timeout = 60_000)]
     public async Task RequestReturnsLocalHandlerResponse()
     {
@@ -36,12 +52,36 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             "order-1",
             new TestPayload { Content = "order.created" },
             ["inventory"],
-            TimeSpan.FromSeconds(10),
+            IntegrationTestFixture.DefaultTimeout,
             cancellationToken: TestContext.Current.CancellationToken
         );
 
         var result = Assert.IsType<Ok<RequestResponse>>(Assert.Single(results));
         Assert.Equal(new RequestResponse("order-1", true), result.Value);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task RequestReturnsPermanentHandlerFailure()
+    {
+        await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
+        await ctx.Client.SubscribeAsync(new RejectingRequestHandler());
+
+        var results = await ctx.Client.RequestAsync<TestPayload, RequestResponse>(
+            ctx.Topic,
+            "order-1",
+            new TestPayload { Content = "order.created" },
+            ["inventory"],
+            IntegrationTestFixture.DefaultTimeout,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var error = Assert.IsType<HandlerResponseError>(
+            Assert.IsType<Err<RequestResponse>>(Assert.Single(results)).Error
+        );
+        Assert.Multiple(
+            () => Assert.Equal(ResponseErrorCategory.Permanent, error.Category),
+            () => Assert.Contains("request rejected", error.Message, StringComparison.Ordinal)
+        );
     }
 
     [Fact(Timeout = 60_000)]

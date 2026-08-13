@@ -27,12 +27,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use futures::executor::block_on;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use uniffi::deps::async_compat::Compat;
 
 use crate::cancellation::CancellationSignal;
 use crate::config::{
@@ -281,12 +279,7 @@ impl ProsodyClient {
     /// - Configuration options are invalid
     /// - Cassandra connection fails (when persistence is enabled)
     #[uniffi::constructor]
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "UniFFI Record types are passed by value from C#; ownership transfer is \
-                  intentional"
-    )]
-    pub fn new(options: ClientOptions) -> Result<Self, FfiError> {
+    pub async fn new(options: ClientOptions) -> Result<Self, FfiError> {
         // Ensure tracing is initialized (idempotent)
         ensure_tracing_initialized();
 
@@ -296,18 +289,7 @@ impl ProsodyClient {
         let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
-        // HighLevelClient::new calls spawn_telemetry_emitter which calls
-        // tokio::spawn internally. The uniffi constructor scaffolding is a
-        // plain extern "C" fn with no runtime context. Wrapping the call in
-        // Compat enters the same runtime that uniffi uses for async methods
-        // (async_compat's global TOKIO1), so tokio::spawn succeeds without
-        // creating a second runtime.
-        let client = block_on(Compat::new(new_erased(
-            mode,
-            &mut producer_config,
-            &consumer_builders,
-            &cassandra,
-        )))?;
+        let client = new_erased(mode, &mut producer_config, &consumer_builders, &cassandra).await?;
 
         Ok(Self {
             client,
@@ -519,7 +501,11 @@ impl ProsodyClient {
         if let Err(error) = span.set_parent(context) {
             debug!("failed to set parent span: {error:#}");
         }
-        let payload = BinaryPayload::new(request.payload, None::<String>, None::<String>);
+        let payload = BinaryPayload::new(
+            request.payload,
+            request.metadata.event_id,
+            request.metadata.event_type,
+        );
         let request = self
             .client
             .request(

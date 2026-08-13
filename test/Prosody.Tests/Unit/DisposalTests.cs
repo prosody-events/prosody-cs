@@ -37,7 +37,7 @@ public sealed class DisposalTests
     [Fact]
     public async Task DisposeAsyncSafeWhenNotSubscribed()
     {
-        var client = new ProsodyClient(MockOptions);
+        var client = await ProsodyClient.CreateAsync(MockOptions);
         // Should not throw when consumer was never subscribed
         await client.DisposeAsync();
     }
@@ -45,7 +45,7 @@ public sealed class DisposalTests
     [Fact]
     public async Task DisposeAsyncIsIdempotent()
     {
-        var client = new ProsodyClient(MockOptions);
+        var client = await ProsodyClient.CreateAsync(MockOptions);
         await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 

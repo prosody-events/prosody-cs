@@ -16,6 +16,7 @@ use crate::context::Context;
 use crate::error::FfiError;
 use crate::message::Message;
 use crate::timer::Timer;
+use crate::types::EventMetadata;
 
 /// Result code indicating how the event handler completed.
 ///
@@ -76,6 +77,8 @@ pub struct NativeRequest {
     pub key: String,
     /// Encoded JSON payload.
     pub payload: Vec<u8>,
+    /// Event metadata extracted by the host.
+    pub metadata: EventMetadata,
     /// Requested subsystem names.
     pub subsystems: Vec<String>,
     /// Request timeout.
