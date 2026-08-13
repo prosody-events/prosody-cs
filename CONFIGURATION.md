@@ -88,16 +88,17 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 
 ## Peer requests
 
-Peer requests work with the defaults on one network. Set an advertised connect string only when another network cannot use the listener address.
+Peer requests work with the defaults on one network. Without a network name, peers always use the direct listener address.
+With a network name, peers with the same name use the direct address. Other peers use the advertised connect URI.
 Use a different bind address for each client that shares a host.
 
 | Property / Environment Variable | Description | Default |
 |---------------------------------|-------------|---------|
-| `PeerBindAddress` / `PROSODY_PEER_BIND_ADDRESS` | Socket address for the peer gRPC listener | `0.0.0.0:9099` |
+| `PeerBindAddress` / `PROSODY_PEER_BIND_ADDRESS` | Socket address for the peer gRPC listener | Default network interface address on port 9099 |
 | `PeerAdvertisedConnect` / `PROSODY_PEER_ADVERTISED_CONNECT` | gRPC connect URI that peers on another network use | (none) |
-| `PeerNetworkName` / `PROSODY_PEER_NETWORK_NAME` | Nonempty network name, with a maximum size of 63 UTF-8 bytes | (none) |
-| `PeerCacheCapacity` / `PROSODY_PEER_CACHE_CAPACITY` | Maximum channels and peer records in each node-keyed cache | 256 |
-| `PeerRegistrationTtl` / `PROSODY_PEER_REGISTRATION_TTL` | Directory lease duration; use 5 through 3600 seconds | 30s |
+| `PeerNetworkName` / `PROSODY_PEER_NETWORK_NAME` | Nonempty network name for direct peer routes | (none) |
+| `PeerCacheCapacity` / `PROSODY_PEER_CACHE_CAPACITY` | Maximum channels and peer records in each peer cache | 256 |
+| `PeerRegistrationTtl` / `PROSODY_PEER_REGISTRATION_TTL` | Directory lease duration; use 5 seconds through 20 years | 30s |
 
 Set `Subsystem` to make this client answer requests. Without it, the client consumes messages but does not answer requests.
 

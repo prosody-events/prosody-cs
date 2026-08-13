@@ -51,11 +51,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
         CheckNonNegative(options.MonopolizationWindow, nameof(ClientOptions.MonopolizationWindow), failures);
         CheckNonNegative(options.SchedulerMaxWait, nameof(ClientOptions.SchedulerMaxWait), failures);
         CheckNonNegative(options.CassandraRetention, nameof(ClientOptions.CassandraRetention), failures);
-        CheckNonNegative(options.PeerRegistrationTtl, nameof(ClientOptions.PeerRegistrationTtl), failures);
-        if (options.PeerCacheCapacity == 0)
-        {
-            failures.Add($"{nameof(ClientOptions.PeerCacheCapacity)} must be greater than zero.");
-        }
     }
 
     private static void CheckNonNegative(TimeSpan? value, string name, List<string> failures)

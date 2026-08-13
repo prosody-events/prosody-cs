@@ -477,14 +477,6 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
         // in-session materialized cells. This pins that the client's full serialize -> durable ->
         // recover -> deserialize path carries a non-object document.
         //
-        // The "an envelope-coupled codec would reject a bare 42" guarantee is CORE-owned and cannot be
-        // reached from this client: the erased C# vend path always resolves the cell codec from the
-        // payload type (<BinaryPayload as ErasedStateCodec>::Codec = JsonPassthroughStateCodec,
-        // verified in prosody core src/consumer/event_context/erased.rs and src/codec/mod.rs),
-        // independent of the ffi/src/config.rs registration, and core pins the non-object rejection
-        // (codec/binary json_id_non_object_propagates_error). Swapping the config.rs codec arm is
-        // therefore inert here.
-        //
         // FALSIFICATION TARGET (client-observable): make DequeState<T>.Transform return `default!`
         // (or any wrong value) instead of deserializing the scan item. Run 2's cold scan then yields
         // the wrong items and Assert.Equal([42, 7, 13], got) fails (RED).

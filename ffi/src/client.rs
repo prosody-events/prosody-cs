@@ -49,7 +49,7 @@ use crate::message::Message;
 use crate::published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
 use crate::timer::Timer;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
-use prosody::codec::{BinaryPayload, JsonBinaryCodec};
+use prosody::codec::BinaryPayload;
 use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
@@ -58,7 +58,7 @@ use prosody::error::ErrorCategory;
 use prosody::high_level::erased::{
     ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
 };
-use prosody::high_level::{ClientHandler, Codecs};
+use prosody::high_level::{ClientHandler, JsonBinaryCodecs};
 use prosody::propagator::new_propagator;
 use prosody::requester::ResponseError;
 use prosody::subsystem::SubsystemName;
@@ -220,7 +220,7 @@ impl FallibleHandler for CsHandler {
 }
 
 impl ClientHandler for CsHandler {
-    type Codecs = Codecs<JsonBinaryCodec, JsonBinaryCodec>;
+    type Codecs = JsonBinaryCodecs;
 }
 
 /// Native Prosody client exposed to C# via `UniFFI`.
