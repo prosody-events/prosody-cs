@@ -1264,7 +1264,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
-- `Task ShutdownAsync()`: Stop the consumer and all client services.
+- `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Dispose of client resources synchronously.
 - `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 

@@ -618,7 +618,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task UnsubscribeAsync() => _native.Unsubscribe();
 
     /// <summary>
-    /// Shuts down the consumer and all client services.
+    /// Shuts down all client services.
+    /// Concurrent and repeated calls await the same shutdown operation.
     /// </summary>
     public Task ShutdownAsync() => _shutdown.Value;
 
