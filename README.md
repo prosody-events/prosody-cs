@@ -290,14 +290,6 @@ foreach (var (subsystem, result) in subsystems.Zip(results))
     {
         Console.WriteLine($"{subsystem}: {ok.Value}");
     }
-    else if (result is Err<InventoryResponse> { Error: ResponseTimeoutException })
-    {
-        Console.Error.WriteLine($"{subsystem}: timed out");
-    }
-    else if (result is Err<InventoryResponse> { Error: HandlerResponseException error })
-    {
-        Console.Error.WriteLine($"{subsystem}: {error.Category}: {error.HandlerMessage}");
-    }
     else if (result is Err<InventoryResponse> error)
     {
         Console.Error.WriteLine($"{subsystem}: {error.Error}");
@@ -305,7 +297,12 @@ foreach (var (subsystem, result) in subsystems.Zip(results))
 }
 ```
 
-For example, a successful inventory handler prints `inventory: InventoryResponse { Accepted = order-1 }`.
+The example can print these results:
+
+```text
+inventory: InventoryResponse { Accepted = order-1 }
+billing: no response arrived before the deadline
+```
 
 Each `Err<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
 
