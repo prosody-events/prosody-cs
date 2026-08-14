@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Prosody.Logging;
 #if NET9_0_OR_GREATER
 using ProviderLock = System.Threading.Lock;
 #else
@@ -56,7 +57,13 @@ public sealed class ProsodyClientProvider : IDisposable, IAsyncDisposable
     {
         if (TryTakeClient(out var client))
         {
-            _ = DisposeClientAsync(client);
+            _ = DisposeClientAsync(client)
+                .ContinueWith(
+                    LogDisposalFailure,
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default
+                );
         }
     }
 
@@ -82,6 +89,14 @@ public sealed class ProsodyClientProvider : IDisposable, IAsyncDisposable
         {
             var client = await pending.ConfigureAwait(false);
             await client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static void LogDisposalFailure(Task disposal)
+    {
+        if (disposal.Exception is { } error)
+        {
+            LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClientProvider)), error);
         }
     }
 }

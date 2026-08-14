@@ -292,7 +292,7 @@ foreach (var (subsystem, result) in subsystems.Zip(results))
     }
     else if (result is Failure<InventoryResponse> failure)
     {
-        Console.Error.WriteLine($"{subsystem}: {failure.Error}");
+        Console.Error.WriteLine($"{subsystem}: {failure.Error.Message}");
     }
 }
 ```
