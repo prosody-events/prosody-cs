@@ -375,7 +375,7 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task ClassifierCannotMakeJsonFailureTransient()
+    public async Task ClassifierOverload_ReturnsTransientWhenClassifierReturnsFalse()
     {
         var handler = new TypedLambdaHandler<JsonElement>(onMessage: (_, _, _) => throw new JsonException("bad json"));
         var classifier = new LambdaClassifier(isMessagePermanent: _ => false, isTimerPermanent: _ => false);
@@ -383,7 +383,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.Equal(NativeResultCode.TransientError, result.Code);
     }
 
     [Fact]

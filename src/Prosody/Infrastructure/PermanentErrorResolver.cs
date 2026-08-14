@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
-using System.Text.Json;
 using Prosody.Errors;
 
 namespace Prosody.Infrastructure;
@@ -58,7 +57,7 @@ internal static class PermanentErrorResolver
     internal static bool IsPermanentError(Exception exception, PermanentErrorAttribute? attribute)
     {
         // Priority 1: IPermanentError marker interface (runtime decision)
-        if (exception is IPermanentError or JsonException or NotSupportedException)
+        if (exception is IPermanentError)
         {
             return true;
         }

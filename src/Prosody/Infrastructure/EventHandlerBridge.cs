@@ -27,6 +27,30 @@ internal static class EventHandlerBridge
     internal const string OnMessageActivityName = "on_message";
     internal const string OnTimerActivityName = "on_timer";
 
+    internal static byte[] SerializeResponse<TResponse>(TResponse response, JsonTypeInfo<TResponse> typeInfo)
+    {
+        try
+        {
+            return JsonSerializer.SerializeToUtf8Bytes(response, typeInfo);
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException)
+        {
+            throw new PermanentException("The handler response is not valid JSON.", error);
+        }
+    }
+
+    internal static TPayload? DeserializePayload<TPayload>(byte[] payload, JsonTypeInfo<TPayload> typeInfo)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(payload.AsSpan(), typeInfo);
+        }
+        catch (Exception error) when (error is JsonException or NotSupportedException)
+        {
+            throw new PermanentException("The message payload is not valid JSON.", error);
+        }
+    }
+
     // follow-up (AOT): Assembly.GetCustomAttribute is trim-unsafe; replace with a
     // source-generated constant (e.g. ThisAssembly.InformationalVersion via MinVer or
     // a generated AssemblyInfo property) so the version survives trimming/Native AOT.
@@ -320,10 +344,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
-        _isMessagePermanent = ex =>
-            PermanentErrorResolver.IsPermanentError(ex, null) || classifier.IsMessageErrorPermanent(ex);
-        _isTimerPermanent = ex =>
-            PermanentErrorResolver.IsPermanentError(ex, null) || classifier.IsTimerErrorPermanent(ex);
+        _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
     }
 
     private EventHandlerBridge(
@@ -370,12 +392,12 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             jsonOptions,
             stateDefinitions,
             async (context, message, cancellationToken) =>
-                JsonSerializer.SerializeToUtf8Bytes(
+                EventHandlerBridge.SerializeResponse(
                     await handler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false),
                     responseTypeInfo
                 ),
             async (context, timer, cancellationToken) =>
-                JsonSerializer.SerializeToUtf8Bytes(
+                EventHandlerBridge.SerializeResponse(
                     await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false),
                     responseTypeInfo
                 ),
@@ -444,7 +466,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         EventHandlerBridge.InvokeHandlerAsync(
             async ct =>
             {
-                var deserialized = JsonSerializer.Deserialize(payload.AsSpan(), _payloadTypeInfo);
+                var deserialized = EventHandlerBridge.DeserializePayload(payload, _payloadTypeInfo);
                 var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized, nativeMessage);
                 return await _onMessage(prosodyContext, msg, ct).ConfigureAwait(false);
             },
