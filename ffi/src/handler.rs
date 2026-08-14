@@ -112,15 +112,26 @@ pub enum NativeRequestResult {
     HandlerError {
         /// Retry category.
         category: NativeResponseErrorCategory,
-        /// Handler error text.
+        /// Original handler error text.
+        handler_message: String,
+        /// Rust error display text.
         message: String,
     },
     /// No response arrived before the deadline.
-    Timeout,
+    Timeout {
+        /// Rust error display text.
+        message: String,
+    },
     /// The responder used another response format.
-    FormatMismatch,
+    FormatMismatch {
+        /// Rust error display text.
+        message: String,
+    },
     /// The response payload did not decode.
-    Malformed,
+    Malformed {
+        /// Rust error display text.
+        message: String,
+    },
 }
 
 /// Callback trait for handling Kafka messages and timers.

@@ -560,16 +560,25 @@ impl ProsodyClient {
 fn native_request_result(result: Result<BinaryPayload, ResponseError>) -> NativeRequestResult {
     match result {
         Ok(value) => NativeRequestResult::Ok { value: value.bytes },
-        Err(ResponseError::Handler { category, message }) => NativeRequestResult::HandlerError {
-            category: match category {
-                ErrorCategory::Transient => NativeResponseErrorCategory::Transient,
-                ErrorCategory::Permanent => NativeResponseErrorCategory::Permanent,
-                ErrorCategory::Terminal => NativeResponseErrorCategory::Terminal,
-            },
-            message,
-        },
-        Err(ResponseError::Timeout) => NativeRequestResult::Timeout,
-        Err(ResponseError::FormatMismatch) => NativeRequestResult::FormatMismatch,
-        Err(ResponseError::Malformed) => NativeRequestResult::Malformed,
+        Err(error) => {
+            let message = error.to_string();
+            match error {
+                ResponseError::Handler {
+                    category,
+                    message: handler_message,
+                } => NativeRequestResult::HandlerError {
+                    category: match category {
+                        ErrorCategory::Transient => NativeResponseErrorCategory::Transient,
+                        ErrorCategory::Permanent => NativeResponseErrorCategory::Permanent,
+                        ErrorCategory::Terminal => NativeResponseErrorCategory::Terminal,
+                    },
+                    handler_message,
+                    message,
+                },
+                ResponseError::Timeout => NativeRequestResult::Timeout { message },
+                ResponseError::FormatMismatch => NativeRequestResult::FormatMismatch { message },
+                ResponseError::Malformed => NativeRequestResult::Malformed { message },
+            }
+        }
     }
 }

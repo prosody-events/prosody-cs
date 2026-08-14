@@ -75,12 +75,13 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             cancellationToken: TestContext.Current.CancellationToken
         );
 
-        var error = Assert.IsType<HandlerResponseError>(
+        var error = Assert.IsType<HandlerResponseException>(
             Assert.IsType<Err<RequestResponse>>(Assert.Single(results)).Error
         );
         Assert.Multiple(
             () => Assert.Equal(ResponseErrorCategory.Permanent, error.Category),
-            () => Assert.Contains("request rejected", error.Message, StringComparison.Ordinal)
+            () => Assert.Contains("request rejected", error.HandlerMessage, StringComparison.Ordinal),
+            () => Assert.Equal($"handler failed: {error.HandlerMessage}", error.Message)
         );
     }
 

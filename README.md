@@ -242,13 +242,16 @@ if (await client.IsStalledAsync())
 
 ### Peer Requests
 
-Peer requests collect one result from each named subsystem. The result order matches the subsystem order.
+Peer requests collect one result from each named subsystem. Results follow the subsystem order.
 
-Do not await a request from a handler for the same key and subsystem. The request cannot finish until that handler returns.
+Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
 
 Return a JSON response from each message handler:
 
 ```csharp
+public sealed record Order(string Type);
+public sealed record InventoryResponse(string Accepted);
+
 public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryResponse>
 {
     public Task<InventoryResponse> OnMessageAsync(
@@ -264,6 +267,8 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
     ) => Task.FromResult(new InventoryResponse(timer.Key));
 }
 ```
+
+Message handler return values become request results. Each return value must have a JSON representation.
 
 Only message results become peer responses. Timer results are not peer responses.
 
@@ -285,6 +290,14 @@ foreach (var (subsystem, result) in subsystems.Zip(results))
     {
         Console.WriteLine($"{subsystem}: {ok.Value}");
     }
+    else if (result is Err<InventoryResponse> { Error: ResponseTimeoutException })
+    {
+        Console.Error.WriteLine($"{subsystem}: timed out");
+    }
+    else if (result is Err<InventoryResponse> { Error: HandlerResponseException error })
+    {
+        Console.Error.WriteLine($"{subsystem}: {error.Category}: {error.HandlerMessage}");
+    }
     else if (result is Err<InventoryResponse> error)
     {
         Console.Error.WriteLine($"{subsystem}: {error.Error}");
@@ -292,7 +305,11 @@ foreach (var (subsystem, result) in subsystems.Zip(results))
 }
 ```
 
-Each error identifies a handler failure, timeout, format mismatch, or malformed response. Handler failures also include their category and message.
+For example, a successful inventory handler prints `inventory: InventoryResponse { Accepted = order-1 }`.
+
+Each `Err<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
+
+Handler exceptions keep their category and original handler text. Every exception uses Prosody's message.
 
 JSON `null` remains a successful result. Use a nullable response type when a handler can return `null`.
 

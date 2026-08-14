@@ -376,7 +376,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sends one request and returns one result per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutError"/> for that subsystem.</remarks>
+    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutException"/> for that subsystem.</remarks>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
     [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
@@ -410,7 +410,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sends one trim-safe request and returns one result per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutError"/> for that subsystem.</remarks>
+    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutException"/> for that subsystem.</remarks>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     public Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
@@ -501,7 +501,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                 l.Signal.Dispose();
             }
         }
-        return nativeResults.Select(result => MapRequestResult(result, responseType)).ToArray();
+        var results = new RequestResult<TResponse>[nativeResults.Length];
+        for (var index = 0; index < nativeResults.Length; index++)
+        {
+            results[index] = MapRequestResult(nativeResults[index], responseType);
+        }
+        return results;
     }
 
     internal static RequestResult<T> MapRequestResult<T>(
@@ -512,11 +517,13 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         {
             Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
             Native.NativeRequestResult.HandlerError error => new Err<T>(
-                new HandlerResponseError(ResponseErrorCategory(error.Category), error.Message)
+                new HandlerResponseException(ResponseErrorCategory(error.Category), error.HandlerMessage, error.Message)
             ),
-            Native.NativeRequestResult.Timeout => new Err<T>(new ResponseTimeoutError()),
-            Native.NativeRequestResult.FormatMismatch => new Err<T>(new ResponseFormatMismatchError()),
-            Native.NativeRequestResult.Malformed => new Err<T>(new MalformedResponseError()),
+            Native.NativeRequestResult.Timeout error => new Err<T>(new ResponseTimeoutException(error.Message)),
+            Native.NativeRequestResult.FormatMismatch error => new Err<T>(
+                new ResponseFormatMismatchException(error.Message)
+            ),
+            Native.NativeRequestResult.Malformed error => new Err<T>(new MalformedResponseException(error.Message)),
             _ => throw new InvalidOperationException("Unknown response result"),
         };
 
@@ -526,13 +533,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         {
             return new Ok<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
         }
-        catch (JsonException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
-            return new Err<T>(new MalformedResponseError());
-        }
-        catch (NotSupportedException)
-        {
-            return new Err<T>(new MalformedResponseError());
+            return new Err<T>(new MalformedResponseException(exception.Message, exception));
         }
     }
 
