@@ -13,5 +13,6 @@ public sealed record MessageValueDefinition<TPayload> : StateDefinition
             readUncommitted,
             keysetLimit: null,
             capacity: null
-        ) { }
+        )
+    { }
 }

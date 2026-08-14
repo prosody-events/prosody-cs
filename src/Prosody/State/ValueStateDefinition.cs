@@ -22,5 +22,6 @@ public sealed record ValueStateDefinition<T> : StateDefinition
             capacity: null,
             published,
             readCache
-        ) { }
+        )
+    { }
 }

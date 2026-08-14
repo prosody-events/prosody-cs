@@ -94,8 +94,8 @@ Use a different bind address for each client that shares a host.
 
 | Property / Environment Variable | Description | Default |
 |---------------------------------|-------------|---------|
-| `PeerBindAddress` / `PROSODY_PEER_BIND_ADDRESS` | Socket address for the peer gRPC listener | Default network interface address on port 9099 |
-| `PeerAdvertisedConnect` / `PROSODY_PEER_ADVERTISED_CONNECT` | gRPC connect URI that peers on another network use | (none) |
+| `PeerBindAddress` / `PROSODY_PEER_BIND_ADDRESS` | `IPEndPoint` for the peer gRPC listener | Default network interface address on port 9099 |
+| `PeerAdvertisedConnect` / `PROSODY_PEER_ADVERTISED_CONNECT` | `Uri` that peers on another network use | (none) |
 | `PeerNetworkName` / `PROSODY_PEER_NETWORK_NAME` | Nonempty network name for direct peer routes | (none) |
 | `PeerCacheCapacity` / `PROSODY_PEER_CACHE_CAPACITY` | Maximum channels and peer records in each peer cache | 256 |
 | `PeerRegistrationTtl` / `PROSODY_PEER_REGISTRATION_TTL` | Directory lease duration; use 5 seconds through 20 years | 30s |

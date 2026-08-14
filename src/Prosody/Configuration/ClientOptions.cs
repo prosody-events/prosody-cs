@@ -1,3 +1,4 @@
+using System.Net;
 using Prosody.State;
 
 namespace Prosody.Configuration;
@@ -98,11 +99,11 @@ public sealed class ClientOptions
     /// Prosody reads <c>PROSODY_PEER_BIND_ADDRESS</c> when this value is null.
     /// The network router otherwise selects a local address on port 9099.
     /// </remarks>
-    public string? PeerBindAddress { get; set; }
+    public IPEndPoint? PeerBindAddress { get; set; }
 
     /// <summary>gRPC connect URI that other clients use for this client.</summary>
     /// <remarks>Prosody reads <c>PROSODY_PEER_ADVERTISED_CONNECT</c> when this value is null.</remarks>
-    public string? PeerAdvertisedConnect { get; set; }
+    public Uri? PeerAdvertisedConnect { get; set; }
 
     /// <summary>Network name used to identify direct routes.</summary>
     /// <remarks>Prosody reads <c>PROSODY_PEER_NETWORK_NAME</c> when this value is null.</remarks>
@@ -592,8 +593,8 @@ public sealed class ClientOptions
             AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
-            PeerBindAddress: PeerBindAddress,
-            PeerAdvertisedConnect: PeerAdvertisedConnect,
+            PeerBindAddress: PeerBindAddress?.ToString(),
+            PeerAdvertisedConnect: PeerAdvertisedConnect?.OriginalString,
             PeerNetworkName: PeerNetworkName,
             PeerCacheCapacity: PeerCacheCapacity,
             PeerRegistrationTtl: PeerRegistrationTtl,

@@ -23,5 +23,6 @@ public sealed record MapStateDefinition<TValue> : StateDefinition
             capacity: null,
             published,
             readCache
-        ) { }
+        )
+    { }
 }

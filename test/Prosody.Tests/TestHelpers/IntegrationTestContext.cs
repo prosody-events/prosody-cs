@@ -60,7 +60,7 @@ internal sealed class IntegrationTestContext : IAsyncDisposable
             Mode = ClientMode.Pipeline,
             CassandraNodes = [IntegrationTestFixture.CassandraNodes],
             CassandraKeyspace = IntegrationTestFixture.CassandraKeyspace,
-            PeerBindAddress = "127.0.0.1:0",
+            PeerBindAddress = new(System.Net.IPAddress.Loopback, 0),
         };
         configure?.Invoke(options);
         return await ProsodyClient.CreateAsync(options);
