@@ -23,6 +23,5 @@ public sealed record DequeStateDefinition<T> : StateDefinition
             capacity,
             published,
             readCache
-        )
-    { }
+        ) { }
 }

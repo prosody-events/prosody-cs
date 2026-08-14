@@ -13,6 +13,5 @@ public sealed record MessageDequeDefinition<TPayload> : StateDefinition
             readUncommitted,
             keysetLimit: null,
             capacity
-        )
-    { }
+        ) { }
 }

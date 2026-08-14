@@ -1,5 +1,5 @@
-using Prosody.Configuration;
 using System.Net;
+using Prosody.Configuration;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
 
