@@ -309,7 +309,9 @@ For example, a successful inventory handler prints `inventory: InventoryResponse
 
 Each `Err<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
 
-Handler exceptions keep their category and original handler text. Every exception uses Prosody's message.
+Core exceptions use Prosody's message. Handler exceptions also keep their category and original text.
+
+Local JSON exceptions keep the .NET decoder as their inner exception.
 
 JSON `null` remains a successful result. Use a nullable response type when a handler can return `null`.
 
