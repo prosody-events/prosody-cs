@@ -320,8 +320,10 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
-        _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
-        _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
+        _isMessagePermanent = ex =>
+            PermanentErrorResolver.IsPermanentError(ex, null) || classifier.IsMessageErrorPermanent(ex);
+        _isTimerPermanent = ex =>
+            PermanentErrorResolver.IsPermanentError(ex, null) || classifier.IsTimerErrorPermanent(ex);
     }
 
     private EventHandlerBridge(

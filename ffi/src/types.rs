@@ -247,22 +247,34 @@ pub struct ClientOptions {
     pub mock: Option<bool>,
 
     /// Address for the peer listener.
+    ///
+    /// Core reads `PROSODY_PEER_BIND_ADDRESS` when this value is absent. If
+    /// both values are absent, the network router selects a local address on
+    /// port 9099.
     #[uniffi(default = None)]
     pub peer_bind_address: Option<String>,
 
     /// gRPC connect URI that other clients use for this client.
+    ///
+    /// Core reads `PROSODY_PEER_ADVERTISED_CONNECT` when this value is absent.
     #[uniffi(default = None)]
     pub peer_advertised_connect: Option<String>,
 
     /// Network name used to identify direct routes.
+    ///
+    /// Core reads `PROSODY_PEER_NETWORK_NAME` when this value is absent.
     #[uniffi(default = None)]
     pub peer_network_name: Option<String>,
 
     /// Maximum number of peer channels and registrations in each cache.
+    ///
+    /// Core reads `PROSODY_PEER_CACHE_CAPACITY` when this value is absent.
     #[uniffi(default = None)]
     pub peer_cache_capacity: Option<u64>,
 
     /// Duration of each peer registration lease.
+    ///
+    /// Core reads `PROSODY_PEER_REGISTRATION_TTL` when this value is absent.
     #[uniffi(default = None)]
     pub peer_registration_ttl: Option<Duration>,
 
