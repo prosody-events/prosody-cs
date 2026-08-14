@@ -17,7 +17,7 @@ public sealed class RequestResultTests
             (JsonTypeInfo<string>)JsonSerializerOptions.Default.GetTypeInfo(typeof(string))
         );
 
-        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Err<string>>(result).Error);
+        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Failure<string>>(result).Error);
         Assert.IsType<JsonException>(error.InnerException);
     }
 
@@ -29,7 +29,7 @@ public sealed class RequestResultTests
             (JsonTypeInfo<string>)JsonSerializerOptions.Default.GetTypeInfo(typeof(string))
         );
 
-        Assert.Null(Assert.IsType<Ok<string>>(result).Value);
+        Assert.Null(Assert.IsType<Success<string>>(result).Value);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class RequestResultTests
             (JsonTypeInfo<object>)options.GetTypeInfo(typeof(object))
         );
 
-        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Err<object>>(result).Error);
+        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Failure<object>>(result).Error);
         Assert.IsType<NotSupportedException>(error.InnerException);
     }
 

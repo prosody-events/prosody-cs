@@ -56,7 +56,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             cancellationToken: TestContext.Current.CancellationToken
         );
 
-        var result = Assert.IsType<Ok<RequestResponse>>(Assert.Single(results));
+        var result = Assert.IsType<Success<RequestResponse>>(Assert.Single(results));
         Assert.Equal(new RequestResponse("order-1", true), result.Value);
     }
 
@@ -76,7 +76,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         );
 
         var error = Assert.IsType<HandlerResponseException>(
-            Assert.IsType<Err<RequestResponse>>(Assert.Single(results)).Error
+            Assert.IsType<Failure<RequestResponse>>(Assert.Single(results)).Error
         );
         Assert.Multiple(
             () => Assert.Equal(ResponseErrorCategory.Permanent, error.Category),

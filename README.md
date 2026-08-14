@@ -286,13 +286,13 @@ IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAs
 
 foreach (var (subsystem, result) in subsystems.Zip(results))
 {
-    if (result is Ok<InventoryResponse> ok)
+    if (result is Success<InventoryResponse> success)
     {
-        Console.WriteLine($"{subsystem}: {ok.Value}");
+        Console.WriteLine($"{subsystem}: {success.Value}");
     }
-    else if (result is Err<InventoryResponse> error)
+    else if (result is Failure<InventoryResponse> failure)
     {
-        Console.Error.WriteLine($"{subsystem}: {error.Error}");
+        Console.Error.WriteLine($"{subsystem}: {failure.Error}");
     }
 }
 ```
@@ -304,7 +304,7 @@ inventory: InventoryResponse { Accepted = order-1 }
 billing: no response arrived before the deadline
 ```
 
-Each `Err<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
+Each `Failure<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
 
 Core exceptions use Prosody's message. Handler exceptions also keep their category and original text.
 

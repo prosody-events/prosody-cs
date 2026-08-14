@@ -516,14 +516,14 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         result switch
         {
             Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
-            Native.NativeRequestResult.HandlerError error => new Err<T>(
+            Native.NativeRequestResult.HandlerError error => new Failure<T>(
                 new HandlerResponseException(ResponseErrorCategory(error.Category), error.HandlerMessage, error.Message)
             ),
-            Native.NativeRequestResult.Timeout error => new Err<T>(new ResponseTimeoutException(error.Message)),
-            Native.NativeRequestResult.FormatMismatch error => new Err<T>(
+            Native.NativeRequestResult.Timeout error => new Failure<T>(new ResponseTimeoutException(error.Message)),
+            Native.NativeRequestResult.FormatMismatch error => new Failure<T>(
                 new ResponseFormatMismatchException(error.Message)
             ),
-            Native.NativeRequestResult.Malformed error => new Err<T>(new MalformedResponseException(error.Message)),
+            Native.NativeRequestResult.Malformed error => new Failure<T>(new MalformedResponseException(error.Message)),
             _ => throw new InvalidOperationException("Unknown response result"),
         };
 
@@ -531,11 +531,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     {
         try
         {
-            return new Ok<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
+            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
-            return new Err<T>(new MalformedResponseException(exception.Message, exception));
+            return new Failure<T>(new MalformedResponseException(exception.Message, exception));
         }
     }
 
