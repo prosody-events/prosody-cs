@@ -238,7 +238,7 @@ if (await client.IsStalledAsync())
 }
 ```
 
-## Subsystem Requests
+## Requests
 
 Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
