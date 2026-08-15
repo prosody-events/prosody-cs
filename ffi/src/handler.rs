@@ -10,11 +10,13 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::context::Context;
 use crate::error::FfiError;
 use crate::message::Message;
 use crate::timer::Timer;
+use crate::types::EventMetadata;
 
 /// Result code indicating how the event handler completed.
 ///
@@ -61,6 +63,60 @@ pub struct HandlerResult {
     /// [`HandlerResultCode::PermanentError`], containing the exception message
     /// from the C# handler. It is `None` on success.
     pub error_message: Option<String>,
+
+    /// Encoded JSON response on success.
+    pub response: Vec<u8>,
+}
+
+/// Values needed to send one subsystem request.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeRequest {
+    /// Kafka topic.
+    pub topic: String,
+    /// Kafka key.
+    pub key: String,
+    /// Encoded JSON payload.
+    pub payload: Vec<u8>,
+    /// Event metadata extracted by the host.
+    pub metadata: EventMetadata,
+    /// Requested subsystem names.
+    pub subsystems: Vec<String>,
+    /// Request timeout.
+    pub timeout: Duration,
+    /// User Kafka headers.
+    pub headers: HashMap<String, String>,
+    /// Trace propagation fields.
+    pub carrier: HashMap<String, String>,
+}
+
+/// One subsystem outcome returned by a request.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum NativeRequestResult {
+    /// The handler returned encoded JSON.
+    Ok {
+        /// Encoded JSON response.
+        value: Vec<u8>,
+    },
+    /// The handler returned an error.
+    HandlerError {
+        /// Handler error text.
+        message: String,
+    },
+    /// No response arrived before the deadline.
+    Timeout {
+        /// Rust error display text.
+        message: String,
+    },
+    /// The responder used another response format.
+    FormatMismatch {
+        /// Rust error display text.
+        message: String,
+    },
+    /// The response payload did not decode.
+    Malformed {
+        /// Rust error display text.
+        message: String,
+    },
 }
 
 /// Callback trait for handling Kafka messages and timers.

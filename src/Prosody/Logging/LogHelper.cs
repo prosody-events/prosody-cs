@@ -15,4 +15,11 @@ internal static partial class LogHelper
 
     [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "Failed to capture handler exception to Sentry.")]
     internal static partial void LogSentryCaptureFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(
+        EventId = 5,
+        Level = LogLevel.Error,
+        Message = "Failed to shut down the Prosody client during disposal."
+    )]
+    internal static partial void LogShutdownFailed(ILogger logger, Exception exception);
 }

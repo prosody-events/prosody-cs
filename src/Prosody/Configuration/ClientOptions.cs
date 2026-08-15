@@ -1,3 +1,4 @@
+using System.Net;
 using Prosody.State;
 
 namespace Prosody.Configuration;
@@ -12,13 +13,13 @@ namespace Prosody.Configuration;
 /// </para>
 /// <example>
 /// <code>
-/// await using var client = ProsodyClientBuilder.Create()
+/// await using var client = await ProsodyClientBuilder.Create()
 ///     .WithBootstrapServers("localhost:9092")
 ///     .WithGroupId("my-app")
 ///     .WithSubscribedTopics("my-topic")
 ///     .WithMode(ClientMode.LowLatency)
 ///     .WithFailureTopic("dead-letters")
-///     .Build();
+///     .BuildAsync();
 /// </code>
 /// </example>
 /// <para>
@@ -37,7 +38,7 @@ namespace Prosody.Configuration;
 ///     Mode = ClientMode.LowLatency,
 ///     FailureTopic = "dead-letters"
 /// };
-/// await using var client = new ProsodyClient(options);
+/// await using var client = await ProsodyClient.CreateAsync(options);
 /// </code>
 /// </example>
 /// </remarks>
@@ -92,6 +93,29 @@ public sealed class ClientOptions
     /// Use in-memory mock client for testing. Default: <c>false</c>.
     /// </summary>
     public bool? Mock { get; set; }
+
+    /// <summary>Address for the peer listener.</summary>
+    /// <remarks>
+    /// Prosody reads <c>PROSODY_PEER_BIND_ADDRESS</c> when this value is null.
+    /// The network router otherwise selects a local address on port 9099.
+    /// </remarks>
+    public IPEndPoint? PeerBindAddress { get; set; }
+
+    /// <summary>gRPC connect URI that other clients use for this client.</summary>
+    /// <remarks>Prosody reads <c>PROSODY_PEER_ADVERTISED_CONNECT</c> when this value is null.</remarks>
+    public Uri? PeerAdvertisedConnect { get; set; }
+
+    /// <summary>Network name used to identify direct routes.</summary>
+    /// <remarks>Prosody reads <c>PROSODY_PEER_NETWORK_NAME</c> when this value is null.</remarks>
+    public string? PeerNetworkName { get; set; }
+
+    /// <summary>Maximum peer channels and registrations in each cache. Default: 256.</summary>
+    /// <remarks>Prosody reads <c>PROSODY_PEER_CACHE_CAPACITY</c> when this value is null.</remarks>
+    public ulong? PeerCacheCapacity { get; set; }
+
+    /// <summary>Duration of each peer registration lease. Default: 30 seconds.</summary>
+    /// <remarks>Prosody reads <c>PROSODY_PEER_REGISTRATION_TTL</c> when this value is null.</remarks>
+    public TimeSpan? PeerRegistrationTtl { get; set; }
 
     // ========================================================================
     // Consumer options
@@ -569,6 +593,11 @@ public sealed class ClientOptions
             AllowedEvents: AllowedEvents,
             SourceSystem: SourceSystem,
             Mock: Mock,
+            PeerBindAddress: PeerBindAddress?.ToString(),
+            PeerAdvertisedConnect: PeerAdvertisedConnect?.OriginalString,
+            PeerNetworkName: PeerNetworkName,
+            PeerCacheCapacity: PeerCacheCapacity,
+            PeerRegistrationTtl: PeerRegistrationTtl,
             MaxConcurrency: MaxConcurrency,
             MaxUncommitted: MaxUncommitted,
             IdempotenceCacheSize: IdempotenceCacheSize,

@@ -1,3 +1,4 @@
+using Prosody.Errors;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
@@ -8,6 +9,76 @@ namespace Prosody.Tests.Integration;
 /// </summary>
 public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
+    private sealed record RequestResponse(string Key, bool Accepted);
+
+    private sealed class RequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
+    {
+        public Task<RequestResponse> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(new RequestResponse(message.Key, true));
+
+        public Task<RequestResponse> OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(new RequestResponse(timer.Key, true));
+    }
+
+    private sealed class RejectingRequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
+    {
+        public Task<RequestResponse> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<TestPayload> message,
+            CancellationToken cancellationToken
+        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+
+        public Task<RequestResponse> OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task RequestReturnsLocalHandlerResponse()
+    {
+        await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
+        await ctx.Client.SubscribeAsync(new RequestHandler());
+
+        var results = await ctx.Client.RequestAsync<TestPayload, RequestResponse>(
+            ctx.Topic,
+            "order-1",
+            new TestPayload { Content = "order.created" },
+            ["inventory"],
+            IntegrationTestFixture.DefaultTimeout,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
+        Assert.Equal(new RequestResponse("order-1", true), result.Value);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task RequestReturnsHandlerFailure()
+    {
+        await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
+        await ctx.Client.SubscribeAsync(new RejectingRequestHandler());
+
+        var results = await ctx.Client.RequestAsync<TestPayload, RequestResponse>(
+            ctx.Topic,
+            "order-1",
+            new TestPayload { Content = "order.created" },
+            ["inventory"],
+            IntegrationTestFixture.DefaultTimeout,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var error = Assert.IsType<HandlerError>(Assert.IsType<Failure<RequestResponse>>(results["inventory"]).Error);
+        Assert.Contains("request rejected", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact(Timeout = 60_000)]
     public async Task SendsAndReceivesMessage()
     {

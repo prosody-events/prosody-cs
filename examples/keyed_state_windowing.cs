@@ -24,13 +24,13 @@ internal static class KeyedStateWindowing
 
     public static async Task RunAsync()
     {
-        await using var client = ProsodyClientBuilder
+        await using var client = await ProsodyClientBuilder
             .Create()
             .WithBootstrapServers("localhost:9092")
             .WithGroupId("activity-notifications")
             .WithSubscribedTopics("activity")
             .WithStateCollections(Window, Pending)
-            .Build();
+            .BuildAsync();
 
         await client.SubscribeAsync(new ActivityHandler());
     }

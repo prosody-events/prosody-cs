@@ -6,7 +6,7 @@ namespace Prosody.Tests.Unit;
 /// <summary>
 /// Tests for <see cref="ProsodyClientBuilder"/> fluent configuration.
 /// </summary>
-public sealed class ProsodyClientBuilderTests
+public sealed class ProsodyClientBuilderTests : AsyncDisposalTestBase
 {
     [Fact]
     public void CreateClientReturnsBuilder()
@@ -17,7 +17,7 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void WithBootstrapServersSingleServer()
+    public async Task WithBootstrapServersSingleServer()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -25,12 +25,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithBootstrapServersMultipleServers()
+    public async Task WithBootstrapServersMultipleServers()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -38,12 +38,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithGroupId()
+    public async Task WithGroupId()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -52,12 +52,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithSubscribedTopicsSingleTopic()
+    public async Task WithSubscribedTopicsSingleTopic()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -66,12 +66,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithSubscribedTopicsMultipleTopics()
+    public async Task WithSubscribedTopicsMultipleTopics()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -80,35 +80,41 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithModeAllModes()
+    public async Task WithModeAllModes()
     {
-        using var pipeline = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithMode(ClientMode.Pipeline)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .Build();
-        using var lowLatency = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithMode(ClientMode.LowLatency)
-            .WithFailureTopic("dead-letters")
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .Build();
-        using var bestEffort = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithMode(ClientMode.BestEffort)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .Build();
+        var pipeline = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithMode(ClientMode.Pipeline)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .BuildAsync()
+        );
+        var lowLatency = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithMode(ClientMode.LowLatency)
+                .WithFailureTopic("dead-letters")
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .BuildAsync()
+        );
+        var bestEffort = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithMode(ClientMode.BestEffort)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .BuildAsync()
+        );
 
         Assert.Multiple(
             () => Assert.NotNull(pipeline),
@@ -118,7 +124,7 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void WithAllowedEvents()
+    public async Task WithAllowedEvents()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -127,12 +133,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithSourceSystem()
+    public async Task WithSourceSystem()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -141,12 +147,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("different-source")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.Equal("different-source", client.SourceSystem);
     }
 
     [Fact]
-    public void WithMockTrue()
+    public async Task WithMockTrue()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -154,12 +160,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithMaxConcurrency()
+    public async Task WithMaxConcurrency()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -168,12 +174,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithProbePort()
+    public async Task WithProbePort()
     {
         var builderEnabled = ProsodyClientBuilder
             .Create()
@@ -188,14 +194,14 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var clientEnabled = builderEnabled.Build();
-        using var clientDisabled = builderDisabled.Build();
+        var clientEnabled = Track(await builderEnabled.BuildAsync());
+        var clientDisabled = Track(await builderDisabled.BuildAsync());
         Assert.NotNull(clientEnabled);
         Assert.NotNull(clientDisabled);
     }
 
     [Fact]
-    public void WithMaxRetries()
+    public async Task WithMaxRetries()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -204,12 +210,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithFailureTopic()
+    public async Task WithFailureTopic()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -219,12 +225,12 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void WithSendTimeout()
+    public async Task WithSendTimeout()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -233,24 +239,24 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("test")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void BuildSucceedsWithNullOptionalFields()
+    public async Task BuildSucceedsWithNullOptionalFields()
     {
         var builder = ProsodyClientBuilder
             .Create()
             .WithBootstrapServers(TestDefaults.BootstrapServers)
             .WithSourceSystem("test")
             .WithMock(true);
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ConfigureAdvancedOptions()
+    public async Task ConfigureAdvancedOptions()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -266,12 +272,12 @@ public sealed class ProsodyClientBuilderTests
                 options.MaxRetryDelay = TimeSpan.FromMinutes(10);
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ConfigureDeferralOptions()
+    public async Task ConfigureDeferralOptions()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -288,12 +294,12 @@ public sealed class ProsodyClientBuilderTests
                 options.LoaderCacheSize = 2048;
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ConfigureMonopolizationOptions()
+    public async Task ConfigureMonopolizationOptions()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -308,12 +314,12 @@ public sealed class ProsodyClientBuilderTests
                 options.MonopolizationCacheSize = 4096;
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ConfigureSchedulerOptions()
+    public async Task ConfigureSchedulerOptions()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -328,12 +334,12 @@ public sealed class ProsodyClientBuilderTests
                 options.SchedulerCacheSize = 4096;
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ConfigureCassandraOptions()
+    public async Task ConfigureCassandraOptions()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -351,7 +357,7 @@ public sealed class ProsodyClientBuilderTests
                 options.CassandraRetention = TimeSpan.FromDays(180);
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
@@ -367,7 +373,7 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void FullFluentConfiguration()
+    public async Task FullFluentConfiguration()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -384,12 +390,12 @@ public sealed class ProsodyClientBuilderTests
                 options.StallThreshold = TimeSpan.FromMinutes(5);
             });
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void BuildClonesOptionsSoSubsequentMutationsDoNotAffectClient()
+    public async Task BuildClonesOptionsSoSubsequentMutationsDoNotAffectClient()
     {
         var builder = ProsodyClientBuilder
             .Create()
@@ -397,7 +403,7 @@ public sealed class ProsodyClientBuilderTests
             .WithSourceSystem("original")
             .WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
 
         // Mutate builder after Build() — should not affect the already-built client
         builder.WithSourceSystem("mutated");
@@ -406,7 +412,7 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void ConditionalConfiguration()
+    public async Task ConditionalConfiguration()
     {
         var isDevelopment = true;
 
@@ -419,48 +425,54 @@ public sealed class ProsodyClientBuilderTests
         if (isDevelopment)
             builder = builder.WithMock(true);
 
-        using var client = builder.Build();
+        var client = Track(await builder.BuildAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ForPipelinePreset()
+    public async Task ForPipelinePreset()
     {
-        using var client = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .ForPipeline()
-            .Build();
-
-        Assert.NotNull(client);
-    }
-
-    [Fact]
-    public void ForLowLatencyPreset()
-    {
-        using var client = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .ForLowLatency("dead-letters")
-            .Build();
+        var client = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .ForPipeline()
+                .BuildAsync()
+        );
 
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void ForBestEffortPreset()
+    public async Task ForLowLatencyPreset()
     {
-        using var client = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .ForBestEffort()
-            .Build();
+        var client = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .ForLowLatency("dead-letters")
+                .BuildAsync()
+        );
+
+        Assert.NotNull(client);
+    }
+
+    [Fact]
+    public async Task ForBestEffortPreset()
+    {
+        var client = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .ForBestEffort()
+                .BuildAsync()
+        );
 
         Assert.NotNull(client);
     }
@@ -472,17 +484,19 @@ public sealed class ProsodyClientBuilderTests
     }
 
     [Fact]
-    public void PresetCanBeOverriddenBySubsequentCalls()
+    public async Task PresetCanBeOverriddenBySubsequentCalls()
     {
-        using var client = ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithSourceSystem("test")
-            .WithMock(true)
-            .ForPipeline()
-            .WithMaxConcurrency(128)
-            .Configure(options => options.DeferEnabled = false)
-            .Build();
+        var client = Track(
+            await ProsodyClientBuilder
+                .Create()
+                .WithBootstrapServers(TestDefaults.BootstrapServers)
+                .WithSourceSystem("test")
+                .WithMock(true)
+                .ForPipeline()
+                .WithMaxConcurrency(128)
+                .Configure(options => options.DeferEnabled = false)
+                .BuildAsync()
+        );
 
         Assert.NotNull(client);
     }

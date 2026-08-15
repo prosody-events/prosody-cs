@@ -7,11 +7,11 @@ namespace Prosody;
 /// </summary>
 /// <example>
 /// <code>
-/// await using var client = Prosody.CreateClient()
+/// await using var client = await Prosody.CreateClient()
 ///     .WithBootstrapServers("localhost:9092")
 ///     .WithGroupId("my-app")
 ///     .WithSubscribedTopics("my-topic")
-///     .Build();
+///     .BuildAsync();
 /// </code>
 /// </example>
 [SuppressMessage(

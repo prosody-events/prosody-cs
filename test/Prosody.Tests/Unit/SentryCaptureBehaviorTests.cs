@@ -88,7 +88,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
         var invoked = false;
 
         await EventHandlerBridge.InvokeHandlerAsync(
-            _ => Task.CompletedTask,
+            _ => Task.FromResult(EventHandlerBridge.JsonNull),
             isPermanentError: ex => ex is IPermanentError,
             NeverCancel,
             EmptyCarrier,

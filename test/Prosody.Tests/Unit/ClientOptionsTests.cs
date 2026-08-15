@@ -1,3 +1,4 @@
+using System.Net;
 using Prosody.Configuration;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
@@ -250,6 +251,23 @@ public sealed class ClientOptionsTests
             () => Assert.Equal(TimeSpan.FromMinutes(5), native.StallThreshold),
             () => Assert.Equal("my-telemetry-topic", native.TelemetryTopic),
             () => Assert.Equal(false, native.TelemetryEnabled)
+        );
+    }
+
+    [Fact]
+    public void ToNativeConvertsPeerAddressTypes()
+    {
+        var options = new ClientOptions
+        {
+            PeerBindAddress = new IPEndPoint(IPAddress.IPv6Loopback, 9099),
+            PeerAdvertisedConnect = new Uri("https://peer.example:443"),
+        };
+
+        var native = options.ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal("[::1]:9099", native.PeerBindAddress),
+            () => Assert.Equal("https://peer.example:443", native.PeerAdvertisedConnect)
         );
     }
 

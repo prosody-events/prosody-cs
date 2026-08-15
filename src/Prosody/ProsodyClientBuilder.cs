@@ -10,7 +10,7 @@ namespace Prosody;
 /// <remarks>
 /// <para>
 /// Use <see cref="Prosody.CreateClient"/> (or <see cref="Create"/>) to get a builder instance,
-/// then chain configuration methods. Call <see cref="Build"/> when ready to create the client.
+/// then chain configuration methods. Call <see cref="BuildAsync"/> when ready to create the client.
 /// </para>
 /// <para>
 /// The builder exposes <c>With*</c> methods for commonly used options. For advanced tuning
@@ -19,11 +19,11 @@ namespace Prosody;
 /// </para>
 /// <example>
 /// <code>
-/// await using var client = ProsodyClientBuilder.Create()
+/// await using var client = await ProsodyClientBuilder.Create()
 ///     .WithBootstrapServers("localhost:9092")
 ///     .WithGroupId("my-app")
 ///     .WithSubscribedTopics("orders", "payments")
-///     .Build();
+///     .BuildAsync();
 /// </code>
 /// </example>
 /// </remarks>
@@ -299,7 +299,7 @@ public sealed class ProsodyClientBuilder
     /// </remarks>
     /// <example>
     /// <code>
-    /// ProsodyClientBuilder.Create()
+    /// var client = await ProsodyClientBuilder.Create()
     ///     .WithBootstrapServers("localhost:9092")
     ///     .WithGroupId("my-app")
     ///     .Configure(options =>
@@ -308,7 +308,7 @@ public sealed class ProsodyClientBuilder
     ///         options.CassandraNodes = ["cass1:9042", "cass2:9042"];
     ///         options.CassandraKeyspace = "my_keyspace";
     ///     })
-    ///     .Build();
+    ///     .BuildAsync();
     /// </code>
     /// </example>
     public ProsodyClientBuilder Configure(Action<ClientOptions> configure)
@@ -355,7 +355,7 @@ public sealed class ProsodyClientBuilder
     /// When no <c>TypeInfoResolver</c> is set via <see cref="ConfigureJsonOptions"/>,
     /// this method auto-installs <c>DefaultJsonTypeInfoResolver</c> (reflection-based).
     /// To use trim-safe serialization, call <see cref="ConfigureJsonOptions"/> and set
-    /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>Build()</c>.
+    /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>BuildAsync()</c>.
     /// </para>
     /// </remarks>
     [RequiresUnreferencedCode(
@@ -364,9 +364,9 @@ public sealed class ProsodyClientBuilder
     [RequiresDynamicCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
     )]
-    public ProsodyClient Build()
+    public Task<ProsodyClient> BuildAsync()
     {
         _options.Validate();
-        return ProsodyClient.FromValidatedOptions(_options.Clone());
+        return ProsodyClient.FromValidatedOptionsAsync(_options.Clone());
     }
 }

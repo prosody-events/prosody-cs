@@ -3,6 +3,7 @@ using System.Text.Json;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using Prosody.State;
 using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResult = Prosody.Native.HandlerResult;
@@ -139,6 +140,22 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public async Task ResponseEncodingFailureIsPermanent()
+    {
+        var response = new CyclicResponse();
+        response.Next = response;
+        var bridge = EventHandlerBridge<JsonElement>.Responding(
+            new RequestHandler(response),
+            TestJson.Options,
+            new HashSet<StateDefinition>()
+        );
+
+        var result = await HandleMsg(bridge);
+
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
+    [Fact]
     public async Task OnMessageReturnsPermanentErrorForAttributeMatchedType()
     {
         var handler = new AttributeOnMessageHandler(onMessage: (_, _, _) => throw new FormatException("bad format"));
@@ -250,7 +267,7 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task JsonShapeMismatch_ClassifiedAsTransientByDefault()
+    public async Task JsonShapeMismatchIsPermanent()
     {
         var handler = new TypedLambdaHandler<BridgePayload>(onMessage: (_, _, _) => Task.CompletedTask);
         var bridge = new EventHandlerBridge<BridgePayload>(handler, TestJson.Options);
@@ -258,8 +275,7 @@ public sealed class EventHandlerBridgeTests
         // Valid JSON but wrong shape (array instead of object) → JsonException during deserialization
         var result = await HandleMsg(bridge, payload: "[1,2,3]"u8.ToArray());
 
-        // No [PermanentError] attribute on handler, so JsonException is transient
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
     }
 
     #endregion OnMessage Tests
@@ -780,6 +796,26 @@ public sealed class EventHandlerBridgeTests
             ProsodyTimer timer,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
+    }
+
+    private sealed class RequestHandler(CyclicResponse response) : IProsodyRequestHandler<JsonElement, CyclicResponse>
+    {
+        public Task<CyclicResponse> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(response);
+
+        public Task<CyclicResponse> OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(response);
+    }
+
+    private sealed class CyclicResponse
+    {
+        public CyclicResponse? Next { get; set; }
     }
 
     /// <summary>

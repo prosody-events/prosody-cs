@@ -8,7 +8,7 @@ namespace Prosody.Tests.Integration;
 /// </summary>
 public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
-    [Fact(Timeout = 30_000)]
+    [Fact]
     public async Task InitializesCorrectly()
     {
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
@@ -16,14 +16,14 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
         Assert.Multiple(() => Assert.NotNull(ctx.Client), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
-    [Fact(Timeout = 30_000)]
+    [Fact]
     public async Task ExposesSourceSystemIdentifier()
     {
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
         Assert.Equal("test-source", ctx.Client.SourceSystem);
     }
 
-    [Fact(Timeout = 30_000)]
+    [Fact]
     public async Task SubscribesAndUnsubscribes()
     {
         await using IntegrationTestContext ctx = await CreateTestContextAsync();

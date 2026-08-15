@@ -60,8 +60,8 @@ public static class ProsodyServiceCollectionExtensions
     /// Invalid configuration throws <see cref="OptionsValidationException"/>.
     /// </para>
     /// <para>
-    /// The client is registered as a singleton because it manages Kafka connections and internal state
-    /// that should be shared across the application.
+    /// The service registers one <see cref="ProsodyClientProvider"/>. The provider constructs one
+    /// shared client when a caller first calls <see cref="ProsodyClientProvider.GetAsync"/>.
     /// </para>
     /// <para>
     /// Keyed-state collections are programmatic (not configuration-bindable): set
@@ -159,7 +159,7 @@ public static class ProsodyServiceCollectionExtensions
         services.TryAddSingleton(sp =>
         {
             var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value.Clone();
-            return ProsodyClient.FromValidatedOptions(options);
+            return new ProsodyClientProvider(() => ProsodyClient.FromValidatedOptionsAsync(options));
         });
 
         return services;

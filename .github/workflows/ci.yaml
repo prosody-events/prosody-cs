@@ -89,7 +89,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup .NET
@@ -155,7 +155,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup .NET
@@ -256,7 +256,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup Rust (nightly)
@@ -291,7 +291,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup Rust
@@ -321,7 +321,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup Rust

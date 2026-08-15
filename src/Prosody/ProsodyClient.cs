@@ -17,6 +17,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 {
     private readonly Native.ProsodyClient _native;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
+    private readonly Lazy<Task> _shutdown;
 
     internal JsonSerializerOptions JsonOptions { get; }
 
@@ -29,11 +30,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         _native = native;
         JsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
+        _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
         SourceSystem = native.SourceSystem();
     }
 
     /// <summary>
-    /// Creates a new ProsodyClient with the given options.
+    /// Creates a new Prosody client with the given options.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
@@ -50,14 +52,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresDynamicCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
     )]
-    public ProsodyClient(ClientOptions options)
+    public static async Task<ProsodyClient> CreateAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        _native = new Native.ProsodyClient(options.ToNative());
-        JsonOptions = BuildJsonOptions(options);
-        _stateDefinitions = RegisteredStateDefinitions(options);
-        SourceSystem = _native.SourceSystem();
+        return await FromValidatedOptionsAsync(options).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -69,11 +68,11 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresDynamicCode(
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
     )]
-    internal static ProsodyClient FromValidatedOptions(ClientOptions options)
+    internal static async Task<ProsodyClient> FromValidatedOptionsAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         return new ProsodyClient(
-            new Native.ProsodyClient(options.ToNative()),
+            await Native.ProsodyClient.ProsodyClientAsync(options.ToNative()).ConfigureAwait(false),
             BuildJsonOptions(options),
             RegisteredStateDefinitions(options)
         );
@@ -192,6 +191,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         Native.ConsumerState state = await _native.ConsumerState();
         return state switch
         {
+            Native.ConsumerState.Shutdown => ConsumerState.Shutdown,
             Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
             Native.ConsumerState.Configured => ConsumerState.Configured,
             Native.ConsumerState.Running => ConsumerState.Running,
@@ -375,6 +375,174 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>Sends one request and returns one outcome per subsystem.</summary>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// The method throws if it cannot produce the complete result dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(subsystems);
+        cancellationToken.ThrowIfCancellationRequested();
+        var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
+        var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
+        return RequestCoreAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            headers,
+            cancellationToken
+        );
+    }
+
+    /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// The method throws if it cannot produce the complete result dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(payloadType);
+        ArgumentNullException.ThrowIfNull(responseType);
+        ArgumentNullException.ThrowIfNull(subsystems);
+        cancellationToken.ThrowIfCancellationRequested();
+        return RequestCoreAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            headers,
+            cancellationToken
+        );
+    }
+
+    private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? headers,
+        CancellationToken cancellationToken
+    )
+    {
+        if (timeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
+        }
+        var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
+        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
+        // Standard propagation can add traceparent, tracestate, and baggage.
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        Dictionary<string, Native.NativeRequestResult> nativeResults;
+        try
+        {
+            nativeResults = await _native
+                .Request(
+                    new Native.NativeRequest(
+                        topic,
+                        key,
+                        encoded,
+                        new Native.EventMetadata(EventId: eventId, EventType: eventType),
+                        [.. subsystems],
+                        timeout,
+                        headers is null
+                            ? new Dictionary<string, string>(StringComparer.Ordinal)
+                            : new Dictionary<string, string>(headers, StringComparer.Ordinal),
+                        carrier
+                    ),
+                    linked?.Signal
+                )
+                .ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Cancelled ex)
+        {
+            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
+        }
+        catch (Native.FfiException.PermanentState ex)
+        {
+            throw new ArgumentException(ex.Message, nameof(subsystems), ex);
+        }
+        finally
+        {
+            if (linked is { } l)
+            {
+                await l.Registration.DisposeAsync().ConfigureAwait(false);
+                l.Signal.Dispose();
+            }
+        }
+        var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
+        foreach (var (subsystem, result) in nativeResults)
+        {
+            outcomes.Add(subsystem, MapOutcome(result, responseType));
+        }
+        return outcomes;
+    }
+
+    internal static Outcome<T> MapOutcome<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>
+        result switch
+        {
+            Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
+            Native.NativeRequestResult.HandlerError error => new Failure<T>(new HandlerError(error.Message)),
+            Native.NativeRequestResult.Timeout error => new Failure<T>(new TimeoutError(error.Message)),
+            Native.NativeRequestResult.FormatMismatch error => new Failure<T>(new FormatMismatchError(error.Message)),
+            Native.NativeRequestResult.Malformed error => new Failure<T>(new MalformedResponseError(error.Message)),
+            _ => throw new InvalidOperationException("Unknown response result"),
+        };
+
+    private static Outcome<T> DecodeResult<T>(byte[] value, JsonTypeInfo<T> responseType)
+    {
+        try
+        {
+            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType)!);
+        }
+        catch (Exception exception) when (exception is JsonException or NotSupportedException)
+        {
+            return new Failure<T>(new MalformedResponseError(exception.Message));
+        }
+    }
+
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler.
     /// </summary>
@@ -408,6 +576,15 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return _native.Subscribe(bridge);
     }
 
+    /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
+    [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
+    public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)
+    {
+        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions);
+        return _native.Subscribe(bridge);
+    }
+
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler and
     /// an explicit error classifier (zero reflection; no attribute lookup is performed).
@@ -431,40 +608,48 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Unsubscribes from receiving messages and shuts down the consumer.
+    /// Stops the consumer. You can subscribe again later.
     /// </summary>
     public Task UnsubscribeAsync() => _native.Unsubscribe();
+
+    /// <summary>
+    /// Shuts down all client services.
+    /// Concurrent and repeated calls await the same shutdown operation.
+    /// </summary>
+    public Task ShutdownAsync() => _shutdown.Value;
+
+    private Task ShutdownCoreAsync() => _native.Shutdown();
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         try
         {
-            await _native.Unsubscribe().ConfigureAwait(false);
+            await ShutdownAsync().ConfigureAwait(false);
         }
-        catch (Native.FfiException.Client)
+        catch (Native.FfiException error)
         {
-            // Ignore - consumer was not running or already unsubscribed
+            LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
         }
         catch (ObjectDisposedException)
         {
-            // Ignore - already disposed
+            // A prior synchronous disposal already released the native client.
         }
-
-        // Flush this client's final telemetry (including the unsubscribe span above)
-        // before native teardown so a promptly-exiting process does not lose it.
-        // Flush, not shutdown: telemetry is process-global and sibling clients may
-        // still be running. Best-effort — a flush failure must not fault disposal.
-        try
+        finally
         {
-            ProsodyLogging.FlushTelemetry();
-        }
-        catch (Native.FfiException)
-        {
-            // Ignore - telemetry flush is best-effort during disposal
-        }
+            // Flush this client's final telemetry before native teardown.
+            // Telemetry is process-global, so sibling clients can still use it.
+            try
+            {
+                ProsodyLogging.FlushTelemetry();
+            }
+            catch (Native.FfiException)
+            {
+                // Telemetry flush is best-effort during disposal.
+            }
 
-        _native.Dispose();
+            _native.Dispose();
+        }
     }
 
     /// <inheritdoc/>

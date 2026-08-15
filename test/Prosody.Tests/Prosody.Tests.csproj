@@ -8,7 +8,7 @@
     <IsPackable>false</IsPackable>
     <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
     <!-- Tests do not publish AOT, so reflection-safety warnings from annotated library APIs are suppressed.
-         Annotated APIs include: ProsodyClient constructor, ProsodyClientBuilder.Build(),
+         Annotated APIs include: ProsodyClient.CreateAsync, ProsodyClientBuilder.BuildAsync,
          ProsodyClient.SendAsync<T> (convenience overload), ProsodyClient.SubscribeAsync<TPayload>
          (reflection overload), EventHandlerBridge<T> constructor, PermanentErrorResolver.GetAttribute,
          and ProsodyServiceCollectionExtensions.AddProsodyClient. -->
@@ -17,7 +17,7 @@
 
   <!-- Test framework -->
   <ItemGroup>
-    <PackageReference Include="xunit.v3.mtp-v2" Version="3.2.2" />
+    <PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" />
   </ItemGroup>
 
   <!-- OpenTelemetry for integration test tracing verification -->
@@ -29,10 +29,10 @@
 
   <!-- DI and Configuration for unit tests -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.8.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
   </ItemGroup>
 
   <!-- Code analyzers -->
