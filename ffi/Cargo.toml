@@ -19,7 +19,7 @@ crate-type = ["cdylib"]
 arc-swap.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-mimalloc = { workspace = true, features = ["local_dynamic_tls", "v2"] }
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] }
 opentelemetry.workspace = true
 prosody.workspace = true
 thiserror.workspace = true
