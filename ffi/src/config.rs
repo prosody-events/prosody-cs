@@ -18,6 +18,7 @@
 
 use prosody::ByteSize;
 use prosody::PeerConfiguration;
+use prosody::PeerEndpoint;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
 use prosody::codec::{JsonBinaryCodec, JsonBinaryMessageCodec};
 use prosody::consumer::ConsumerConfigurationBuilder;
@@ -49,7 +50,6 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
-use tonic::transport::Endpoint;
 use validator::{ValidationError, ValidationErrors};
 
 use crate::error::FfiError;
@@ -721,7 +721,7 @@ fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiEr
     }
     if let Some(value) = &options.peer_advertised_connect {
         builder.advertised_connect(
-            Endpoint::from_shared(value.clone())
+            PeerEndpoint::try_from(value.clone())
                 .map_err(|error| permanent_config(format!("peer_advertised_connect: {error}")))?,
         );
     }

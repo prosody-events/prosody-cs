@@ -28,7 +28,6 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
-tonic.workspace = true
 uniffi = { workspace = true, features = ["tokio"] }
 validator.workspace = true
 
