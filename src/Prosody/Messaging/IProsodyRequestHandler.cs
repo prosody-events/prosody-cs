@@ -17,10 +17,6 @@ public interface IProsodyRequestHandler<TPayload, TResponse>
         CancellationToken cancellationToken
     );
 
-    /// <summary>Handles one timer. The result is not a request response.</summary>
-    Task<TResponse> OnTimerAsync(
-        ProsodyContext prosodyContext,
-        ProsodyTimer timer,
-        CancellationToken cancellationToken
-    );
+    /// <summary>Handles one timer.</summary>
+    Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }

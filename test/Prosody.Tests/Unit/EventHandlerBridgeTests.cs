@@ -824,11 +824,11 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => Task.FromResult(response);
 
-        public Task<CyclicResponse> OnTimerAsync(
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromResult(response);
+        ) => Task.CompletedTask;
     }
 
     private sealed class CyclicResponse

@@ -25,11 +25,11 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             CancellationToken cancellationToken
         ) => Task.FromResult(new RequestResponse(message.Key, true));
 
-        public Task<RequestResponse> OnTimerAsync(
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(timer.Key, true));
+        ) => Task.CompletedTask;
     }
 
     private sealed class RejectingRequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
@@ -46,11 +46,11 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             CancellationToken cancellationToken
         ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
 
-        public Task<RequestResponse> OnTimerAsync(
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+        ) => Task.FromException(new PermanentException("request rejected"));
     }
 
     [Fact(Timeout = 60_000)]

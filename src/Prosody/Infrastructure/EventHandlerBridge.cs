@@ -431,10 +431,10 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                     responseTypeInfo
                 ),
             async (context, timer, cancellationToken) =>
-                EventHandlerBridge.SerializeResponse(
-                    await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false),
-                    responseTypeInfo
-                ),
+            {
+                await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
+                return EventHandlerBridge.JsonNull;
+            },
             error => PermanentErrorResolver.IsPermanentError(error, messageAttribute),
             error => PermanentErrorResolver.IsPermanentError(error, exciseAttribute),
             error => PermanentErrorResolver.IsPermanentError(error, timerAttribute)

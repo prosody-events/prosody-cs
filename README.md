@@ -281,11 +281,11 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
         CancellationToken cancellationToken
     ) => Task.FromResult(new InventoryResponse(message.Key));
 
-    public Task<InventoryResponse> OnTimerAsync(
+    public Task OnTimerAsync(
         ProsodyContext context,
         ProsodyTimer timer,
         CancellationToken cancellationToken
-    ) => Task.FromResult(new InventoryResponse(timer.Key));
+    ) => Task.CompletedTask;
 }
 ```
 
