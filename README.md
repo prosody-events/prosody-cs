@@ -238,9 +238,7 @@ if (await client.IsStalledAsync())
 }
 ```
 
-## Advanced Usage
-
-### Subsystem Requests
+## Subsystem Requests
 
 Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
@@ -317,6 +315,8 @@ Local JSON errors use the .NET decoder's message.
 JSON `null` remains a successful result. Use a nullable response type when a handler can return `null`.
 
 Use the `JsonTypeInfo` overload for trim-safe request and response serialization.
+
+## Advanced Usage
 
 ### Pipeline Mode
 
