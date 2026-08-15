@@ -1,6 +1,6 @@
 namespace Prosody.Messaging;
 
-/// <summary>Handles events and returns a JSON response for peer requests.</summary>
+/// <summary>Handles events and returns a JSON response for subsystem requests.</summary>
 public interface IProsodyRequestHandler<TPayload, TResponse>
 {
     /// <summary>Handles one message and returns its response.</summary>
@@ -10,7 +10,7 @@ public interface IProsodyRequestHandler<TPayload, TResponse>
         CancellationToken cancellationToken
     );
 
-    /// <summary>Handles one timer. The result is not a peer response.</summary>
+    /// <summary>Handles one timer. The result is not a request response.</summary>
     Task<TResponse> OnTimerAsync(
         ProsodyContext prosodyContext,
         ProsodyTimer timer,

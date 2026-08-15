@@ -40,7 +40,6 @@ use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
 use crate::handler::{
     EventHandler, HandlerResult, HandlerResultCode, NativeRequest, NativeRequestResult,
-    NativeResponseErrorCategory,
 };
 use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
@@ -52,7 +51,6 @@ use prosody::consumer::DemandType;
 use prosody::consumer::event_context::EventContext;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::consumer::middleware::FallibleHandler;
-use prosody::error::ErrorCategory;
 use prosody::high_level::erased::{
     ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
 };
@@ -480,7 +478,7 @@ impl ProsodyClient {
         Ok(())
     }
 
-    /// Sends one request and returns one result per subsystem.
+    /// Sends one request and returns one outcome per subsystem.
     ///
     /// # Errors
     ///
@@ -489,7 +487,7 @@ impl ProsodyClient {
         &self,
         request: NativeRequest,
         cancel: Option<Arc<CancellationSignal>>,
-    ) -> Result<Vec<NativeRequestResult>, FfiError> {
+    ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
         let subsystems = request
             .subsystems
             .into_iter()
@@ -525,7 +523,10 @@ impl ProsodyClient {
         } else {
             request.await?
         };
-        Ok(results.into_iter().map(native_request_result).collect())
+        Ok(results
+            .into_iter()
+            .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
+            .collect())
     }
 
     /// Returns the current consumer state.
@@ -560,25 +561,15 @@ impl ProsodyClient {
 fn native_request_result(result: Result<BinaryPayload, ResponseError>) -> NativeRequestResult {
     match result {
         Ok(value) => NativeRequestResult::Ok { value: value.bytes },
-        Err(error) => {
-            let message = error.to_string();
-            match error {
-                ResponseError::Handler {
-                    category,
-                    message: handler_message,
-                } => NativeRequestResult::HandlerError {
-                    category: match category {
-                        ErrorCategory::Transient => NativeResponseErrorCategory::Transient,
-                        ErrorCategory::Permanent => NativeResponseErrorCategory::Permanent,
-                        ErrorCategory::Terminal => NativeResponseErrorCategory::Terminal,
-                    },
-                    handler_message,
-                    message,
-                },
-                ResponseError::Timeout => NativeRequestResult::Timeout { message },
-                ResponseError::FormatMismatch => NativeRequestResult::FormatMismatch { message },
-                ResponseError::Malformed => NativeRequestResult::Malformed { message },
-            }
-        }
+        Err(ResponseError::Handler { message }) => NativeRequestResult::HandlerError { message },
+        Err(ResponseError::Timeout) => NativeRequestResult::Timeout {
+            message: ResponseError::Timeout.to_string(),
+        },
+        Err(ResponseError::FormatMismatch) => NativeRequestResult::FormatMismatch {
+            message: ResponseError::FormatMismatch.to_string(),
+        },
+        Err(ResponseError::Malformed) => NativeRequestResult::Malformed {
+            message: ResponseError::Malformed.to_string(),
+        },
     }
 }

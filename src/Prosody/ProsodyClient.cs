@@ -375,12 +375,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <summary>Sends one request and returns one result per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutException"/> for that subsystem.</remarks>
+    /// <summary>Sends one request and returns one outcome per subsystem.</summary>
+    /// <remarks>A missed deadline returns <see cref="TimeoutError"/> for that subsystem.</remarks>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
     [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
-    public Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
         string key,
         TPayload payload,
@@ -409,10 +409,10 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         );
     }
 
-    /// <summary>Sends one trim-safe request and returns one result per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="ResponseTimeoutException"/> for that subsystem.</remarks>
+    /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
+    /// <remarks>A missed deadline returns <see cref="TimeoutError"/> for that subsystem.</remarks>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
-    public Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
         string key,
         TPayload payload,
@@ -443,7 +443,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         );
     }
 
-    private async Task<IReadOnlyList<RequestResult<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
+    private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
         string topic,
         string key,
         TPayload payload,
@@ -464,7 +464,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        Native.NativeRequestResult[] nativeResults;
+        Dictionary<string, Native.NativeRequestResult> nativeResults;
         try
         {
             nativeResults = await _native
@@ -501,52 +501,36 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                 l.Signal.Dispose();
             }
         }
-        var results = new RequestResult<TResponse>[nativeResults.Length];
-        for (var index = 0; index < nativeResults.Length; index++)
+        var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
+        foreach (var (subsystem, result) in nativeResults)
         {
-            results[index] = MapRequestResult(nativeResults[index], responseType);
+            outcomes.Add(subsystem, MapOutcome(result, responseType));
         }
-        return results;
+        return outcomes;
     }
 
-    internal static RequestResult<T> MapRequestResult<T>(
-        Native.NativeRequestResult result,
-        JsonTypeInfo<T> responseType
-    ) =>
+    internal static Outcome<T> MapOutcome<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>
         result switch
         {
             Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
-            Native.NativeRequestResult.HandlerError error => new Failure<T>(
-                new HandlerResponseException(ResponseErrorCategory(error.Category), error.HandlerMessage, error.Message)
-            ),
-            Native.NativeRequestResult.Timeout error => new Failure<T>(new ResponseTimeoutException(error.Message)),
-            Native.NativeRequestResult.FormatMismatch error => new Failure<T>(
-                new ResponseFormatMismatchException(error.Message)
-            ),
-            Native.NativeRequestResult.Malformed error => new Failure<T>(new MalformedResponseException(error.Message)),
+            Native.NativeRequestResult.HandlerError error => new Failure<T>(new HandlerError(error.Message)),
+            Native.NativeRequestResult.Timeout error => new Failure<T>(new TimeoutError(error.Message)),
+            Native.NativeRequestResult.FormatMismatch error => new Failure<T>(new FormatMismatchError(error.Message)),
+            Native.NativeRequestResult.Malformed error => new Failure<T>(new MalformedResponseError(error.Message)),
             _ => throw new InvalidOperationException("Unknown response result"),
         };
 
-    private static RequestResult<T> DecodeResult<T>(byte[] value, JsonTypeInfo<T> responseType)
+    private static Outcome<T> DecodeResult<T>(byte[] value, JsonTypeInfo<T> responseType)
     {
         try
         {
-            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
+            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType)!);
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {
-            return new Failure<T>(new MalformedResponseException(exception.Message, exception));
+            return new Failure<T>(new MalformedResponseError(exception.Message));
         }
     }
-
-    private static ResponseErrorCategory ResponseErrorCategory(Native.NativeResponseErrorCategory category) =>
-        category switch
-        {
-            Native.NativeResponseErrorCategory.Transient => Messaging.ResponseErrorCategory.Transient,
-            Native.NativeResponseErrorCategory.Permanent => Messaging.ResponseErrorCategory.Permanent,
-            Native.NativeResponseErrorCategory.Terminal => Messaging.ResponseErrorCategory.Terminal,
-            _ => throw new InvalidOperationException("Unknown response error category"),
-        };
 
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler.
@@ -581,7 +565,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return _native.Subscribe(bridge);
     }
 
-    /// <summary>Subscribes with a handler that returns peer responses.</summary>
+    /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
     [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
     public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)

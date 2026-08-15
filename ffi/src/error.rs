@@ -112,7 +112,7 @@ pub enum FfiError {
     #[error("client operation failed: {0:#}")]
     Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
 
-    /// A peer request failed before it returned subsystem results.
+    /// A request failed before it returned subsystem results.
     #[error("request failed: {0:#}")]
     Request(#[from] RequestError<BinaryCodecError<JsonExtractError>>),
 

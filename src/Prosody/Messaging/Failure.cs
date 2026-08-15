@@ -1,4 +1,4 @@
 namespace Prosody.Messaging;
 
-/// <summary>The subsystem returned an error.</summary>
-public sealed record Failure<T>(ResponseException Error) : RequestResult<T>;
+/// <summary>Contains one subsystem failure.</summary>
+public sealed record Failure<T>(ResponseError Error) : Outcome<T>;

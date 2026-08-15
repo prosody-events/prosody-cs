@@ -240,9 +240,9 @@ if (await client.IsStalledAsync())
 
 ## Advanced Usage
 
-### Peer Requests
+### Subsystem Requests
 
-Peer requests collect one result from each named subsystem. Results follow the subsystem order.
+Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
 Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
 
@@ -268,15 +268,15 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
 }
 ```
 
-Message handler return values become request results. Each return value must have a JSON representation.
+Message handler return values become successful request outcomes. Each return value must have a JSON representation.
 
-Only message results become peer responses. Timer results are not peer responses.
+Only message results become request responses. Timer results are not request responses.
 
 Send a request without a subscription on the requester:
 
 ```csharp
 string[] subsystems = ["inventory", "billing"];
-IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAsync<Order, InventoryResponse>(
+IReadOnlyDictionary<string, Outcome<InventoryResponse>> results = await client.RequestAsync<Order, InventoryResponse>(
     "orders",
     "order-1",
     new Order("order.created"),
@@ -284,13 +284,13 @@ IReadOnlyList<RequestResult<InventoryResponse>> results = await client.RequestAs
     TimeSpan.FromSeconds(2)
 );
 
-foreach (var (subsystem, result) in subsystems.Zip(results))
+foreach (var (subsystem, outcome) in results)
 {
-    if (result is Success<InventoryResponse> success)
+    if (outcome is Success<InventoryResponse> success)
     {
         Console.WriteLine($"{subsystem}: {success.Value}");
     }
-    else if (result is Failure<InventoryResponse> failure)
+    else if (outcome is Failure<InventoryResponse> failure)
     {
         Console.Error.WriteLine($"{subsystem}: {failure.Error.Message}");
     }
@@ -304,11 +304,11 @@ inventory: InventoryResponse { Accepted = order-1 }
 billing: no response arrived before the deadline
 ```
 
-Each `Failure<T>` contains a C# exception. Its type identifies the failure without changing successful JSON values.
+Each `Failure<T>` contains one typed response error.
 
-Core exceptions use Prosody's message. Handler exceptions also keep their category and original text.
+Each response error uses Prosody's message.
 
-Local JSON exceptions keep the .NET decoder as their inner exception.
+Local JSON errors use the .NET decoder's message.
 
 JSON `null` remains a successful result. Use a nullable response type when a handler can return `null`.
 
@@ -1259,8 +1259,8 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
-- `Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one ordered result for each subsystem.
-- `Task<IReadOnlyList<RequestResult<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.

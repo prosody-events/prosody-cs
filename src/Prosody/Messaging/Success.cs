@@ -1,4 +1,4 @@
 namespace Prosody.Messaging;
 
-/// <summary>The handler returned a response.</summary>
-public sealed record Success<T>(T? Value) : RequestResult<T>;
+/// <summary>Contains one successful subsystem response.</summary>
+public sealed record Success<T>(T Value) : Outcome<T>;

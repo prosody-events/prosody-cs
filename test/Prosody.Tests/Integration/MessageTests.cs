@@ -56,12 +56,12 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             cancellationToken: TestContext.Current.CancellationToken
         );
 
-        var result = Assert.IsType<Success<RequestResponse>>(Assert.Single(results));
+        var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
         Assert.Equal(new RequestResponse("order-1", true), result.Value);
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task RequestReturnsPermanentHandlerFailure()
+    public async Task RequestReturnsHandlerFailure()
     {
         await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
         await ctx.Client.SubscribeAsync(new RejectingRequestHandler());
@@ -75,14 +75,8 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             cancellationToken: TestContext.Current.CancellationToken
         );
 
-        var error = Assert.IsType<HandlerResponseException>(
-            Assert.IsType<Failure<RequestResponse>>(Assert.Single(results)).Error
-        );
-        Assert.Multiple(
-            () => Assert.Equal(ResponseErrorCategory.Permanent, error.Category),
-            () => Assert.Contains("request rejected", error.HandlerMessage, StringComparison.Ordinal),
-            () => Assert.Equal($"handler failed: {error.HandlerMessage}", error.Message)
-        );
+        var error = Assert.IsType<HandlerError>(Assert.IsType<Failure<RequestResponse>>(results["inventory"]).Error);
+        Assert.Contains("request rejected", error.Message, StringComparison.Ordinal);
     }
 
     [Fact(Timeout = 60_000)]

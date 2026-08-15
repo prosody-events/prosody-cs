@@ -7,24 +7,24 @@ using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
-public sealed class RequestResultTests
+public sealed class OutcomeTests
 {
     [Fact]
     public void MalformedJsonMapsToMalformedError()
     {
-        var result = ProsodyClient.MapRequestResult(
+        var result = ProsodyClient.MapOutcome(
             new Native.NativeRequestResult.Ok("{"u8.ToArray()),
             (JsonTypeInfo<string>)JsonSerializerOptions.Default.GetTypeInfo(typeof(string))
         );
 
-        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Failure<string>>(result).Error);
-        Assert.IsType<JsonException>(error.InnerException);
+        var error = Assert.IsType<MalformedResponseError>(Assert.IsType<Failure<string>>(result).Error);
+        Assert.NotEmpty(error.Message);
     }
 
     [Fact]
     public void JsonNullRemainsAValidSuccess()
     {
-        var result = ProsodyClient.MapRequestResult(
+        var result = ProsodyClient.MapOutcome(
             new Native.NativeRequestResult.Ok("null"u8.ToArray()),
             (JsonTypeInfo<string>)JsonSerializerOptions.Default.GetTypeInfo(typeof(string))
         );
@@ -37,13 +37,13 @@ public sealed class RequestResultTests
     {
         var options = new JsonSerializerOptions(JsonSerializerOptions.Default);
         options.Converters.Add(new UnsupportedConverter());
-        var result = ProsodyClient.MapRequestResult(
+        var result = ProsodyClient.MapOutcome(
             new Native.NativeRequestResult.Ok("{}"u8.ToArray()),
             (JsonTypeInfo<object>)options.GetTypeInfo(typeof(object))
         );
 
-        var error = Assert.IsType<MalformedResponseException>(Assert.IsType<Failure<object>>(result).Error);
-        Assert.IsType<NotSupportedException>(error.InnerException);
+        var error = Assert.IsType<MalformedResponseError>(Assert.IsType<Failure<object>>(result).Error);
+        Assert.NotEmpty(error.Message);
     }
 
     [Fact]

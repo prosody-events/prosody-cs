@@ -68,7 +68,7 @@ pub struct HandlerResult {
     pub response: Vec<u8>,
 }
 
-/// Values needed to send one peer request.
+/// Values needed to send one subsystem request.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NativeRequest {
     /// Kafka topic.
@@ -89,18 +89,7 @@ pub struct NativeRequest {
     pub carrier: HashMap<String, String>,
 }
 
-/// Handler error category.
-#[derive(Debug, Clone, Copy, uniffi::Enum)]
-pub enum NativeResponseErrorCategory {
-    /// Retry can succeed.
-    Transient,
-    /// Retry cannot succeed for this message.
-    Permanent,
-    /// The client must stop.
-    Terminal,
-}
-
-/// One subsystem result returned by a peer request.
+/// One subsystem outcome returned by a request.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum NativeRequestResult {
     /// The handler returned encoded JSON.
@@ -108,13 +97,9 @@ pub enum NativeRequestResult {
         /// Encoded JSON response.
         value: Vec<u8>,
     },
-    /// The handler returned a classified error.
+    /// The handler returned an error.
     HandlerError {
-        /// Retry category.
-        category: NativeResponseErrorCategory,
-        /// Original handler error text.
-        handler_message: String,
-        /// Rust error display text.
+        /// Handler error text.
         message: String,
     },
     /// No response arrived before the deadline.
