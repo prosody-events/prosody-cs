@@ -1,6 +1,6 @@
 namespace Prosody.Messaging;
 
-/// <summary>Handles events and returns a JSON response for subsystem requests.</summary>
+/// <summary>Handles events and returns a JSON response for requests.</summary>
 public interface IProsodyRequestHandler<TPayload, TResponse>
 {
     /// <summary>Handles one message and returns its response.</summary>
