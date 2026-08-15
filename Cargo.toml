@@ -10,9 +10,10 @@ color-eyre = "0.6"
 futures = "0.3"
 once_cell = "1.21"
 opentelemetry = "0.32"
-# TODO: replace this Git revision with the published Prosody release once the backend change is released.
-# TODO: Replace this revision with the released Prosody version.
-prosody = { git = "https://github.com/prosody-events/prosody", rev = "16139f9afd59a9cb63b875d29f2b849c446a700a", features = ["libz-static"] }
+# TODO: Use the released version after Prosody publishes peer requests.
+prosody = { git = "https://github.com/prosody-events/prosody", rev = "6b707aef92baf85c3aa9a8cee0550d4e62a7cdcf", features = [
+  "libz-static",
+] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 tokio = { version = "1.52", features = ["rt-multi-thread", "sync"] }

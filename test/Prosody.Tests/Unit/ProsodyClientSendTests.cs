@@ -49,19 +49,24 @@ internal sealed record MetadataTestPayload
 /// <summary>
 /// Tests for <see cref="ProsodyClient.SendAsync{T}"/> validation.
 /// </summary>
-public sealed class ProsodyClientSendTests : IDisposable
+public sealed class ProsodyClientSendTests : IAsyncLifetime
 {
-    private readonly ProsodyClient _client = new(
-        new ClientOptions
-        {
-            Mock = true,
-            BootstrapServers = [TestDefaults.BootstrapServers],
-            GroupId = "test-group",
-            SourceSystem = "test",
-        }
-    );
+    private ProsodyClient _client = null!;
 
-    public void Dispose() => _client.Dispose();
+    public async ValueTask InitializeAsync()
+    {
+        _client = await ProsodyClient.CreateAsync(
+            new ClientOptions
+            {
+                Mock = true,
+                BootstrapServers = [TestDefaults.BootstrapServers],
+                GroupId = "test-group",
+                SourceSystem = "test",
+            }
+        );
+    }
+
+    public ValueTask DisposeAsync() => _client.DisposeAsync();
 
     [Fact]
     public async Task SendAsyncThrowsWhenTopicIsNull()
@@ -92,7 +97,7 @@ public sealed class ProsodyClientSendTests : IDisposable
     public async Task SendAsyncThrowsOperationCanceledWhenCancelledMidSend()
     {
         using var cts = new CancellationTokenSource();
-        await using var client = new ProsodyClient(
+        await using var client = await ProsodyClient.CreateAsync(
             new ClientOptions
             {
                 Mock = true,

@@ -31,7 +31,7 @@ dotnet add package ProsodyEvents.Prosody
 using Prosody;
 
 // Initialize the client with the builder pattern
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     // Bootstrap servers should normally be set using the PROSODY_BOOTSTRAP_SERVERS environment variable
     .WithBootstrapServers("localhost:9092")
     // To allow loopbacks, the SourceSystem must be different from the GroupId.
@@ -41,7 +41,7 @@ await using var client = ProsodyClientBuilder.Create()
     .WithGroupId("my-application")
     // Topics the client should subscribe to
     .WithSubscribedTopics("my-topic")
-    .Build();
+    .BuildAsync();
 
 // Define a message handler
 var messageHandler = new MyHandler();
@@ -54,7 +54,7 @@ await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!
 await client.ExciseAsync("my-topic", "obsolete-key");
 
 // Ensure proper shutdown when done
-await client.UnsubscribeAsync();
+await client.ShutdownAsync();
 
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
@@ -132,7 +132,7 @@ When the timer fires, reload the message from Kafka and retry.
 
 ```csharp
 // Configure defer behavior
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .Configure(options =>
@@ -142,7 +142,7 @@ await using var client = ProsodyClientBuilder.Create()
         options.DeferMaxDelay = TimeSpan.FromHours(24);           // Cap at 24 hours
         options.DeferFailureThreshold = 0.9;                      // Disable when >90% failing
     })
-    .Build();
+    .BuildAsync();
 ```
 
 **Failure Rate Gating:** When >90% of recent messages fail, deferral disables. The retry middleware blocks the
@@ -157,7 +157,7 @@ with a transient error, routing them through defer.
 
 ```csharp
 // Configure monopolization detection
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .Configure(options =>
@@ -166,7 +166,7 @@ await using var client = ProsodyClientBuilder.Create()
         options.MonopolizationThreshold = 0.9;                    // Reject keys using >90% of window
         options.MonopolizationWindow = TimeSpan.FromMinutes(5);   // 5-minute window
     })
-    .Build();
+    .BuildAsync();
 ```
 
 ### Handler Timeout
@@ -174,7 +174,7 @@ await using var client = ProsodyClientBuilder.Create()
 Handlers are automatically cancelled if they exceed a deadline:
 
 ```csharp
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .Configure(options =>
@@ -182,7 +182,7 @@ await using var client = ProsodyClientBuilder.Create()
         options.Timeout = TimeSpan.FromSeconds(30);               // Cancel after 30 seconds
         options.StallThreshold = TimeSpan.FromSeconds(60);        // Report unhealthy after 60 seconds
     })
-    .Build();
+    .BuildAsync();
 ```
 
 When a handler times out, `prosodyContext.ShouldCancel` becomes `true` and the `CancellationToken` is cancelled. The handler
@@ -193,6 +193,8 @@ should exit promptly. If not specified, timeout defaults to 80% of `StallThresho
 For the complete configuration reference, see [CONFIGURATION.md](CONFIGURATION.md).
 
 `ClientOptions` properties take precedence. Unset properties use environment variables, then library defaults.
+
+Client construction is asynchronous. Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync`.
 
 ## Liveness and Readiness Probes
 
@@ -208,7 +210,7 @@ server is tied to the consumer's lifecycle and offers two main endpoints:
 Configure the probe server using the builder:
 
 ```csharp
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .WithProbePort(8000)                                          // Set to 0 to disable
@@ -216,7 +218,7 @@ await using var client = ProsodyClientBuilder.Create()
     {
         options.StallThreshold = TimeSpan.FromSeconds(15);        // 15 seconds before considering a partition stalled
     })
-    .Build();
+    .BuildAsync();
 ```
 
 Or via environment variables:
@@ -249,6 +251,90 @@ if (await client.IsStalledAsync())
 }
 ```
 
+## Subsystem Requests
+
+Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
+
+Do not rely on dictionary enumeration order.
+
+Prosody throws an exception if the request cannot produce the complete result dictionary.
+
+Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
+
+Return a JSON response from each message handler:
+
+```csharp
+public sealed record Order(string Type);
+public sealed record InventoryResponse(string Accepted);
+
+public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryResponse>
+{
+    public Task<InventoryResponse> OnMessageAsync(
+        ProsodyContext context,
+        Message<Order> message,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(message.Key));
+
+    public Task<InventoryResponse> OnExciseAsync(
+        ProsodyContext context,
+        Message<Order> message,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(message.Key));
+
+    public Task<InventoryResponse> OnTimerAsync(
+        ProsodyContext context,
+        ProsodyTimer timer,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(timer.Key));
+}
+```
+
+Message handler return values become successful request outcomes. Each return value must have a JSON representation.
+
+Only message results become request responses. Timer results are not request responses.
+
+Send a request without a subscription on the requester:
+
+```csharp
+string[] subsystems = ["inventory", "billing"];
+IReadOnlyDictionary<string, Outcome<InventoryResponse>> results = await client.RequestAsync<Order, InventoryResponse>(
+    "orders",
+    "order-1",
+    new Order("order.created"),
+    subsystems,
+    TimeSpan.FromSeconds(2)
+);
+
+foreach (var (subsystem, outcome) in results)
+{
+    if (outcome is Success<InventoryResponse> success)
+    {
+        Console.WriteLine($"{subsystem}: {success.Value}");
+    }
+    else if (outcome is Failure<InventoryResponse> failure)
+    {
+        Console.Error.WriteLine($"{subsystem}: {failure.Error.Message}");
+    }
+}
+```
+
+The example can print these results:
+
+```text
+inventory: InventoryResponse { Accepted = order-1 }
+billing: no response arrived before the deadline
+```
+
+Each `Failure<T>` contains one typed response error.
+
+Each response error uses Prosody's message.
+
+Local JSON errors use the .NET decoder's message.
+
+JSON `null` remains a successful result. Use a nullable response type when a handler can return `null`.
+
+Use the `JsonTypeInfo` overload for trim-safe request and response serialization.
+
 ## Advanced Usage
 
 ### Pipeline Mode
@@ -257,11 +343,11 @@ Pipeline mode is the default mode. Ensures ordered processing, retrying failed o
 
 ```csharp
 // Initialize client in pipeline mode
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithMode(ClientMode.Pipeline)  // Explicitly set pipeline mode (this is the default)
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .Build();
+    .BuildAsync();
 ```
 
 ### Low-Latency Mode
@@ -270,12 +356,12 @@ Prioritizes quick processing, sending persistently failing messages to a failure
 
 ```csharp
 // Initialize client in low-latency mode
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithMode(ClientMode.LowLatency)  // Set low-latency mode
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .WithFailureTopic("failed-messages")  // Specify a topic for failed messages
-    .Build();
+    .BuildAsync();
 ```
 
 ### Best-Effort Mode
@@ -284,11 +370,11 @@ Optimized for development environments or services where message processing fail
 
 ```csharp
 // Initialize client in best-effort mode
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithMode(ClientMode.BestEffort)  // Set best-effort mode
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
-    .Build();
+    .BuildAsync();
 ```
 
 ## Event Type Filtering
@@ -298,11 +384,11 @@ of events:
 
 ```csharp
 // Process only events with types starting with "user." or "account."
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .WithAllowedEvents("user.", "account.")
-    .Build();
+    .BuildAsync();
 ```
 
 Or via environment variables:
@@ -334,11 +420,11 @@ Prosody prevents processing loops in distributed systems by tracking the source 
 
 ```csharp
 // Consumer and producer in one application
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-service")
     .WithSourceSystem("my-service-producer")  // Must differ from GroupId to allow loopbacks; defaults to GroupId
     .WithSubscribedTopics("my-topic")
-    .Build();
+    .BuildAsync();
 ```
 
 Or via environment variable:
@@ -389,11 +475,11 @@ Deduplication is always active. `IdempotenceCacheSize` must be greater than `0`;
 option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The cache capacity can be tuned:
 
 ```csharp
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithGroupId("my-consumer-group")
     .WithSubscribedTopics("my-topic")
     .Configure(options => options.IdempotenceCacheSize = 16384)   // Tune the shared cache capacity
-    .Build();
+    .BuildAsync();
 ```
 
 To invalidate all previously recorded dedup entries and force reprocessing, change the version string:
@@ -475,24 +561,24 @@ PROSODY_CASSANDRA_NODES=localhost:9042  # Required for timer persistence
 Or programmatically when creating the client:
 
 ```csharp
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithBootstrapServers("localhost:9092")
     .WithGroupId("my-application")
     .WithSubscribedTopics("my-topic")
     .Configure(options => options.CassandraNodes = ["localhost:9042"])  // Required unless Mock = true
-    .Build();
+    .BuildAsync();
 ```
 
 For testing, you can use mock mode to avoid Cassandra dependency:
 
 ```csharp
 // Mock mode for testing (timers work but aren't persisted)
-await using var client = ProsodyClientBuilder.Create()
+await using var client = await ProsodyClientBuilder.Create()
     .WithBootstrapServers("localhost:9092")
     .WithGroupId("my-application")
     .WithSubscribedTopics("my-topic")
     .WithMock(true)  // No Cassandra required in mock mode
-    .Build();
+    .BuildAsync();
 ```
 
 ## Keyed State
@@ -553,9 +639,9 @@ public sealed class CountHandler(ValueStateDefinition<int> count)
     }
 }
 
-var client = ProsodyClientBuilder.Create()
+var client = await ProsodyClientBuilder.Create()
     .WithStateCollections(count)
-    .Build();
+    .BuildAsync();
 ```
 
 Here, counters expire after 30 days without an update.
@@ -609,7 +695,7 @@ See the complete, compiled example for imports, types, client setup, and `Notify
 
 Why this works:
 
-- Register both definitions with `WithStateCollections` before `Build()`. Keyed state uses Cassandra unless `Mock = true`.
+- Register both definitions with `WithStateCollections` before `BuildAsync()`. Keyed state uses Cassandra unless `Mock = true`.
 - Use `ClearAndScheduleAsync`, not `ScheduleAsync`, so a retried event does not add another timer for the same key.
 - `capacity: 100` and the one-day TTL prevent an inactive or unusually busy key from retaining an unlimited backlog. Since this example only pushes at the back, overflow drops the oldest saved message.
 - A `MessageDeque` requires the original Kafka messages to remain available for the whole window. Use a plain `Deque` of payloads if topic retention or compaction cannot guarantee that.
@@ -779,11 +865,11 @@ Strategies for achieving idempotence:
 
 ### Proper Shutdown
 
-Always unsubscribe from topics before exiting your application:
+Shut down the client before your application exits:
 
 ```csharp
 // Ensure proper shutdown
-await client.UnsubscribeAsync();
+await client.ShutdownAsync();
 ```
 
 This ensures:
@@ -800,32 +886,19 @@ using Prosody;
 
 public class ProsodyWorker : BackgroundService
 {
-    private readonly ProsodyClient _client;
+    private readonly ProsodyClientProvider _clients;
 
-    public ProsodyWorker()
-    {
-        _client = ProsodyClientBuilder.Create()
-            .WithBootstrapServers("localhost:9092")
-            .WithGroupId("my-consumer-group")
-            .WithSubscribedTopics("my-topic")
-            .Build();
-    }
+    public ProsodyWorker(ProsodyClientProvider clients) => _clients = clients;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _client.SubscribeAsync(new MyHandler());
+        var client = await _clients.GetAsync();
+        await client.SubscribeAsync(new MyHandler());
 
         // Wait for shutdown signal
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        Console.WriteLine("Shutting down gracefully...");
-        await _client.UnsubscribeAsync();
-        _client.Dispose();
-        await base.StopAsync(cancellationToken);
-    }
 }
 ```
 
@@ -1027,9 +1100,15 @@ var builder = Host.CreateApplicationBuilder(args);
 
 // Auto-configures Prosody logging with the host's ILoggerFactory
 builder.Services.AddProsodyLogging();
+builder.Services.AddProsodyClient();
 
 var host = builder.Build();
 ```
+
+Inject `ProsodyClientProvider` into hosted services. Call `GetAsync` to get the shared client.
+The provider disposes the client when the host stops.
+A failed `GetAsync` call does not poison the provider. A later call retries client construction.
+Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
 
 Log messages are emitted under the `Prosody.Native` category.
 
@@ -1189,11 +1268,11 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithStateCollections(params StateDefinition[] definitions)`: Register keyed-state collections before subscribe
 
 **Build:**
-- `ProsodyClient Build()`: Validates configuration and creates a new ProsodyClient.
+- `Task<ProsodyClient> BuildAsync()`: Validates configuration and creates a client asynchronously.
 
 ### ProsodyClient
 
-- `ProsodyClient(ClientOptions options)`: Create a new ProsodyClient with the specified options.
+- `Task<ProsodyClient> ProsodyClient.CreateAsync(ClientOptions options)`: Create a client asynchronously.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
 - `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
@@ -1204,11 +1283,14 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
-- `Task UnsubscribeAsync()`: Unsubscribe from messages and shut down the consumer.
+- `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
+- `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Dispose of client resources synchronously.
-- `ValueTask DisposeAsync()`: Dispose of client resources asynchronously (unsubscribes the consumer first). Enables `await using`.
+- `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 
 ### AdminClient
 

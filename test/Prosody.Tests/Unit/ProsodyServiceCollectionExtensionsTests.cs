@@ -7,10 +7,10 @@ using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
-public sealed class ProsodyServiceCollectionExtensionsTests
+public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestBase
 {
     [Fact]
-    public void AddProsodyClientBindsFromDefaultSection()
+    public async Task AddProsodyClientBindsFromDefaultSection()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -32,13 +32,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClient_Binds_From_Explicit_SectionPath()
+    public async Task AddProsodyClient_Binds_From_Explicit_SectionPath()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -56,13 +56,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient("MyApp:Kafka");
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClient_ConfigureAction_IsApplied()
+    public async Task AddProsodyClient_ConfigureAction_IsApplied()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -80,13 +80,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient(options => options.Mock = true);
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientRegistersSingleton()
+    public async Task AddProsodyClientRegistersSingleton()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -103,14 +103,14 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         services.AddSingleton<IConfiguration>(configuration);
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        var client1 = provider.GetRequiredService<ProsodyClient>();
-        var client2 = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client1 = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client2 = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.Same(client1, client2);
     }
 
     [Fact]
-    public void AddProsodyClientSupportsNestedConfiguration()
+    public async Task AddProsodyClientSupportsNestedConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -132,13 +132,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientSupportsTimeSpanConfiguration()
+    public async Task AddProsodyClientSupportsTimeSpanConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -160,13 +160,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientSupportsEnumConfiguration()
+    public async Task AddProsodyClientSupportsEnumConfiguration()
     {
         // Arrange - test all ClientMode enum values
         var pipelineConfig = new ConfigurationBuilder()
@@ -221,13 +221,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         bestEffortServices.AddProsodyClient();
 
         // Assert
-        using var pipelineProvider = pipelineServices.BuildServiceProvider();
-        using var lowLatencyProvider = lowLatencyServices.BuildServiceProvider();
-        using var bestEffortProvider = bestEffortServices.BuildServiceProvider();
+        var pipelineProvider = Track(pipelineServices.BuildServiceProvider());
+        var lowLatencyProvider = Track(lowLatencyServices.BuildServiceProvider());
+        var bestEffortProvider = Track(bestEffortServices.BuildServiceProvider());
 
-        using var pipelineClient = pipelineProvider.GetRequiredService<ProsodyClient>();
-        using var lowLatencyClient = lowLatencyProvider.GetRequiredService<ProsodyClient>();
-        using var bestEffortClient = bestEffortProvider.GetRequiredService<ProsodyClient>();
+        var pipelineClient = (await pipelineProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var lowLatencyClient = (await lowLatencyProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var bestEffortClient = (await bestEffortProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
 
         Assert.NotNull(pipelineClient);
         Assert.NotNull(lowLatencyClient);
@@ -235,7 +235,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientWithConfigureOnly()
+    public async Task AddProsodyClientWithConfigureOnly()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var services = new ServiceCollection();
@@ -249,13 +249,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.Mock = true;
         });
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientPostConfigureOverridesConfiguration()
+    public async Task AddProsodyClientPostConfigureOverridesConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -274,13 +274,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient(options => options.MaxConcurrency = 128);
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClient_EmptyConfiguration_WithPostConfigure()
+    public async Task AddProsodyClient_EmptyConfiguration_WithPostConfigure()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var services = new ServiceCollection();
@@ -293,13 +293,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.GroupId = "test";
         });
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientSupportsCassandraConfiguration()
+    public async Task AddProsodyClientSupportsCassandraConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -324,13 +324,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientSupportsNumericConfiguration()
+    public async Task AddProsodyClientSupportsNumericConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -355,13 +355,13 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 
     [Fact]
-    public void AddProsodyClientClonesOptionsToPreventMutation()
+    public async Task AddProsodyClientClonesOptionsToPreventMutation()
     {
         // Arrange
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
@@ -379,8 +379,8 @@ public sealed class ProsodyServiceCollectionExtensionsTests
         // Act - resolve client first, then mutate properties AND arrays on the
         // cached IOptions<ClientOptions>.Value. The client factory should have
         // cloned the options, so the client is isolated from these mutations.
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
 
         var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
         resolvedOptions.SourceSystem = "mutated";
@@ -396,7 +396,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientClonesOptionsArraysIndependently()
+    public async Task AddProsodyClientClonesOptionsArraysIndependently()
     {
         // Verifies that the DI-registered factory clones array properties
         // (BootstrapServers, SubscribedTopics, etc.) so that mutating the
@@ -413,10 +413,10 @@ public sealed class ProsodyServiceCollectionExtensionsTests
             options.Mock = true;
         });
 
-        using var provider = services.BuildServiceProvider();
+        var provider = Track(services.BuildServiceProvider());
 
         // Trigger client creation (factory runs, should clone)
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
 
         // Mutate arrays on the cached options
         var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
@@ -428,7 +428,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddProsodyClientSupportsDoubleConfiguration()
+    public async Task AddProsodyClientSupportsDoubleConfiguration()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -450,8 +450,8 @@ public sealed class ProsodyServiceCollectionExtensionsTests
 
         services.AddProsodyClient();
 
-        using var provider = services.BuildServiceProvider();
-        using var client = provider.GetRequiredService<ProsodyClient>();
+        var provider = Track(services.BuildServiceProvider());
+        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
         Assert.NotNull(client);
     }
 

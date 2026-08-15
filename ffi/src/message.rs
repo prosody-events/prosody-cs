@@ -14,10 +14,11 @@ use prosody::consumer::message::{ConsumerMessage, Record};
 ///
 /// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
 /// through FFI-safe accessor methods. The payload bytes are copied verbatim
-/// from the wire by [`JsonBinaryCodec`] when the message is decoded. Each
-/// accessor clones once into the FFI return buffer as required by `UniFFI`.
+/// from the wire by [`JsonBinaryMessageCodec`] when the message is decoded.
+/// Each accessor clones once into the FFI return buffer as required by
+/// `UniFFI`.
 ///
-/// [`JsonBinaryCodec`]: prosody::codec::JsonBinaryCodec
+/// [`JsonBinaryMessageCodec`]: prosody::codec::JsonBinaryMessageCodec
 #[derive(uniffi::Object)]
 pub struct Message {
     /// The underlying prosody message.

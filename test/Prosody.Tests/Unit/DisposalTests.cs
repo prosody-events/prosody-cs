@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Prosody.Configuration;
 using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
@@ -43,7 +44,7 @@ public sealed class DisposalTests
     [Fact]
     public async Task DisposeAsyncSafeWhenNotSubscribed()
     {
-        var client = new ProsodyClient(MockOptions);
+        var client = await ProsodyClient.CreateAsync(MockOptions);
         // Should not throw when consumer was never subscribed
         await client.DisposeAsync();
     }
@@ -51,11 +52,57 @@ public sealed class DisposalTests
     [Fact]
     public async Task DisposeAsyncIsIdempotent()
     {
-        var client = new ProsodyClient(MockOptions);
+        var client = await ProsodyClient.CreateAsync(MockOptions);
         await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 
         // Should not throw on second call
         await client.DisposeAsync();
     }
+
+    [Fact]
+    public async Task ProviderRetriesFailedConstruction()
+    {
+        var attempts = 0;
+        await using var provider = new ProsodyClientProvider(async () =>
+        {
+            if (Interlocked.Increment(ref attempts) == 1)
+            {
+                throw new InvalidOperationException("unavailable");
+            }
+            return await ProsodyClient.CreateAsync(MockOptions);
+        });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(provider.GetAsync);
+        Assert.NotNull(await provider.GetAsync());
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task ProviderDisposalDoesNotRepeatConstructionFailure()
+    {
+        var pending = new TaskCompletionSource<ProsodyClient>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new ProsodyClientProvider(() => pending.Task);
+
+        var construction = provider.GetAsync();
+        var disposal = provider.DisposeAsync().AsTask();
+        pending.SetException(new InvalidOperationException("unavailable"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => construction);
+        await disposal;
+    }
+
+    [Fact]
+    public async Task ProviderSupportsSynchronousDisposal()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(_ => new ProsodyClientProvider(() => ProsodyClient.CreateAsync(MockOptions)));
+        var container = services.BuildServiceProvider();
+        var provider = container.GetRequiredService<ProsodyClientProvider>();
+        Assert.NotNull(await provider.GetAsync());
+
+        DisposeSynchronously(container);
+    }
+
+    private static void DisposeSynchronously(ServiceProvider value) => value.Dispose();
 }

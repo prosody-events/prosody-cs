@@ -17,8 +17,10 @@
 //!   which can reject invalid caller input.
 
 use prosody::ByteSize;
+use prosody::PeerConfiguration;
+use prosody::PeerEndpoint;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
-use prosody::codec::{JsonBinaryCodec, JsonPassthroughStateCodec};
+use prosody::codec::{JsonBinaryCodec, JsonBinaryMessageCodec};
 use prosody::consumer::ConsumerConfigurationBuilder;
 use prosody::consumer::KeyedStateConfiguration;
 use prosody::consumer::SpanRelation as ProsodySpanRelation;
@@ -44,6 +46,7 @@ use prosody::telemetry::emitter::{
     TelemetryEmitterConfiguration, TelemetryEmitterConfigurationBuilder,
 };
 use prosody::timers::duration::CompactDuration;
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -482,11 +485,11 @@ fn with_capacity<T>(
 /// JSON collections monomorphize over the
 /// [`BinaryPayload`](prosody::codec::BinaryPayload) passthrough codec (Rust
 /// never parses the JSON bytes) and claim the shared `"json"` format id.
-/// Message collections monomorphize over `KafkaLoader<JsonBinaryCodec>`, the
-/// consumer's own codec, but their stored identity is loader-independent (the
-/// message-ref codec and resolver carry the fixed `"message-ref"` identifiers),
-/// so registering with this loader matches the identity the erased vend path
-/// asserts using the session's own loader.
+/// Message collections monomorphize over `KafkaLoader<JsonBinaryMessageCodec>`,
+/// the consumer's own codec, but their stored identity is loader-independent
+/// (the message-ref codec and resolver carry the fixed `"message-ref"`
+/// identifiers), so registering with this loader matches the identity the
+/// erased vend path asserts using the session's own loader.
 ///
 /// # Errors
 ///
@@ -513,7 +516,7 @@ fn register_state_collection(
     match (collection.kind, collection.payload) {
         (StateKind::Value, StatePayload::Json) => {
             let _ = keyed.register(with_def(
-                value_state::<JsonPassthroughStateCodec>(name),
+                value_state::<JsonBinaryCodec>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -521,7 +524,7 @@ fn register_state_collection(
         }
         (StateKind::Map, StatePayload::Json) => {
             let descriptor = with_def(
-                map_state::<Utf8KeyCodec, JsonPassthroughStateCodec>(name),
+                map_state::<Utf8KeyCodec, JsonBinaryCodec>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -530,7 +533,7 @@ fn register_state_collection(
         }
         (StateKind::Deque, StatePayload::Json) => {
             let descriptor = with_def(
-                deque_state::<JsonPassthroughStateCodec>(name),
+                deque_state::<JsonBinaryCodec>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -539,7 +542,7 @@ fn register_state_collection(
         }
         (StateKind::Value, StatePayload::Message) => {
             let _ = keyed.register(with_def(
-                message_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                message_state::<KafkaLoader<JsonBinaryMessageCodec>>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -547,7 +550,7 @@ fn register_state_collection(
         }
         (StateKind::Map, StatePayload::Message) => {
             let descriptor = with_def(
-                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryCodec>>(name),
+                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryMessageCodec>>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -556,7 +559,7 @@ fn register_state_collection(
         }
         (StateKind::Deque, StatePayload::Message) => {
             let descriptor = with_def(
-                message_deque_state::<KafkaLoader<JsonBinaryCodec>>(name),
+                message_deque_state::<KafkaLoader<JsonBinaryMessageCodec>>(name),
                 ttl_seconds,
                 read_uncommitted,
                 published,
@@ -702,8 +705,41 @@ pub fn build_consumer_builders(options: &ClientOptions) -> Result<ConsumerBuilde
         timeout: build_timeout_config(options),
         dedup: build_dedup_config(options)?,
         keyed_state: build_keyed_state_config(options)?,
+        peer: build_peer_config(options)?,
         emitter: build_telemetry_emitter_config(options).build()?,
     })
+}
+
+fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiError> {
+    let mut builder = PeerConfiguration::builder();
+    if let Some(value) = &options.peer_bind_address {
+        builder.bind_address(
+            value
+                .parse::<SocketAddr>()
+                .map_err(|error| permanent_config(format!("peer_bind_address: {error}")))?,
+        );
+    }
+    if let Some(value) = &options.peer_advertised_connect {
+        builder.advertised_connect(
+            PeerEndpoint::try_from(value.clone())
+                .map_err(|error| permanent_config(format!("peer_advertised_connect: {error}")))?,
+        );
+    }
+    if let Some(value) = &options.peer_network_name {
+        builder.network_name(value.clone());
+    }
+    if let Some(value) = options.peer_cache_capacity {
+        builder.peer_cache_capacity(
+            usize::try_from(value)
+                .map_err(|error| permanent_config(format!("peer_cache_capacity: {error}")))?,
+        );
+    }
+    if let Some(value) = options.peer_registration_ttl {
+        builder.registration_ttl(value);
+    }
+    builder
+        .build()
+        .map_err(|error| permanent_config(error.to_string()))
 }
 
 /// Creates a Cassandra configuration builder from client options.

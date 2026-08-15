@@ -127,7 +127,7 @@ jobs:
         if: runner.os == 'Linux' && !matrix.target.use_docker
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup Rust
@@ -190,7 +190,7 @@ jobs:
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: cmake libcurl4-openssl-dev
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
           version: 1.0
 
       - name: Setup .NET

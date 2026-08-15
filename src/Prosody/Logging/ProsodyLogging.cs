@@ -17,7 +17,7 @@ namespace Prosody.Logging;
 /// var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
 /// ProsodyLogging.Configure(loggerFactory);
 ///
-/// var client = new ProsodyClient(options); // Uses configured logger
+/// var client = await ProsodyClient.CreateAsync(options); // Uses configured logger
 /// </code>
 /// </example>
 public static class ProsodyLogging
