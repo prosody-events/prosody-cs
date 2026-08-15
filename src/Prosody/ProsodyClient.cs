@@ -376,7 +376,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="TimeoutError"/> for that subsystem.</remarks>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// The method throws if it cannot produce the complete result dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
     [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
@@ -410,7 +415,12 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
-    /// <remarks>A missed deadline returns <see cref="TimeoutError"/> for that subsystem.</remarks>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// The method throws if it cannot produce the complete result dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
@@ -461,7 +471,8 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
         var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
-        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
+        // Standard propagation can add traceparent, tracestate, and baggage.
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         Dictionary<string, Native.NativeRequestResult> nativeResults;

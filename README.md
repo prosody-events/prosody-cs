@@ -244,6 +244,10 @@ if (await client.IsStalledAsync())
 
 Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
+Do not rely on dictionary enumeration order.
+
+Prosody throws an exception if the request cannot produce the complete result dictionary.
+
 Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
 
 Return a JSON response from each message handler:
