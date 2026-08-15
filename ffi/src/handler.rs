@@ -83,8 +83,21 @@ pub struct NativeRequest {
     pub subsystems: Vec<String>,
     /// Request timeout.
     pub timeout: Duration,
-    /// User Kafka headers.
-    pub headers: HashMap<String, String>,
+    /// Trace propagation fields.
+    pub carrier: HashMap<String, String>,
+}
+
+/// Values needed to send one excise subsystem request.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeExciseRequest {
+    /// Kafka topic.
+    pub topic: String,
+    /// Kafka key.
+    pub key: String,
+    /// Requested subsystem names.
+    pub subsystems: Vec<String>,
+    /// Request timeout.
+    pub timeout: Duration,
     /// Trace propagation fields.
     pub carrier: HashMap<String, String>,
 }

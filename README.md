@@ -255,6 +255,8 @@ if (await client.IsStalledAsync())
 
 Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
+Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
+
 Do not rely on dictionary enumeration order.
 
 Prosody throws an exception if the request cannot produce the complete result dictionary.
@@ -1285,6 +1287,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.

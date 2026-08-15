@@ -39,7 +39,8 @@ use crate::config::{
 use crate::context::Context;
 use crate::error::{CsHandlerError, FfiError};
 use crate::handler::{
-    EventHandler, HandlerResult, HandlerResultCode, NativeRequest, NativeRequestResult,
+    EventHandler, HandlerResult, HandlerResultCode, NativeExciseRequest, NativeRequest,
+    NativeRequestResult,
 };
 use crate::logging::ensure_tracing_initialized;
 use crate::message::Message;
@@ -567,10 +568,55 @@ impl ProsodyClient {
         let request = self
             .client
             .request(
-                request.headers.into_iter().collect(),
+                Vec::new(),
                 request.topic.as_str().into(),
                 request.key,
                 payload,
+                subsystems,
+                request.timeout,
+            )
+            .instrument(span);
+        let results = if let Some(signal) = cancel {
+            tokio::select! {
+                result = request => result?,
+                () = signal.cancelled() => return Err(FfiError::Cancelled),
+            }
+        } else {
+            request.await?
+        };
+        Ok(results
+            .into_iter()
+            .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
+            .collect())
+    }
+
+    /// Sends one excise request and returns one outcome per subsystem.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid arguments, a send failure, or shutdown.
+    pub async fn request_excise(
+        &self,
+        request: NativeExciseRequest,
+        cancel: Option<Arc<CancellationSignal>>,
+    ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
+        let subsystems = request
+            .subsystems
+            .into_iter()
+            .map(SubsystemName::try_new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        let context = self.client.propagator().extract(&request.carrier);
+        let span = info_span!("csharp-request-excise", topic = %request.topic, key = %request.key);
+        if let Err(error) = span.set_parent(context) {
+            debug!("failed to set parent span: {error:#}");
+        }
+        let request = self
+            .client
+            .request_excise(
+                Vec::new(),
+                request.topic.as_str().into(),
+                request.key,
                 subsystems,
                 request.timeout,
             )
