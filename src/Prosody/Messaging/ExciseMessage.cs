@@ -3,13 +3,7 @@ namespace Prosody.Messaging;
 /// <summary>Metadata for an excise record.</summary>
 public sealed class ExciseMessage
 {
-    internal ExciseMessage(
-        string topic,
-        string key,
-        int partition,
-        long offset,
-        DateTimeOffset timestamp
-    )
+    internal ExciseMessage(string topic, string key, int partition, long offset, DateTimeOffset timestamp)
     {
         ArgumentNullException.ThrowIfNull(topic);
         ArgumentNullException.ThrowIfNull(key);
