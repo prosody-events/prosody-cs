@@ -293,21 +293,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(userHandler);
         ArgumentNullException.ThrowIfNull(jsonOptions);
 
-        _onMessage = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onExcise = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnExciseAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onTimer = async (context, timer, cancellationToken) =>
-        {
-            await userHandler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
+        _onMessage = BindMessageHandler(userHandler);
+        _onExcise = BindExciseHandler(userHandler);
+        _onTimer = BindTimerHandler(userHandler);
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
@@ -345,21 +333,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(jsonOptions);
         ArgumentNullException.ThrowIfNull(classifier);
 
-        _onMessage = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onExcise = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnExciseAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onTimer = async (context, timer, cancellationToken) =>
-        {
-            await userHandler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
+        _onMessage = BindMessageHandler(userHandler);
+        _onExcise = BindExciseHandler(userHandler);
+        _onTimer = BindTimerHandler(userHandler);
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
@@ -389,6 +365,33 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _isExcisePermanent = isExcisePermanent;
         _isTimerPermanent = isTimerPermanent;
     }
+
+    private static Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> BindMessageHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, message, cancellationToken) =>
+        {
+            await handler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
+
+    private static Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> BindExciseHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, message, cancellationToken) =>
+        {
+            await handler.OnExciseAsync(context, message, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
+
+    private static Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> BindTimerHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, timer, cancellationToken) =>
+        {
+            await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
 
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
     [RequiresDynamicCode("GetInterfaceMap requires handler methods at run time.")]
@@ -492,7 +495,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             context.OnCancel,
             carrier,
             activityName: EventHandlerBridge.OnExciseActivityName,
-            eventType: "excise",
+            eventType: SentryConstants.TagValues.EventTypeExcise,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () =>
                     EventHandlerBridge.BuildMessageSentryContext(
