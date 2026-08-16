@@ -506,6 +506,12 @@ Prosody supports timer-based delayed execution within message handlers. When a t
 ```csharp
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(
+        ProsodyContext prosodyContext,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Schedule a timer to fire in 30 seconds
@@ -630,6 +636,12 @@ var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
 public sealed class CountHandler(ValueStateDefinition<int> count)
     : IProsodyHandler<Event>
 {
+    public Task OnExciseAsync(
+        ProsodyContext context,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(
         ProsodyContext context,
         Message<Event> message,
@@ -639,6 +651,12 @@ public sealed class CountHandler(ValueStateDefinition<int> count)
         var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault(0);
         await state.SetAsync(current + 1, cancellationToken);
     }
+
+    public Task OnTimerAsync(
+        ProsodyContext context,
+        ProsodyTimer timer,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }
 
 var client = await ProsodyClientBuilder.Create()
@@ -794,6 +812,12 @@ public class MyHandler : IProsodyHandler<MyPayload>
 {
     private static readonly ActivitySource ActivitySource = new("my-service-name");
 
+    public Task OnExciseAsync(
+        ProsodyContext prosodyContext,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("process-message");
@@ -919,6 +943,8 @@ using System.Text.Json;
 
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     [PermanentError(typeof(JsonException), typeof(ArgumentException))]
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
@@ -940,6 +966,8 @@ using Prosody;
 
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         var payload = message.Payload;
@@ -1013,6 +1041,8 @@ public class MyHandler : IProsodyHandler<MyPayload>
     private readonly MyDbContext _dbContext;
     private readonly ProsodyClient _client;
 
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Pass the token to HTTP calls — throws OperationCanceledException on cancellation
@@ -1037,6 +1067,8 @@ cancellation is requested, correctly signaling to Prosody that the handler did n
 ```csharp
 public class MyHandler : IProsodyHandler<List<Item>>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<List<Item>> message, CancellationToken cancellationToken)
     {
         foreach (var item in message.Payload ?? [])
