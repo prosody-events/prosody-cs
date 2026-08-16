@@ -1306,6 +1306,8 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 
 Interface for handling messages and timers:
 
+Implement all three methods. The compiler rejects an incomplete handler before subscription.
+
 ```csharp
 public interface IProsodyHandler<TPayload>
 {

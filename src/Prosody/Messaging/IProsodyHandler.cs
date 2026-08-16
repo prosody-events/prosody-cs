@@ -7,6 +7,7 @@ namespace Prosody.Messaging;
 /// </summary>
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 /// <remarks>
+/// <para>Implement all three methods before you subscribe.</para>
 /// <para>
 /// Implement this interface to handle events from Prosody. The handler methods
 /// receive a <see cref="CancellationToken"/> that is triggered when Prosody
