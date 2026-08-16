@@ -72,7 +72,7 @@ pub struct HandlerResult {
     pub response: Vec<u8>,
 }
 
-/// Values needed to send one subsystem request.
+/// Values needed to send one request.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NativeRequest {
     /// Kafka topic.
