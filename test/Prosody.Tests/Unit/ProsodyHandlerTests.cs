@@ -20,7 +20,7 @@ public sealed class ProsodyHandlerTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -141,7 +141,7 @@ public sealed class ProsodyHandlerTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -203,7 +203,7 @@ public sealed class ProsodyHandlerTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

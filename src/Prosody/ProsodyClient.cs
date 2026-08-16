@@ -278,6 +278,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             if (linked is { } value)
             {
                 await value.Registration.DisposeAsync().ConfigureAwait(false);
+                value.Signal.Dispose();
             }
         }
     }

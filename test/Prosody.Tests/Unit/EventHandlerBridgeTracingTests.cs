@@ -161,7 +161,7 @@ public sealed class EventHandlerBridgeTracingTests : IDisposable
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

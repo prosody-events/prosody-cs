@@ -21,7 +21,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         public Task<RequestResponse> OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.FromResult(new RequestResponse(message.Key, true));
 
@@ -42,7 +42,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
 
         public Task<RequestResponse> OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
 
@@ -126,7 +126,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     public async Task SendsAndReceivesExciseRecord()
     {
         await using var ctx = await CreateTestContextAsync();
-        var messages = new MessageChannel<Message<TestPayload>>();
+        var messages = new MessageChannel<ExciseMessage>();
         var handler = new TestProsodyHandler<TestPayload>(
             onExcise: (_, message, _) =>
             {
@@ -142,7 +142,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             TestContext.Current.CancellationToken
         );
 
-        Assert.Multiple(() => Assert.Equal("obsolete-key", message.Key), () => Assert.Null(message.Payload));
+        Assert.Equal("obsolete-key", message.Key);
     }
 
     [Fact(Timeout = 60_000)]

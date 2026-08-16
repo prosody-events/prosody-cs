@@ -219,7 +219,7 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<T> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

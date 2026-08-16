@@ -67,6 +67,27 @@ impl CsHandler {
             propagator,
         }
     }
+
+    fn record_args<C>(
+        &self,
+        context: C,
+        message: ConsumerMessage<BinaryPayload>,
+    ) -> (
+        tracing::Span,
+        Arc<Context>,
+        Arc<Message>,
+        HashMap<String, String>,
+    )
+    where
+        C: EventContext<Payload = BinaryPayload>,
+    {
+        let span = message.span();
+        let mut carrier = HashMap::with_capacity(2);
+        self.propagator
+            .inject_context(&span.context(), &mut carrier);
+        let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
+        (span, context, Arc::new(Message::new(message)), carrier)
+    }
 }
 
 /// [`FallibleHandler`] implementation that delegates to the C# handler.
@@ -91,23 +112,10 @@ impl FallibleHandler for CsHandler {
     where
         C: EventContext<Payload = Self::Payload>,
     {
-        // Get the span from the message for distributed tracing
-        let span = message.span();
-
-        // Inject span context into carrier for C#
-        let mut carrier = HashMap::with_capacity(2);
-        self.propagator
-            .inject_context(&span.context(), &mut carrier);
-
-        // Wrap the context and message for C#
-        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let msg = Arc::new(Message::new(message));
-
-        // Call the C# handler - it returns a result with code and optional error
-        // message
+        let (span, context, message, carrier) = self.record_args(context, message);
         let result = self
             .handler
-            .on_message(ctx, msg, carrier)
+            .on_message(context, message, carrier)
             .instrument(span)
             .await?;
 
@@ -124,12 +132,7 @@ impl FallibleHandler for CsHandler {
     where
         C: EventContext<Payload = Self::Payload>,
     {
-        let span = message.span();
-        let mut carrier = HashMap::with_capacity(2);
-        self.propagator
-            .inject_context(&span.context(), &mut carrier);
-        let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let message = Arc::new(Message::new(message));
+        let (span, context, message, carrier) = self.record_args(context, message);
         let result = self
             .handler
             .on_excise(context, message, carrier)

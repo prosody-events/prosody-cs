@@ -59,7 +59,7 @@ await client.ShutdownAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public Task OnExciseAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
     {
         Console.WriteLine($"Excise key: {message.Key}");
         return Task.CompletedTask;
@@ -92,7 +92,7 @@ public class MyHandler : IProsodyHandler<MyPayload>
 
 Call `ExciseAsync(topic, key)` to send a Kafka record with a key and no payload. Use this record to delete the key from compacted views.
 
-Each handler must implement `OnExciseAsync`. It receives the same arguments as `OnMessageAsync`. The message payload is `null`.
+Each handler must implement `OnExciseAsync`. It receives an `ExciseMessage` with record metadata and no payload.
 
 ## Architecture
 
@@ -279,7 +279,7 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
 
     public Task<InventoryResponse> OnExciseAsync(
         ProsodyContext context,
-        Message<Order> message,
+        ExciseMessage message,
         CancellationToken cancellationToken
     ) => Task.FromResult(new InventoryResponse(message.Key));
 
@@ -1312,7 +1312,7 @@ Implement all three methods. The compiler rejects an incomplete handler before s
 public interface IProsodyHandler<TPayload>
 {
     Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
-    Task OnExciseAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+    Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken);
     Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }
 ```

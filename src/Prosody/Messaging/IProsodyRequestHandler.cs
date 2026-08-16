@@ -14,7 +14,7 @@ public interface IProsodyRequestHandler<TPayload, TResponse>
     /// <summary>Handles one excise record and returns its response.</summary>
     Task<TResponse> OnExciseAsync(
         ProsodyContext prosodyContext,
-        Message<TPayload> message,
+        ExciseMessage message,
         CancellationToken cancellationToken
     );
 

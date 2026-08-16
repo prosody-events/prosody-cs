@@ -120,7 +120,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<TestPayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

@@ -70,9 +70,6 @@ public sealed class Message<T>
     /// <summary>
     /// Gets the deserialized JSON payload.
     /// </summary>
-    /// <remarks>
-    /// The value is <see langword="null"/> for an excise record.
-    /// A JSON null payload also produces null when <typeparamref name="T"/> permits null.
-    /// </remarks>
+    /// <remarks>A JSON null produces null when <typeparamref name="T"/> permits null.</remarks>
     public T? Payload { get; }
 }

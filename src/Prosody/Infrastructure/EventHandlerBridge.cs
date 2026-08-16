@@ -269,7 +269,7 @@ internal static class EventHandlerBridge
 internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 {
     private readonly Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> _onMessage;
-    private readonly Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> _onExcise;
+    private readonly Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> _onExcise;
     private readonly Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> _onTimer;
     private readonly Func<Exception, bool> _isMessagePermanent;
     private readonly Func<Exception, bool> _isExcisePermanent;
@@ -372,7 +372,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         JsonSerializerOptions jsonOptions,
         IReadOnlySet<StateDefinition> stateDefinitions,
         Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> onMessage,
-        Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> onExcise,
+        Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> onExcise,
         Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> onTimer,
         Func<Exception, bool> isMessagePermanent,
         Func<Exception, bool> isExcisePermanent,
@@ -479,14 +479,12 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         Dictionary<string, string> carrier
     )
     {
-        var record = new Message<TPayload>(
+        var record = new ExciseMessage(
             message.Topic(),
             message.Key(),
             message.Partition(),
             message.Offset(),
-            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero),
-            default,
-            message
+            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero)
         );
         return EventHandlerBridge.InvokeHandlerAsync(
             ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),

@@ -30,7 +30,7 @@ public sealed class DisposalTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

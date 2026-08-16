@@ -61,7 +61,7 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

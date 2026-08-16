@@ -75,7 +75,7 @@ public sealed class StateExceptionBridgeTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

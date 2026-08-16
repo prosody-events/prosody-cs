@@ -777,7 +777,7 @@ public sealed class EventHandlerBridgeTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<T> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -799,7 +799,7 @@ public sealed class EventHandlerBridgeTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<BridgePayload> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -820,7 +820,7 @@ public sealed class EventHandlerBridgeTests
 
         public Task<CyclicResponse> OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.FromResult(response);
 
@@ -852,7 +852,7 @@ public sealed class EventHandlerBridgeTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -877,7 +877,7 @@ public sealed class EventHandlerBridgeTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -905,7 +905,7 @@ public sealed class EventHandlerBridgeTests
     {
         Task IProsodyHandler<JsonElement>.OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<JsonElement> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

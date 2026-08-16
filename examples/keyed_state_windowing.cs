@@ -59,7 +59,7 @@ internal static class KeyedStateWindowing
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<Activity> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

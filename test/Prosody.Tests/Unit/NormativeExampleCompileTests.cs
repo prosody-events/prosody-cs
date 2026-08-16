@@ -123,7 +123,7 @@ public sealed class NormativeExampleCompileTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<OrderEvent> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -167,7 +167,7 @@ public sealed class NormativeExampleCompileTests
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<Activity> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 

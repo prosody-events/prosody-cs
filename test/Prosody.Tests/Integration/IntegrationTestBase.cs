@@ -43,7 +43,7 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
     /// </summary>
     protected sealed class TestProsodyHandler<T>(
         Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null,
-        Func<ProsodyContext, Message<T>, CancellationToken, Task>? onExcise = null,
+        Func<ProsodyContext, ExciseMessage, CancellationToken, Task>? onExcise = null,
         Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
     ) : IProsodyHandler<T>
     {
@@ -55,7 +55,7 @@ public abstract class IntegrationTestBase(IntegrationTestFixture fixture)
 
         public Task OnExciseAsync(
             ProsodyContext prosodyContext,
-            Message<T> message,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => onExcise?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
