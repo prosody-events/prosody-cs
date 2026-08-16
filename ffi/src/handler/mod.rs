@@ -18,6 +18,10 @@ use crate::message::Message;
 use crate::timer::Timer;
 use crate::types::EventMetadata;
 
+mod bridge;
+
+pub(crate) use bridge::CsHandler;
+
 /// Result code indicating how the event handler completed.
 ///
 /// Handlers return this code to signal success or classify failures. Prosody
