@@ -1,6 +1,4 @@
-use super::{
-    Arc, Context, EventHandler, HandlerResult, HandlerResultCode, HashMap, Message, Timer,
-};
+use super::{Arc, Context, EventHandler, HandlerResult, HandlerResultCode, HashMap, Timer};
 use crate::error::CsHandlerError;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use prosody::codec::BinaryPayload;
@@ -68,25 +66,22 @@ impl CsHandler {
         }
     }
 
-    fn record_args<C>(
+    fn record_args<C, P, M>(
         &self,
         context: C,
-        message: ConsumerMessage<BinaryPayload>,
-    ) -> (
-        tracing::Span,
-        Arc<Context>,
-        Arc<Message>,
-        HashMap<String, String>,
-    )
+        message: ConsumerMessage<P>,
+    ) -> (tracing::Span, Arc<Context>, Arc<M>, HashMap<String, String>)
     where
         C: EventContext<Payload = BinaryPayload>,
+        M: From<ConsumerMessage<P>>,
+        P: Send + Sync + 'static,
     {
         let span = message.span();
         let mut carrier = HashMap::with_capacity(2);
         self.propagator
             .inject_context(&span.context(), &mut carrier);
         let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        (span, context, Arc::new(Message::new(message)), carrier)
+        (span, context, Arc::new(message.into()), carrier)
     }
 }
 
@@ -126,7 +121,7 @@ impl FallibleHandler for CsHandler {
     async fn on_excise<C>(
         &self,
         context: C,
-        message: ConsumerMessage<Self::Payload>,
+        message: ConsumerMessage<()>,
         _demand_type: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where

@@ -94,7 +94,7 @@ pub use handler::{
 };
 pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
-pub use message::Message;
+pub use message::{ExciseMessage, Message};
 pub use message_deque::MessageDequeStateHandle;
 pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
 pub use state::ScanDirection;

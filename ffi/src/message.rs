@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use prosody::codec::BinaryPayload;
 use prosody::consumer::Keyed;
-use prosody::consumer::message::{ConsumerMessage, Record};
+use prosody::consumer::message::ConsumerMessage;
 
 /// A Kafka message received from a consumer.
 ///
@@ -23,6 +23,12 @@ use prosody::consumer::message::{ConsumerMessage, Record};
 pub struct Message {
     /// The underlying prosody message.
     inner: ConsumerMessage<BinaryPayload>,
+}
+
+/// A Kafka excise record received from a consumer.
+#[derive(uniffi::Object)]
+pub struct ExciseMessage {
+    inner: ConsumerMessage<()>,
 }
 
 #[expect(
@@ -81,10 +87,52 @@ impl Message {
 
     /// The message payload as raw bytes copied verbatim from the wire.
     #[must_use]
-    pub fn payload(&self) -> Option<Vec<u8>> {
-        match self.inner.record() {
-            Record::Message(payload) => Some(payload.bytes.clone()),
-            Record::Excise => None,
-        }
+    pub fn payload(&self) -> Vec<u8> {
+        self.inner.payload().bytes.clone()
+    }
+}
+
+impl From<ConsumerMessage<BinaryPayload>> for Message {
+    fn from(inner: ConsumerMessage<BinaryPayload>) -> Self {
+        Self::new(inner)
+    }
+}
+
+impl From<ConsumerMessage<()>> for ExciseMessage {
+    fn from(inner: ConsumerMessage<()>) -> Self {
+        Self { inner }
+    }
+}
+
+#[uniffi::export]
+impl ExciseMessage {
+    /// The Kafka topic this record was consumed from.
+    #[must_use]
+    pub fn topic(&self) -> String {
+        self.inner.topic().to_string()
+    }
+
+    /// The partition number within the topic.
+    #[must_use]
+    pub fn partition(&self) -> i32 {
+        self.inner.partition()
+    }
+
+    /// The offset of this record within its partition.
+    #[must_use]
+    pub fn offset(&self) -> i64 {
+        self.inner.offset()
+    }
+
+    /// The timestamp when the record was produced.
+    #[must_use]
+    pub fn timestamp(&self) -> SystemTime {
+        (*self.inner.timestamp()).into()
+    }
+
+    /// The key that this record excises.
+    #[must_use]
+    pub fn key(&self) -> String {
+        self.inner.key().to_string()
     }
 }

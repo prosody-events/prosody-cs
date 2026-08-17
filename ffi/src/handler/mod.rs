@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use crate::context::Context;
 use crate::error::FfiError;
-use crate::message::Message;
+use crate::message::{ExciseMessage, Message};
 use crate::timer::Timer;
 use crate::types::EventMetadata;
 
@@ -179,7 +179,7 @@ pub trait EventHandler: Send + Sync {
     async fn on_excise(
         &self,
         context: Arc<Context>,
-        message: Arc<Message>,
+        message: Arc<ExciseMessage>,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 

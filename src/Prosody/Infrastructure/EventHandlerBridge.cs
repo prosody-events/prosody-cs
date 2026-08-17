@@ -459,7 +459,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var partition = message.Partition();
         var offset = message.Offset();
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
-        var bytes = message.Payload() ?? throw new InvalidOperationException("A message record must have a payload.");
+        var bytes = message.Payload();
 
         return HandleMessageAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
@@ -478,7 +478,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     /// <inheritdoc/>
     public Task<NativeResult> OnExcise(
         Native.Context context,
-        Native.Message message,
+        Native.ExciseMessage message,
         Dictionary<string, string> carrier
     )
     {
