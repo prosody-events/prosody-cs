@@ -1413,8 +1413,8 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
-The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
-a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
+Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
 Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
 
