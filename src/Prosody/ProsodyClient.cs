@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
+using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Logging;
 using Prosody.Messaging;
