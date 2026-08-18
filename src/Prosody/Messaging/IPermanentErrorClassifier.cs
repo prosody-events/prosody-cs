@@ -1,14 +1,11 @@
 namespace Prosody.Messaging;
 
 /// <summary>
-/// Classifies exceptions thrown by an <see cref="IProsodyHandler{TPayload}"/> as permanent or transient
-/// using explicit logic — no reflection, no attribute lookup.
+/// Classifies handler exceptions as permanent or transient without reflection.
 /// </summary>
 /// <remarks>
-/// Implement this interface on your handler (or as a separate class) and pass it to
-/// <c>ProsodyClient.SubscribeAsync&lt;TPayload&gt;(handler, classifier)</c>
-/// when you want full control over error classification or want to avoid the
-/// <c>PermanentErrorAttribute</c> reflection path entirely.
+/// Pass this classifier to a <c>SubscribeAsync</c> overload for explicit error classification.
+/// This path does not inspect <c>PermanentErrorAttribute</c>.
 /// </remarks>
 public interface IPermanentErrorClassifier
 {

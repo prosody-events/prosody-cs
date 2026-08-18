@@ -649,6 +649,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
+    /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
     public Task SubscribeAsync<TPayload, TResponse>(
         IProsodyRequestHandler<TPayload, TResponse> handler,
         IPermanentErrorClassifier classifier
