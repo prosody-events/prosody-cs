@@ -402,7 +402,6 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     )
     {
         ArgumentNullException.ThrowIfNull(handler);
-        var responseTypeInfo = (JsonTypeInfo<TResponse>)jsonOptions.GetTypeInfo(typeof(TResponse));
         var handlerType = handler.GetType();
         var interfaceType = typeof(IProsodyRequestHandler<TPayload, TResponse>);
         var messageAttribute = PermanentErrorResolver.GetAttribute(
@@ -420,6 +419,45 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             interfaceType,
             nameof(IProsodyRequestHandler<TPayload, TResponse>.OnExciseAsync)
         );
+        return Responding(
+            handler,
+            jsonOptions,
+            stateDefinitions,
+            error => PermanentErrorResolver.IsPermanentError(error, messageAttribute),
+            error => PermanentErrorResolver.IsPermanentError(error, exciseAttribute),
+            error => PermanentErrorResolver.IsPermanentError(error, timerAttribute)
+        );
+    }
+
+    internal static EventHandlerBridge<TPayload> Responding<TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions,
+        IPermanentErrorClassifier classifier
+    )
+    {
+        ArgumentNullException.ThrowIfNull(classifier);
+        return Responding(
+            handler,
+            jsonOptions,
+            stateDefinitions,
+            error => error is IPermanentError || classifier.IsMessageErrorPermanent(error),
+            error => error is IPermanentError || classifier.IsExciseErrorPermanent(error),
+            error => error is IPermanentError || classifier.IsTimerErrorPermanent(error)
+        );
+    }
+
+    private static EventHandlerBridge<TPayload> Responding<TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions,
+        Func<Exception, bool> isMessagePermanent,
+        Func<Exception, bool> isExcisePermanent,
+        Func<Exception, bool> isTimerPermanent
+    )
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        var responseTypeInfo = (JsonTypeInfo<TResponse>)jsonOptions.GetTypeInfo(typeof(TResponse));
         return new EventHandlerBridge<TPayload>(
             jsonOptions,
             stateDefinitions,
@@ -438,9 +476,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                 await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
                 return EventHandlerBridge.JsonNull;
             },
-            error => PermanentErrorResolver.IsPermanentError(error, messageAttribute),
-            error => PermanentErrorResolver.IsPermanentError(error, exciseAttribute),
-            error => PermanentErrorResolver.IsPermanentError(error, timerAttribute)
+            isMessagePermanent,
+            isExcisePermanent,
+            isTimerPermanent
         );
     }
 

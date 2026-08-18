@@ -20,6 +20,7 @@ public interface IPermanentErrorClassifier
     bool IsMessageErrorPermanent(Exception exception);
 
     /// <summary>Determines whether an excise handler exception is permanent.</summary>
+    /// <remarks>The default implementation uses the message decision.</remarks>
     /// <param name="exception">The exception to classify.</param>
     /// <returns><see langword="true"/> if Prosody must not retry the excise record.</returns>
     bool IsExciseErrorPermanent(Exception exception) => IsMessageErrorPermanent(exception);

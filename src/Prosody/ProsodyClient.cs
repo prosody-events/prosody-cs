@@ -648,6 +648,16 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return _native.Subscribe(bridge);
     }
 
+    /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
+    public Task SubscribeAsync<TPayload, TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        IPermanentErrorClassifier classifier
+    )
+    {
+        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier);
+        return _native.Subscribe(bridge);
+    }
+
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler and
     /// an explicit error classifier (zero reflection; no attribute lookup is performed).

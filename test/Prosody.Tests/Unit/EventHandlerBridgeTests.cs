@@ -156,6 +156,21 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public async Task RespondingClassifierControlsErrorClassification()
+    {
+        var bridge = EventHandlerBridge<JsonElement>.Responding(
+            new ThrowingRequestHandler(),
+            TestJson.Options,
+            new HashSet<StateDefinition>(),
+            new LambdaClassifier(ex => ex is FormatException, _ => false)
+        );
+
+        var result = await HandleMsg(bridge);
+
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
+    [Fact]
     public async Task OnMessageReturnsPermanentErrorForAttributeMatchedType()
     {
         var handler = new AttributeOnMessageHandler(onMessage: (_, _, _) => throw new FormatException("bad format"));
@@ -842,6 +857,27 @@ public sealed class EventHandlerBridgeTests
             ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.FromResult(response);
+
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+    }
+
+    private sealed class ThrowingRequestHandler : IProsodyRequestHandler<JsonElement, JsonElement>
+    {
+        public Task<JsonElement> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => throw new FormatException("invalid response");
+
+        public Task<JsonElement> OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(default(JsonElement));
 
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
