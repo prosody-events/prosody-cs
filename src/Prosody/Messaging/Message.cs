@@ -70,10 +70,6 @@ public sealed class Message<T>
     /// <summary>
     /// Gets the deserialized JSON payload.
     /// </summary>
-    /// <remarks>
-    /// The value is <see langword="null"/> when the payload JSON token is <c>null</c> and
-    /// <typeparamref name="T"/> can represent null. For dynamic-schema topics, use
-    /// <c>T = <see cref="System.Text.Json.JsonElement"/></c>.
-    /// </remarks>
+    /// <remarks>A JSON null produces null when <typeparamref name="T"/> permits null.</remarks>
     public T? Payload { get; }
 }

@@ -19,11 +19,17 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             CancellationToken cancellationToken
         ) => Task.FromResult(new RequestResponse(message.Key, true));
 
-        public Task<RequestResponse> OnTimerAsync(
+        public Task<RequestResponse> OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(new RequestResponse(message.Key, true));
+
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(timer.Key, true));
+        ) => Task.CompletedTask;
     }
 
     private sealed class RejectingRequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
@@ -34,11 +40,17 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             CancellationToken cancellationToken
         ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
 
-        public Task<RequestResponse> OnTimerAsync(
+        public Task<RequestResponse> OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromException<RequestResponse>(new PermanentException("request rejected"));
+        ) => Task.FromException(new PermanentException("request rejected"));
     }
 
     [Fact(Timeout = 60_000)]
@@ -51,6 +63,24 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             ctx.Topic,
             "order-1",
             new TestPayload { Content = "order.created" },
+            ["inventory"],
+            IntegrationTestFixture.DefaultTimeout,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
+        Assert.Equal(new RequestResponse("order-1", true), result.Value);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task ExciseRequestReturnsLocalHandlerResponse()
+    {
+        await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
+        await ctx.Client.SubscribeAsync(new RequestHandler());
+
+        var results = await ctx.Client.RequestExciseAsync<RequestResponse>(
+            ctx.Topic,
+            "order-1",
             ["inventory"],
             IntegrationTestFixture.DefaultTimeout,
             cancellationToken: TestContext.Current.CancellationToken
@@ -108,6 +138,29 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             () => Assert.Equal("test-key", received.Key),
             () => Assert.Equal("Hello, Kafka!", received.Payload?.Content)
         );
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task SendsAndReceivesExciseRecord()
+    {
+        await using var ctx = await CreateTestContextAsync();
+        var messages = new MessageChannel<ExciseMessage>();
+        var handler = new TestProsodyHandler<TestPayload>(
+            onExcise: (_, message, _) =>
+            {
+                messages.Send(message);
+                return Task.CompletedTask;
+            }
+        );
+
+        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.ExciseAsync(ctx.Topic, "obsolete-key", TestContext.Current.CancellationToken);
+        var message = await messages.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal("obsolete-key", message.Key);
     }
 
     [Fact(Timeout = 60_000)]

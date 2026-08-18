@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
+using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Logging;
 using Prosody.Messaging;
@@ -256,6 +257,33 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
     }
 
+    /// <summary>Sends an excise record for a key.</summary>
+    public async Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        cancellationToken.ThrowIfCancellationRequested();
+        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
+        try
+        {
+            await _native.Excise(topic, key, carrier, linked?.Signal).ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Cancelled ex)
+        {
+            throw new OperationCanceledException("The excise was cancelled.", ex, cancellationToken);
+        }
+        finally
+        {
+            if (linked is { } value)
+            {
+                await value.Registration.DisposeAsync().ConfigureAwait(false);
+                value.Signal.Dispose();
+            }
+        }
+    }
+
     /// <summary>
     /// Sends a message to a topic, serializing <paramref name="payload"/> using the supplied
     /// <paramref name="typeInfo"/> (trim-safe; no reflection resolver is consulted).
@@ -391,7 +419,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         TPayload payload,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
-        IReadOnlyDictionary<string, string>? headers = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -401,17 +428,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
         var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
-        return RequestCoreAsync(
-            topic,
-            key,
-            payload,
-            payloadType,
-            responseType,
-            subsystems,
-            timeout,
-            headers,
-            cancellationToken
-        );
+        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
     }
 
     /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
@@ -430,7 +447,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         JsonTypeInfo<TResponse> responseType,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
-        IReadOnlyDictionary<string, string>? headers = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -440,17 +456,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(responseType);
         ArgumentNullException.ThrowIfNull(subsystems);
         cancellationToken.ThrowIfCancellationRequested();
-        return RequestCoreAsync(
-            topic,
-            key,
-            payload,
-            payloadType,
-            responseType,
-            subsystems,
-            timeout,
-            headers,
-            cancellationToken
-        );
+        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
     }
 
     private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
@@ -461,7 +467,6 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         JsonTypeInfo<TResponse> responseType,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
-        IReadOnlyDictionary<string, string>? headers,
         CancellationToken cancellationToken
     )
     {
@@ -474,27 +479,86 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         // Standard propagation can add traceparent, tracestate, and baggage.
         var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
+        var request = new Native.NativeRequest(
+            topic,
+            key,
+            encoded,
+            new Native.EventMetadata(EventId: eventId, EventType: eventType),
+            [.. subsystems],
+            timeout,
+            carrier
+        );
+        return await CompleteRequestAsync(
+                responseType,
+                signal => _native.Request(request, signal),
+                nameof(subsystems),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
+    [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
+        string topic,
+        string key,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default
+    ) =>
+        RequestExciseAsync(
+            topic,
+            key,
+            (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse)),
+            subsystems,
+            timeout,
+            cancellationToken
+        );
+
+    /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
+    public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
+        string topic,
+        string key,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(topic);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(responseType);
+        ArgumentNullException.ThrowIfNull(subsystems);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (timeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
+        }
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
+        TracePropagation.Inject(carrier);
+        var request = new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier);
+        return await CompleteRequestAsync(
+                responseType,
+                signal => _native.RequestExcise(request, signal),
+                nameof(subsystems),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
+        JsonTypeInfo<TResponse> responseType,
+        Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
+        string subsystemParameterName,
+        CancellationToken cancellationToken
+    )
+    {
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         Dictionary<string, Native.NativeRequestResult> nativeResults;
         try
         {
-            nativeResults = await _native
-                .Request(
-                    new Native.NativeRequest(
-                        topic,
-                        key,
-                        encoded,
-                        new Native.EventMetadata(EventId: eventId, EventType: eventType),
-                        [.. subsystems],
-                        timeout,
-                        headers is null
-                            ? new Dictionary<string, string>(StringComparer.Ordinal)
-                            : new Dictionary<string, string>(headers, StringComparer.Ordinal),
-                        carrier
-                    ),
-                    linked?.Signal
-                )
-                .ConfigureAwait(false);
+            nativeResults = await send(linked?.Signal).ConfigureAwait(false);
         }
         catch (Native.FfiException.Cancelled ex)
         {
@@ -502,14 +566,14 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
         catch (Native.FfiException.PermanentState ex)
         {
-            throw new ArgumentException(ex.Message, nameof(subsystems), ex);
+            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
         }
         finally
         {
-            if (linked is { } l)
+            if (linked is { } value)
             {
-                await l.Registration.DisposeAsync().ConfigureAwait(false);
-                l.Signal.Dispose();
+                await value.Registration.DisposeAsync().ConfigureAwait(false);
+                value.Signal.Dispose();
             }
         }
         var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
@@ -582,6 +646,17 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)
     {
         var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions);
+        return _native.Subscribe(bridge);
+    }
+
+    /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
+    /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
+    public Task SubscribeAsync<TPayload, TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        IPermanentErrorClassifier classifier
+    )
+    {
+        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier);
         return _native.Subscribe(bridge);
     }
 

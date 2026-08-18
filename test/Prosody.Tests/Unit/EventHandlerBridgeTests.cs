@@ -156,6 +156,21 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public async Task RespondingClassifierControlsErrorClassification()
+    {
+        var bridge = EventHandlerBridge<JsonElement>.Responding(
+            new ThrowingRequestHandler(),
+            TestJson.Options,
+            new HashSet<StateDefinition>(),
+            new LambdaClassifier(ex => ex is FormatException, _ => false)
+        );
+
+        var result = await HandleMsg(bridge);
+
+        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
+    [Fact]
     public async Task OnMessageReturnsPermanentErrorForAttributeMatchedType()
     {
         var handler = new AttributeOnMessageHandler(onMessage: (_, _, _) => throw new FormatException("bad format"));
@@ -418,6 +433,25 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Equal(NativeResultCode.PermanentError, result.Code);
+    }
+
+    [Fact]
+    public void ClassifierUsesMessageDecisionForExciseByDefault()
+    {
+        IPermanentErrorClassifier classifier = new LambdaClassifier(
+            isMessagePermanent: _ => true,
+            isTimerPermanent: _ => false
+        );
+
+        Assert.True(classifier.IsExciseErrorPermanent(new InvalidOperationException()));
+    }
+
+    [Fact]
+    public void ClassifierCanSetAnIndependentExciseDecision()
+    {
+        var classifier = new ExciseClassifier();
+
+        Assert.True(classifier.IsExciseErrorPermanent(new InvalidOperationException()));
     }
 
     [Fact]
@@ -775,6 +809,12 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -788,6 +828,12 @@ public sealed class EventHandlerBridgeTests
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
             Message<BridgePayload> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -806,11 +852,38 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => Task.FromResult(response);
 
-        public Task<CyclicResponse> OnTimerAsync(
+        public Task<CyclicResponse> OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(response);
+
+        public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
             CancellationToken cancellationToken
-        ) => Task.FromResult(response);
+        ) => Task.CompletedTask;
+    }
+
+    private sealed class ThrowingRequestHandler : IProsodyRequestHandler<JsonElement, JsonElement>
+    {
+        public Task<JsonElement> OnMessageAsync(
+            ProsodyContext prosodyContext,
+            Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => throw new FormatException("invalid response");
+
+        public Task<JsonElement> OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.FromResult(default(JsonElement));
+
+        public Task OnTimerAsync(
+            ProsodyContext prosodyContext,
+            ProsodyTimer timer,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
     }
 
     private sealed class CyclicResponse
@@ -832,6 +905,12 @@ public sealed class EventHandlerBridgeTests
             CancellationToken cancellationToken
         ) => onMessage(prosodyContext, message, cancellationToken);
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,
@@ -848,6 +927,12 @@ public sealed class EventHandlerBridgeTests
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
             Message<JsonElement> message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
@@ -873,6 +958,12 @@ public sealed class EventHandlerBridgeTests
     private sealed class ExplicitInterfaceHandler(Action? onMessage = null, Action? onTimer = null)
         : IProsodyHandler<JsonElement>
     {
+        Task IProsodyHandler<JsonElement>.OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         [PermanentError(typeof(FormatException))]
         Task IProsodyHandler<JsonElement>.OnMessageAsync(
             ProsodyContext prosodyContext,
@@ -917,6 +1008,15 @@ public sealed class EventHandlerBridgeTests
         public bool IsMessageErrorPermanent(Exception exception) => isMessagePermanent(exception);
 
         public bool IsTimerErrorPermanent(Exception exception) => isTimerPermanent(exception);
+    }
+
+    private sealed class ExciseClassifier : IPermanentErrorClassifier
+    {
+        public bool IsMessageErrorPermanent(Exception exception) => false;
+
+        public bool IsExciseErrorPermanent(Exception exception) => true;
+
+        public bool IsTimerErrorPermanent(Exception exception) => false;
     }
 
     #endregion Test Handlers

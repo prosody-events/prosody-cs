@@ -1,6 +1,7 @@
 namespace Prosody.Messaging;
 
 /// <summary>Handles events and returns a JSON response for requests.</summary>
+/// <remarks>Implement all three methods before you subscribe.</remarks>
 public interface IProsodyRequestHandler<TPayload, TResponse>
 {
     /// <summary>Handles one message and returns its response.</summary>
@@ -10,10 +11,13 @@ public interface IProsodyRequestHandler<TPayload, TResponse>
         CancellationToken cancellationToken
     );
 
-    /// <summary>Handles one timer. The result is not a request response.</summary>
-    Task<TResponse> OnTimerAsync(
+    /// <summary>Handles one excise record and returns its response.</summary>
+    Task<TResponse> OnExciseAsync(
         ProsodyContext prosodyContext,
-        ProsodyTimer timer,
+        ExciseMessage message,
         CancellationToken cancellationToken
     );
+
+    /// <summary>Handles one timer.</summary>
+    Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }

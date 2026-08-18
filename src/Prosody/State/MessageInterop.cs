@@ -17,7 +17,8 @@ internal static class MessageInterop
     /// </summary>
     internal static Message<TPayload> FromNative<TPayload>(Native.Message native, JsonTypeInfo<TPayload> typeInfo)
     {
-        var payload = JsonSerializer.Deserialize(native.Payload().AsSpan(), typeInfo);
+        var bytes = native.Payload();
+        var payload = JsonSerializer.Deserialize(bytes.AsSpan(), typeInfo);
         return new Message<TPayload>(
             native.Topic(),
             native.Key(),

@@ -7,6 +7,7 @@ namespace Prosody.Messaging;
 /// </summary>
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 /// <remarks>
+/// <para>Implement all three methods before you subscribe.</para>
 /// <para>
 /// Implement this interface to handle events from Prosody. The handler methods
 /// receive a <see cref="CancellationToken"/> that is triggered when Prosody
@@ -46,6 +47,9 @@ namespace Prosody.Messaging;
 ///         // Success: no exception thrown
 ///         // Transient error: throw any other exception
 ///     }
+///
+///     public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken ct)
+///         => Task.CompletedTask;
 ///
 ///     public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
@@ -90,6 +94,9 @@ public interface IProsodyHandler<TPayload>
     /// </para>
     /// </remarks>
     Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+
+    /// <summary>Handles an excise record.</summary>
+    Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken);
 
     /// <summary>
     /// Called when a timer fires.

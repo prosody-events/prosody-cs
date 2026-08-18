@@ -51,6 +51,7 @@ await client.SubscribeAsync(messageHandler);
 
 // Send a message to a topic
 await client.SendAsync("my-topic", "message-key", new { Content = "Hello, Kafka!" });
+await client.ExciseAsync("my-topic", "obsolete-key");
 
 // Ensure proper shutdown when done
 await client.ShutdownAsync();
@@ -58,6 +59,12 @@ await client.ShutdownAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
+    {
+        Console.WriteLine($"Excise key: {message.Key}");
+        return Task.CompletedTask;
+    }
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Process the received message
@@ -80,6 +87,12 @@ public class MyHandler : IProsodyHandler<MyPayload>
     }
 }
 ```
+
+## Excise records
+
+Call `ExciseAsync(topic, key)` to send a Kafka record with a key and no payload. Use this record to delete the key from compacted views.
+
+Each handler must implement `OnExciseAsync`. It receives an `ExciseMessage` with record metadata and no payload.
 
 ## Architecture
 
@@ -242,6 +255,8 @@ if (await client.IsStalledAsync())
 
 Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
 
+Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
+
 Do not rely on dictionary enumeration order.
 
 Prosody throws an exception if the request cannot produce the complete result dictionary.
@@ -262,11 +277,17 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
         CancellationToken cancellationToken
     ) => Task.FromResult(new InventoryResponse(message.Key));
 
-    public Task<InventoryResponse> OnTimerAsync(
+    public Task<InventoryResponse> OnExciseAsync(
+        ProsodyContext context,
+        ExciseMessage message,
+        CancellationToken cancellationToken
+    ) => Task.FromResult(new InventoryResponse(message.Key));
+
+    public Task OnTimerAsync(
         ProsodyContext context,
         ProsodyTimer timer,
         CancellationToken cancellationToken
-    ) => Task.FromResult(new InventoryResponse(timer.Key));
+    ) => Task.CompletedTask;
 }
 ```
 
@@ -485,6 +506,12 @@ Prosody supports timer-based delayed execution within message handlers. When a t
 ```csharp
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(
+        ProsodyContext prosodyContext,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Schedule a timer to fire in 30 seconds
@@ -609,6 +636,12 @@ var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
 public sealed class CountHandler(ValueStateDefinition<int> count)
     : IProsodyHandler<Event>
 {
+    public Task OnExciseAsync(
+        ProsodyContext context,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(
         ProsodyContext context,
         Message<Event> message,
@@ -618,6 +651,12 @@ public sealed class CountHandler(ValueStateDefinition<int> count)
         var current = (await state.GetAsync(cancellationToken)).GetValueOrDefault(0);
         await state.SetAsync(current + 1, cancellationToken);
     }
+
+    public Task OnTimerAsync(
+        ProsodyContext context,
+        ProsodyTimer timer,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
 }
 
 var client = await ProsodyClientBuilder.Create()
@@ -773,6 +812,12 @@ public class MyHandler : IProsodyHandler<MyPayload>
 {
     private static readonly ActivitySource ActivitySource = new("my-service-name");
 
+    public Task OnExciseAsync(
+        ProsodyContext prosodyContext,
+        ExciseMessage message,
+        CancellationToken cancellationToken) =>
+        Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("process-message");
@@ -888,6 +933,8 @@ public class ProsodyWorker : BackgroundService
 Prosody classifies errors as transient (temporary, can be retried) or permanent (won't be resolved by retrying). By
 default, all errors are considered transient.
 
+The attribute, marker interface, and classifier apply to message, excise, and timer methods.
+
 #### Using Attributes
 
 Use the `[PermanentError]` attribute to classify exceptions that should not be retried:
@@ -898,6 +945,8 @@ using System.Text.Json;
 
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     [PermanentError(typeof(JsonException), typeof(ArgumentException))]
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
@@ -919,6 +968,8 @@ using Prosody;
 
 public class MyHandler : IProsodyHandler<MyPayload>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         var payload = message.Payload;
@@ -992,6 +1043,8 @@ public class MyHandler : IProsodyHandler<MyPayload>
     private readonly MyDbContext _dbContext;
     private readonly ProsodyClient _client;
 
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
         // Pass the token to HTTP calls — throws OperationCanceledException on cancellation
@@ -1016,6 +1069,8 @@ cancellation is requested, correctly signaling to Prosody that the handler did n
 ```csharp
 public class MyHandler : IProsodyHandler<List<Item>>
 {
+    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken) => Task.CompletedTask;
+
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<List<Item>> message, CancellationToken cancellationToken)
     {
         foreach (var item in message.Payload ?? [])
@@ -1262,11 +1317,15 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
+- `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Dispose of client resources synchronously.
@@ -1283,10 +1342,13 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 
 Interface for handling messages and timers:
 
+Implement all three methods. The compiler rejects an incomplete handler before subscription.
+
 ```csharp
 public interface IProsodyHandler<TPayload>
 {
     Task OnMessageAsync(ProsodyContext prosodyContext, Message<TPayload> message, CancellationToken cancellationToken);
+    Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken);
     Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken);
 }
 ```
@@ -1355,8 +1417,8 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
-The item type parameter (`T` / `TValue`) is constrained to `notnull` on the JSON collections, so a nullable item type is
-a compile-time error. Message collections leave the payload nullable — their item type is the non-null `Message<TPayload>`.
+The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
+Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
 Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
 

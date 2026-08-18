@@ -14,9 +14,13 @@ use std::time::Duration;
 
 use crate::context::Context;
 use crate::error::FfiError;
-use crate::message::Message;
+use crate::message::{ExciseMessage, Message};
 use crate::timer::Timer;
 use crate::types::EventMetadata;
+
+mod bridge;
+
+pub(crate) use bridge::CsHandler;
 
 /// Result code indicating how the event handler completed.
 ///
@@ -83,8 +87,21 @@ pub struct NativeRequest {
     pub subsystems: Vec<String>,
     /// Request timeout.
     pub timeout: Duration,
-    /// User Kafka headers.
-    pub headers: HashMap<String, String>,
+    /// Trace propagation fields.
+    pub carrier: HashMap<String, String>,
+}
+
+/// Values needed to send one excise subsystem request.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeExciseRequest {
+    /// Kafka topic.
+    pub topic: String,
+    /// Kafka key.
+    pub key: String,
+    /// Requested subsystem names.
+    pub subsystems: Vec<String>,
+    /// Request timeout.
+    pub timeout: Duration,
     /// Trace propagation fields.
     pub carrier: HashMap<String, String>,
 }
@@ -155,6 +172,14 @@ pub trait EventHandler: Send + Sync {
         &self,
         context: Arc<Context>,
         message: Arc<Message>,
+        carrier: HashMap<String, String>,
+    ) -> Result<HandlerResult, FfiError>;
+
+    /// Handles an excise record.
+    async fn on_excise(
+        &self,
+        context: Arc<Context>,
+        message: Arc<ExciseMessage>,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 

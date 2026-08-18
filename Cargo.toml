@@ -11,7 +11,7 @@ futures = "0.3"
 once_cell = "1.21"
 opentelemetry = "0.32"
 # TODO: Use the released version after Prosody publishes requests.
-prosody = { git = "https://github.com/prosody-events/prosody", rev = "eeb569592cda3cc5d8cf98075e64b20f1771978b", features = [
+prosody = { git = "https://github.com/prosody-events/prosody", rev = "514fdd0d99e29cfd080a89aaf1bab5c19c885832", features = [
   "libz-static",
 ] }
 serde = { version = "1.0", features = ["derive"] }

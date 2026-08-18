@@ -25,6 +25,7 @@ internal static class EventHandlerBridge
     private const string _loggerCategory = $"Prosody.{nameof(EventHandlerBridge)}";
 
     internal const string OnMessageActivityName = "on_message";
+    internal const string OnExciseActivityName = "on_excise";
     internal const string OnTimerActivityName = "on_timer";
 
     internal static byte[] SerializeResponse<TResponse>(TResponse response, JsonTypeInfo<TResponse> typeInfo)
@@ -268,8 +269,10 @@ internal static class EventHandlerBridge
 internal sealed class EventHandlerBridge<TPayload> : NativeHandler
 {
     private readonly Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> _onMessage;
+    private readonly Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> _onExcise;
     private readonly Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> _onTimer;
     private readonly Func<Exception, bool> _isMessagePermanent;
+    private readonly Func<Exception, bool> _isExcisePermanent;
     private readonly Func<Exception, bool> _isTimerPermanent;
     private readonly JsonTypeInfo<TPayload> _payloadTypeInfo;
     private readonly JsonSerializerOptions _jsonOptions;
@@ -290,16 +293,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(userHandler);
         ArgumentNullException.ThrowIfNull(jsonOptions);
 
-        _onMessage = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onTimer = async (context, timer, cancellationToken) =>
-        {
-            await userHandler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
+        _onMessage = BindMessageHandler(userHandler);
+        _onExcise = BindExciseHandler(userHandler);
+        _onTimer = BindTimerHandler(userHandler);
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
@@ -316,7 +312,13 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             interfaceType,
             nameof(IProsodyHandler<TPayload>.OnTimerAsync)
         );
+        var onExciseAttr = PermanentErrorResolver.GetAttribute(
+            handlerType,
+            interfaceType,
+            nameof(IProsodyHandler<TPayload>.OnExciseAsync)
+        );
         _isMessagePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onMsgAttr);
+        _isExcisePermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onExciseAttr);
         _isTimerPermanent = ex => PermanentErrorResolver.IsPermanentError(ex, onTimerAttr);
     }
 
@@ -331,20 +333,14 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(jsonOptions);
         ArgumentNullException.ThrowIfNull(classifier);
 
-        _onMessage = async (context, message, cancellationToken) =>
-        {
-            await userHandler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
-        _onTimer = async (context, timer, cancellationToken) =>
-        {
-            await userHandler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
-            return EventHandlerBridge.JsonNull;
-        };
+        _onMessage = BindMessageHandler(userHandler);
+        _onExcise = BindExciseHandler(userHandler);
+        _onTimer = BindTimerHandler(userHandler);
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isExcisePermanent = ex => ex is IPermanentError || classifier.IsExciseErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
     }
 
@@ -352,8 +348,10 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         JsonSerializerOptions jsonOptions,
         IReadOnlySet<StateDefinition> stateDefinitions,
         Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> onMessage,
+        Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> onExcise,
         Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> onTimer,
         Func<Exception, bool> isMessagePermanent,
+        Func<Exception, bool> isExcisePermanent,
         Func<Exception, bool> isTimerPermanent
     )
     {
@@ -361,10 +359,39 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _stateDefinitions = stateDefinitions;
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _onMessage = onMessage;
+        _onExcise = onExcise;
         _onTimer = onTimer;
         _isMessagePermanent = isMessagePermanent;
+        _isExcisePermanent = isExcisePermanent;
         _isTimerPermanent = isTimerPermanent;
     }
+
+    private static Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> BindMessageHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, message, cancellationToken) =>
+        {
+            await handler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
+
+    private static Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> BindExciseHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, message, cancellationToken) =>
+        {
+            await handler.OnExciseAsync(context, message, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
+
+    private static Func<ProsodyContext, ProsodyTimer, CancellationToken, Task<byte[]>> BindTimerHandler(
+        IProsodyHandler<TPayload> handler
+    ) =>
+        async (context, timer, cancellationToken) =>
+        {
+            await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
+            return EventHandlerBridge.JsonNull;
+        };
 
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
     [RequiresDynamicCode("GetInterfaceMap requires handler methods at run time.")]
@@ -375,7 +402,6 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     )
     {
         ArgumentNullException.ThrowIfNull(handler);
-        var responseTypeInfo = (JsonTypeInfo<TResponse>)jsonOptions.GetTypeInfo(typeof(TResponse));
         var handlerType = handler.GetType();
         var interfaceType = typeof(IProsodyRequestHandler<TPayload, TResponse>);
         var messageAttribute = PermanentErrorResolver.GetAttribute(
@@ -388,6 +414,50 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             interfaceType,
             nameof(IProsodyRequestHandler<TPayload, TResponse>.OnTimerAsync)
         );
+        var exciseAttribute = PermanentErrorResolver.GetAttribute(
+            handlerType,
+            interfaceType,
+            nameof(IProsodyRequestHandler<TPayload, TResponse>.OnExciseAsync)
+        );
+        return Responding(
+            handler,
+            jsonOptions,
+            stateDefinitions,
+            error => PermanentErrorResolver.IsPermanentError(error, messageAttribute),
+            error => PermanentErrorResolver.IsPermanentError(error, exciseAttribute),
+            error => PermanentErrorResolver.IsPermanentError(error, timerAttribute)
+        );
+    }
+
+    internal static EventHandlerBridge<TPayload> Responding<TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions,
+        IPermanentErrorClassifier classifier
+    )
+    {
+        ArgumentNullException.ThrowIfNull(classifier);
+        return Responding(
+            handler,
+            jsonOptions,
+            stateDefinitions,
+            error => error is IPermanentError || classifier.IsMessageErrorPermanent(error),
+            error => error is IPermanentError || classifier.IsExciseErrorPermanent(error),
+            error => error is IPermanentError || classifier.IsTimerErrorPermanent(error)
+        );
+    }
+
+    private static EventHandlerBridge<TPayload> Responding<TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        JsonSerializerOptions jsonOptions,
+        IReadOnlySet<StateDefinition> stateDefinitions,
+        Func<Exception, bool> isMessagePermanent,
+        Func<Exception, bool> isExcisePermanent,
+        Func<Exception, bool> isTimerPermanent
+    )
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        var responseTypeInfo = (JsonTypeInfo<TResponse>)jsonOptions.GetTypeInfo(typeof(TResponse));
         return new EventHandlerBridge<TPayload>(
             jsonOptions,
             stateDefinitions,
@@ -396,13 +466,19 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                     await handler.OnMessageAsync(context, message, cancellationToken).ConfigureAwait(false),
                     responseTypeInfo
                 ),
-            async (context, timer, cancellationToken) =>
+            async (context, message, cancellationToken) =>
                 EventHandlerBridge.SerializeResponse(
-                    await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false),
+                    await handler.OnExciseAsync(context, message, cancellationToken).ConfigureAwait(false),
                     responseTypeInfo
                 ),
-            error => PermanentErrorResolver.IsPermanentError(error, messageAttribute),
-            error => PermanentErrorResolver.IsPermanentError(error, timerAttribute)
+            async (context, timer, cancellationToken) =>
+            {
+                await handler.OnTimerAsync(context, timer, cancellationToken).ConfigureAwait(false);
+                return EventHandlerBridge.JsonNull;
+            },
+            isMessagePermanent,
+            isExcisePermanent,
+            isTimerPermanent
         );
     }
 
@@ -434,6 +510,39 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             context.OnCancel,
             carrier,
             message
+        );
+    }
+
+    /// <inheritdoc/>
+    public Task<NativeResult> OnExcise(
+        Native.Context context,
+        Native.ExciseMessage message,
+        Dictionary<string, string> carrier
+    )
+    {
+        var record = new ExciseMessage(
+            message.Topic(),
+            message.Key(),
+            message.Partition(),
+            message.Offset(),
+            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero)
+        );
+        return EventHandlerBridge.InvokeHandlerAsync(
+            ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
+            _isExcisePermanent,
+            context.OnCancel,
+            carrier,
+            activityName: EventHandlerBridge.OnExciseActivityName,
+            eventType: SentryConstants.TagValues.EventTypeExcise,
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () =>
+                    EventHandlerBridge.BuildMessageSentryContext(
+                        record.Topic,
+                        record.Key,
+                        record.Partition,
+                        record.Offset
+                    )
+                : null
         );
     }
 

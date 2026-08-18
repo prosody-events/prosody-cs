@@ -28,6 +28,12 @@ public sealed class DisposalTests
             CancellationToken cancellationToken
         ) => Task.CompletedTask;
 
+        public Task OnExciseAsync(
+            ProsodyContext prosodyContext,
+            ExciseMessage message,
+            CancellationToken cancellationToken
+        ) => Task.CompletedTask;
+
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
             ProsodyTimer timer,

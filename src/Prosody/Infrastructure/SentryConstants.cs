@@ -14,6 +14,7 @@ internal static class SentryConstants
     internal static class TagValues
     {
         internal const string EventTypeMessage = "message";
+        internal const string EventTypeExcise = "excise";
         internal const string EventTypeTimer = "timer";
         internal const string ErrorClassPermanent = "permanent";
         internal const string ErrorClassTransient = "transient";

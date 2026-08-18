@@ -33,6 +33,9 @@ namespace Prosody.Errors;
 ///         await ProcessOrder(order, ct);
 ///     }
 ///
+///     public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken ct)
+///         => Task.CompletedTask;
+///
 ///     public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken ct)
 ///         => Task.CompletedTask;
 /// }
