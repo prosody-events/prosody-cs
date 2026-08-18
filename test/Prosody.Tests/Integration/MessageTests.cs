@@ -73,6 +73,24 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     }
 
     [Fact(Timeout = 60_000)]
+    public async Task ExciseRequestReturnsLocalHandlerResponse()
+    {
+        await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
+        await ctx.Client.SubscribeAsync(new RequestHandler());
+
+        var results = await ctx.Client.RequestExciseAsync<RequestResponse>(
+            ctx.Topic,
+            "order-1",
+            ["inventory"],
+            IntegrationTestFixture.DefaultTimeout,
+            cancellationToken: TestContext.Current.CancellationToken
+        );
+
+        var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
+        Assert.Equal(new RequestResponse("order-1", true), result.Value);
+    }
+
+    [Fact(Timeout = 60_000)]
     public async Task RequestReturnsHandlerFailure()
     {
         await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");

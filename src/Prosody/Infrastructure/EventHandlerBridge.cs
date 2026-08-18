@@ -340,7 +340,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
         _payloadTypeInfo = (JsonTypeInfo<TPayload>)jsonOptions.GetTypeInfo(typeof(TPayload));
         _isMessagePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
-        _isExcisePermanent = ex => ex is IPermanentError || classifier.IsMessageErrorPermanent(ex);
+        _isExcisePermanent = ex => ex is IPermanentError || classifier.IsExciseErrorPermanent(ex);
         _isTimerPermanent = ex => ex is IPermanentError || classifier.IsTimerErrorPermanent(ex);
     }
 

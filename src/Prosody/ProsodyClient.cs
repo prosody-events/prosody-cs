@@ -478,47 +478,22 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         // Standard propagation can add traceparent, tracestate, and baggage.
         var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        Dictionary<string, Native.NativeRequestResult> nativeResults;
-        try
-        {
-            nativeResults = await _native
-                .Request(
-                    new Native.NativeRequest(
-                        topic,
-                        key,
-                        encoded,
-                        new Native.EventMetadata(EventId: eventId, EventType: eventType),
-                        [.. subsystems],
-                        timeout,
-                        carrier
-                    ),
-                    linked?.Signal
-                )
-                .ConfigureAwait(false);
-        }
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
-        }
-        catch (Native.FfiException.PermanentState ex)
-        {
-            throw new ArgumentException(ex.Message, nameof(subsystems), ex);
-        }
-        finally
-        {
-            if (linked is { } l)
-            {
-                await l.Registration.DisposeAsync().ConfigureAwait(false);
-                l.Signal.Dispose();
-            }
-        }
-        var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
-        foreach (var (subsystem, result) in nativeResults)
-        {
-            outcomes.Add(subsystem, MapOutcome(result, responseType));
-        }
-        return outcomes;
+        var request = new Native.NativeRequest(
+            topic,
+            key,
+            encoded,
+            new Native.EventMetadata(EventId: eventId, EventType: eventType),
+            [.. subsystems],
+            timeout,
+            carrier
+        );
+        return await CompleteRequestAsync(
+                responseType,
+                signal => _native.Request(request, signal),
+                nameof(subsystems),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
     }
 
     /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
@@ -561,16 +536,28 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
         var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
+        var request = new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier);
+        return await CompleteRequestAsync(
+                responseType,
+                signal => _native.RequestExcise(request, signal),
+                nameof(subsystems),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
+        JsonTypeInfo<TResponse> responseType,
+        Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
+        string subsystemParameterName,
+        CancellationToken cancellationToken
+    )
+    {
         LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         Dictionary<string, Native.NativeRequestResult> nativeResults;
         try
         {
-            nativeResults = await _native
-                .RequestExcise(
-                    new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier),
-                    linked?.Signal
-                )
-                .ConfigureAwait(false);
+            nativeResults = await send(linked?.Signal).ConfigureAwait(false);
         }
         catch (Native.FfiException.Cancelled ex)
         {
@@ -578,14 +565,14 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         }
         catch (Native.FfiException.PermanentState ex)
         {
-            throw new ArgumentException(ex.Message, nameof(subsystems), ex);
+            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
         }
         finally
         {
-            if (linked is { } l)
+            if (linked is { } value)
             {
-                await l.Registration.DisposeAsync().ConfigureAwait(false);
-                l.Signal.Dispose();
+                await value.Registration.DisposeAsync().ConfigureAwait(false);
+                value.Signal.Dispose();
             }
         }
         var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);

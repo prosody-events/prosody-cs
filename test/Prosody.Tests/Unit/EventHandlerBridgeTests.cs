@@ -421,6 +421,25 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public void ClassifierUsesMessageDecisionForExciseByDefault()
+    {
+        IPermanentErrorClassifier classifier = new LambdaClassifier(
+            isMessagePermanent: _ => true,
+            isTimerPermanent: _ => false
+        );
+
+        Assert.True(classifier.IsExciseErrorPermanent(new InvalidOperationException()));
+    }
+
+    [Fact]
+    public void ClassifierCanSetAnIndependentExciseDecision()
+    {
+        var classifier = new ExciseClassifier();
+
+        Assert.True(classifier.IsExciseErrorPermanent(new InvalidOperationException()));
+    }
+
+    [Fact]
     public async Task ClassifierOverload_HonorsIPermanentErrorMarker_EvenWhenClassifierReturnsFalse()
     {
         // PermanentException implements IPermanentError; classifier returns false for everything.
@@ -953,6 +972,15 @@ public sealed class EventHandlerBridgeTests
         public bool IsMessageErrorPermanent(Exception exception) => isMessagePermanent(exception);
 
         public bool IsTimerErrorPermanent(Exception exception) => isTimerPermanent(exception);
+    }
+
+    private sealed class ExciseClassifier : IPermanentErrorClassifier
+    {
+        public bool IsMessageErrorPermanent(Exception exception) => false;
+
+        public bool IsExciseErrorPermanent(Exception exception) => true;
+
+        public bool IsTimerErrorPermanent(Exception exception) => false;
     }
 
     #endregion Test Handlers

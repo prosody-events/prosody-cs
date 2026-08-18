@@ -19,6 +19,11 @@ public interface IPermanentErrorClassifier
     /// <returns><see langword="true"/> if the error is permanent (do not retry); otherwise, <see langword="false"/>.</returns>
     bool IsMessageErrorPermanent(Exception exception);
 
+    /// <summary>Determines whether an excise handler exception is permanent.</summary>
+    /// <param name="exception">The exception to classify.</param>
+    /// <returns><see langword="true"/> if Prosody must not retry the excise record.</returns>
+    bool IsExciseErrorPermanent(Exception exception) => IsMessageErrorPermanent(exception);
+
     /// <summary>
     /// Determines whether an exception thrown from <see cref="IProsodyHandler{TPayload}.OnTimerAsync"/> is permanent.
     /// </summary>
