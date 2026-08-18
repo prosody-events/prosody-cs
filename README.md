@@ -933,6 +933,8 @@ public class ProsodyWorker : BackgroundService
 Prosody classifies errors as transient (temporary, can be retried) or permanent (won't be resolved by retrying). By
 default, all errors are considered transient.
 
+The attribute, marker interface, and classifier apply to message, excise, and timer methods.
+
 #### Using Attributes
 
 Use the `[PermanentError]` attribute to classify exceptions that should not be retried:
@@ -1322,6 +1324,8 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Dispose of client resources synchronously.
