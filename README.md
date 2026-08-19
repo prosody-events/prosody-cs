@@ -59,10 +59,10 @@ await client.ShutdownAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
+    public async Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
     {
         Console.WriteLine($"Excise key: {message.Key}");
-        return Task.CompletedTask;
+        await prosodyContext.ClearScheduledAsync();
     }
 
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
@@ -90,9 +90,13 @@ public class MyHandler : IProsodyHandler<MyPayload>
 
 ## Excise records
 
-Call `ExciseAsync(topic, key)` to send a Kafka record with a key and no payload. Use this record to delete the key from compacted views.
+Applications can copy event data into keyed state and external stores. A regulatory or contractual deletion must remove every copy for one key.
 
-Each handler must implement `OnExciseAsync`. It receives an `ExciseMessage` with record metadata and no payload.
+An excise record carries this deletion command. Kafka encodes the command as a key with no payload. During topic compaction, Kafka deletes earlier values for the key. Call `ExciseAsync(topic, key)` to send the record. Prosody routes the record to `OnExciseAsync`. The handler must delete all consumer-owned data for the key.
+
+Each handler must implement `OnMessageAsync`, `OnExciseAsync`, and `OnTimerAsync`. `OnExciseAsync` receives record metadata and no payload.
+
+If an excise record is a request, return a response from `OnExciseAsync`. Prosody uses this response as the subsystem result.
 
 ## Architecture
 
@@ -251,19 +255,23 @@ if (await client.IsStalledAsync())
 }
 ```
 
+## Subsystems
+
+A consumer group ID identifies a set of processes that share records and the keyed state that the group owns. A subsystem can include one or more services and consumer groups. If callers use these IDs, a refactor can require changes to each caller.
+
+A subsystem gives requests and published state one stable public name. Callers use this name instead of consumer group IDs. You can change its services and consumer groups without changing callers. Prosody uses the first response to a subsystem request. For each published-state read, it uses one consumer group that publishes the collection.
+
 ## Requests
 
-Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
+Kafka decouples producers from consumers, so a send does not return consumer results. This asynchronous model lets each service process records independently. Some operations must wait for consumer results before they continue. A request recovers synchrony for the caller while consumers continue asynchronous processing.
 
-Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
+Send a request from a handler or other application code. The Prosody client does not need an active subscription. The result dictionary uses canonical subsystem names as keys. Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
-Do not rely on dictionary enumeration order.
+Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. The request throws an exception for request-level failures, such as invalid input, a Kafka send failure, or shutdown. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
 
-Prosody throws an exception if the request cannot produce the complete result dictionary.
+Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
 
-Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
-
-Return a JSON response from each message handler:
+Set `Subsystem` to `inventory` on the client that subscribes this handler.
 
 ```csharp
 public sealed record Order(string Type);
@@ -291,11 +299,7 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
 }
 ```
 
-Message handler return values become successful request outcomes. Each return value must have a JSON representation.
-
-Only message results become request responses. Timer results are not request responses.
-
-Send a request without a subscription on the requester:
+Send the request:
 
 ```csharp
 string[] subsystems = ["inventory", "billing"];
@@ -506,11 +510,13 @@ Prosody supports timer-based delayed execution within message handlers. When a t
 ```csharp
 public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public Task OnExciseAsync(
+    public async Task OnExciseAsync(
         ProsodyContext prosodyContext,
         ExciseMessage message,
-        CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        await prosodyContext.ClearScheduledAsync();
+    }
 
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
@@ -591,44 +597,17 @@ await using var client = await ProsodyClientBuilder.Create()
 
 ## Keyed State
 
-Keyed state gives every Kafka key its own durable working memory. Prosody automatically uses the current message or timer key, so a handler can relate the current event to earlier events for that key. State survives restarts and rebalances. By default, changes become visible only when the event succeeds.
+Many stream transformations must reason across multiple events or timer firings. Windows, state machines, aggregates, and complex event processing all require state.
 
-Use keyed state for time-aware stream processing: counters, deduplication, rolling aggregates, pending work, and per-key workflows. Keep your relational database as the source of truth for business data and for work that needs joins or ad hoc queries. Reconstructing stream state with repeated database queries can be slow and expensive; keyed state is built for that job.
+A Kafka key identifies an entity, such as a customer or order. Keyed state gives each key independent working state for these transformations. With Cassandra, the state survives restarts and partition reassignment.
 
-Most collections should have a TTL. Set it comfortably beyond the longest timer or workflow that uses the state; Prosody validates the minimum supported TTL. Omit it only when keeping inactive keys forever is intentional.
+Prosody selects the current message or timer key. It processes one event at a time for that key but can process other keys concurrently. By default, Prosody commits pending keyed-state changes only when the handler succeeds. If the handler returns an error, Prosody discards those changes.
 
-### Published state
-
-Published state lets another client read a JSON value, map, or deque without subscribing to the owner's topics. Use the same typed definition for the owned collection and its read-only view. The owner sets `published: true`, names its `Subsystem`, and registers the definition as usual:
-
-```csharp
-var currentOrder = StateDefinition.Value<Order>("current-order", published: true);
-var options = new ClientOptions
-{
-    GroupId = "order-writer",
-    Subsystem = "checkout",
-    StateCollections = [currentOrder],
-};
-
-// Inside the owner's handler, the event supplies the user key.
-var ownedOrder = context.State(currentOrder);
-await ownedOrder.SetAsync(updatedOrder, cancellationToken);
-```
-
-Another client opens a reader by naming the subsystem and passing that same definition. The reader is independent of subscriptions and only returns committed state:
-
-```csharp
-PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentOrder);
-StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellationToken);
-```
-
-Published readers provide the owned collection's read operations without its mutations. An owned handle gets the user key from the current event; a published reader is outside a handler, so every operation takes that key explicitly. Map and deque enumeration returns `IAsyncEnumerable<T>` and reads in chunks rather than loading the entire collection. Pass `ScanDirection.Backward` when reverse order is useful.
-
-The default cache window is five seconds unless the client configuration changes it. Set `readCache: StateReadCache.For(ttl)` on a definition to choose a different freshness window, or use `StateReadCache.Disabled` to read durable storage on every operation. To stop publishing a collection, deploy its definition with `published: false` while keeping it registered and retaining `Subsystem` for that deployment.
+Give most collections a time to live (TTL). Set the TTL beyond the longest timer or workflow that uses the collection. Omit it when state must remain for inactive keys.
 
 ### A counter for each key
 
-Declare each collection once, register it on the client, and ask the event context for the current key's state:
+Declare each collection once. Register it on the client. In a handler, get the current key's state from the event context:
 
 ```csharp
 var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
@@ -636,11 +615,13 @@ var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
 public sealed class CountHandler(ValueStateDefinition<int> count)
     : IProsodyHandler<Event>
 {
-    public Task OnExciseAsync(
+    public async Task OnExciseAsync(
         ProsodyContext context,
         ExciseMessage message,
-        CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        await context.State(count).ClearAsync(cancellationToken);
+    }
 
     public async Task OnMessageAsync(
         ProsodyContext context,
@@ -664,11 +645,13 @@ var client = await ProsodyClientBuilder.Create()
     .BuildAsync();
 ```
 
-Here, counters expire after 30 days without an update.
+Each Kafka key now has an independent counter. A counter expires when that key has no update for 30 days.
 
 ### Window activity into one notification
 
-This example turns a burst of activity into two useful notifications. It sends the first event immediately, collects later events for five minutes, then sends one summary. Because the user ID is the Kafka key, every user gets an independent window.
+This example sends the first event for a user immediately. It collects later events for five minutes and then sends one summary.
+
+The user ID is the Kafka key. Each user has an independent window.
 
 ```csharp
 var window = StateDefinition.Value<bool>("window", ttl: TimeSpan.FromDays(1));
@@ -709,6 +692,16 @@ public async Task OnTimerAsync(
     await pendingState.ClearAsync(cancellationToken);
     await context.State(window).ClearAsync(cancellationToken);
 }
+
+public async Task OnExciseAsync(
+    ProsodyContext context,
+    ExciseMessage message,
+    CancellationToken cancellationToken)
+{
+    await context.State(pending).ClearAsync(cancellationToken);
+    await context.State(window).ClearAsync(cancellationToken);
+    await context.ClearScheduledAsync();
+}
 ```
 
 See the complete, compiled example for imports, types, client setup, and `NotifyAsync`: [`examples/keyed_state_windowing.cs`](examples/keyed_state_windowing.cs).
@@ -717,16 +710,16 @@ Why this works:
 
 - Register both definitions with `WithStateCollections` before `BuildAsync()`. Keyed state uses Cassandra unless `Mock = true`.
 - Use `ClearAndScheduleAsync`, not `ScheduleAsync`, so a retried event does not add another timer for the same key.
-- `capacity: 100` and the one-day TTL prevent an inactive or unusually busy key from retaining an unlimited backlog. Since this example only pushes at the back, overflow drops the oldest saved message.
-- A `MessageDeque` requires the original Kafka messages to remain available for the whole window. Use a plain `Deque` of payloads if topic retention or compaction cannot guarantee that.
+- `capacity: 100` and the one-day TTL bound the saved backlog. Overflow drops the oldest message because this example pushes at the back.
+- A `MessageDeque` requires the original Kafka messages during the window. Use `Deque` when topic retention or compaction cannot provide them.
 - Prosody runs one handler at a time for each key, so a user's message and timer handlers cannot overlap.
-- Sending a notification is outside Prosody's state transaction and may happen again after a retry. Give notifications a stable idempotency key, or send them through an outbox, when duplicates matter.
+- A notification is outside the state transaction. A retry can send it again. Use a stable operation ID to reject duplicate notifications.
 
 ### Collections and handles
 
-A definition gives a collection a stable name, kind, and options. Register it once on the client, then pass the same definition to `context.State()` to access the current key. Do not reuse a persisted name for a different collection kind or payload type.
+A definition sets a collection's durable name, kind, and options. Register it once. Pass it to `context.State()` in a handler.
 
-Create handles inside the handler and do not retain them or their iterators afterward.
+Do not reuse a durable name for a different collection kind or payload type. Create handles inside the handler. Do not retain handles or iterators.
 
 | Collection | JSON payload | Kafka message | Main operations |
 | --- | --- | --- | --- |
@@ -734,19 +727,62 @@ Create handles inside the handler and do not retain them or their iterators afte
 | Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
 | Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
 
-Map and deque scans use `await foreach`. Map keys are strings. Reads return `StateValue<T>`, which distinguishes an absent value from a stored `default(T)`. `null` cannot be stored—use `ClearAsync` or `RemoveAsync` instead. Payload types guide JSON serialization but do not add runtime validation.
+Map and deque scans use `await foreach`. Map keys are strings.
 
-### When changes become visible
+Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Do not store `null`. Use `ClearAsync` or `RemoveAsync`.
 
-Reads inside a handler see its earlier writes. The default behavior is the safest choice for most handlers: Prosody buffers those changes and publishes them together when the event succeeds. If the handler throws, none of its pending changes become visible.
+Payload types guide JSON serialization. They do not add runtime validation.
 
-Each collection also offers explicit controls for workflows that need different behavior:
+### When keyed-state changes become visible
 
-- `readUncommitted: true` writes that collection's changes after the handler succeeds but before the event is recorded as complete. A crash in between can leave the changes visible even though the event is retried. Use it only for idempotent changes, where processing the same event again produces the same stored result.
-- `await state.CommitAsync()` immediately publishes this collection's pending changes. They remain visible even if the handler later throws and the event is retried.
-- `await state.RollbackAsync()` discards this collection's pending changes since its last `CommitAsync()`. It cannot undo changes that were already committed.
+By default, retries do not see pending state from a failed attempt. Reads in a handler see its earlier keyed-state writes. Prosody commits pending changes when the event succeeds and discards them when the handler throws.
+
+This transaction applies only to keyed state. Some workflows need state changes before the handler ends, so each collection also provides explicit controls:
+
+- `readUncommitted: true` persists keyed-state changes before Prosody records the event as complete. If the process stops between these steps, Prosody can process the same event again. The retry sees state changes from the earlier attempt. You must make these keyed-state changes idempotent. Each retry must produce the same state.
+- `await state.CommitAsync()` commits the collection's pending changes before the handler ends. A later handler failure does not remove them.
+- `await state.RollbackAsync()` discards pending changes since the last `CommitAsync()`. It cannot undo committed changes.
 
 Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
+
+### Published state
+
+Some callers need only the current value for a key. They can accept a stale value or a race with a concurrent update.
+
+Use topics and event sourcing when a consumer must process each state change in order. Use published state for direct, read-only lookup of persisted keyed state. The caller does not need to consume the owner's topics or maintain a separate lookup store.
+
+Configure the subsystem name on each publisher. Enable publication on the collection definition. Register the definition on the Prosody client:
+
+```csharp
+var currentOrder = StateDefinition.Value<Order>("current-order", published: true);
+var options = new ClientOptions
+{
+    GroupId = "order-writer",
+    Subsystem = "checkout",
+    StateCollections = [currentOrder],
+};
+
+// The handler uses the key from its current event.
+var ownedOrder = context.State(currentOrder);
+await ownedOrder.SetAsync(updatedOrder, cancellationToken);
+```
+
+Read published state from a handler or other application code. The Prosody client does not need an active subscription.
+
+Use the subsystem and the same definition to open a reader:
+
+```csharp
+PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentOrder);
+StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellationToken);
+```
+
+The reader cannot see pending changes that exist only in a handler. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
+
+Map and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order.
+
+The default cache window is five seconds. Set `readCache: StateReadCache.For(ttl)` to select a different window. Use `StateReadCache.Disabled` to bypass the cache.
+
+To stop publication, deploy the definition with `published: false`. Keep the definition registered during that deployment. Keep the subsystem configured during that deployment.
 
 ## OpenTelemetry Tracing
 
@@ -889,22 +925,17 @@ Strategies for achieving idempotence:
 - Each message advances the state machine, allowing for idempotent processing and easy failure recovery.
 - Particularly useful for complex, distributed transactions across multiple services.
 
-### Proper Shutdown
+### Application shutdown
 
-Shut down the client before your application exits:
+A Prosody client runs a subscription, timers, and other services in the background. Before an application terminates, it must stop all client services. `UnsubscribeAsync()` stops only the active subscription.
+
+Call `ShutdownAsync()` when the application terminates. It stops all client services and rejects new operations. Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
 
 ```csharp
-// Ensure proper shutdown
 await client.ShutdownAsync();
 ```
 
-This ensures:
-
-1. Completion and commitment of all in-flight work
-2. Quick rebalancing, allowing other consumers to take over partitions
-3. Proper release of resources
-
-Implement shutdown handling in your application using `IHostedService` or `IHostApplicationLifetime`:
+Handle application shutdown with `IHostedService` or `IHostApplicationLifetime`:
 
 ```csharp
 using Microsoft.Extensions.Hosting;
@@ -921,8 +952,17 @@ public class ProsodyWorker : BackgroundService
         var client = await _clients.GetAsync();
         await client.SubscribeAsync(new MyHandler());
 
-        // Wait for shutdown signal
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        try
+        {
+            // Wait for a shutdown signal.
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // The host requested shutdown.
+        }
+
+        await client.ShutdownAsync();
     }
 
 }
@@ -1294,6 +1334,9 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithAllowedEvents(params string[] prefixes)`: Set event type prefixes to allow
 - `WithSourceSystem(string sourceSystem)`: Set source system identifier
 - `WithMock(bool mock)`: Enable/disable in-memory mock client
+- `ForPipeline()`: Select pipeline mode.
+- `ForLowLatency(string failureTopic)`: Select low-latency mode and its failure topic.
+- `ForBestEffort()`: Select best-effort mode.
 - `WithMaxConcurrency(uint maxConcurrency)`: Set max concurrent messages
 - `WithMaxRetries(uint maxRetries)`: Set max retry attempts
 - `WithFailureTopic(string topic)`: Set dead letter topic
@@ -1316,19 +1359,21 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
-- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
+- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send with the configured `JsonSerializerOptions`.
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
-- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
+- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Send with supplied JSON metadata. This overload supports trimming.
+- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, SendOptions options, CancellationToken cancellationToken = default)`: Override event metadata during a trim-safe send.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
-- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
-- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Classify errors without reflection. Use this overload in trimmed applications.
 - `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
 - `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
-- `void Dispose()`: Dispose of client resources synchronously.
+- `void Dispose()`: Release resources immediately. It does not wait for shutdown. Use `ShutdownAsync` or `DisposeAsync` to stop client services.
 - `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 
 ### AdminClient
@@ -1353,6 +1398,8 @@ public interface IProsodyHandler<TPayload>
 }
 ```
 
+`IProsodyRequestHandler<TPayload, TResponse>` has the same methods. Its message and excise methods return `Task<TResponse>`.
+
 ### `Message<T>`
 
 Represents a Kafka message with the following properties:
@@ -1364,16 +1411,20 @@ Represents a Kafka message with the following properties:
 - `Key` (string): The message key.
 - `T? Payload`: The deserialized payload (deserialized once before the handler is invoked).
 
+### ExciseMessage
+
+An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, and `Key` properties. It has no `Payload` property.
+
 ### ProsodyContext
 
-Represents the context of message processing:
+Represents the current event context:
 
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
 
 Keyed-state binding:
 
-- `State(definition)`: Binds a registered collection for the current attempt, returning `IValueState<T>` / `IMapState<TValue>` / `IDequeState<T>` (message definitions vend `*State<Message<TPayload>>`). Throws `PermanentStateException` for an unregistered name or a kind/payload identity mismatch. See the [Keyed State](#keyed-state-2) API reference below.
+- `State(definition)`: Bind a registered collection for the current attempt. Message definitions contain `Message<TPayload>`. An unregistered or mismatched definition throws `PermanentStateException`. See [Keyed State](#keyed-state-2).
 
 Timer scheduling methods:
 
@@ -1397,6 +1448,7 @@ Enum representing the consumer lifecycle state:
 - `Unconfigured`: Consumer has not been configured
 - `Configured`: Consumer is configured but not running
 - `Running`: Consumer is actively processing messages
+- `Shutdown`: Client is shut down.
 
 ### ClientMode
 
@@ -1405,6 +1457,17 @@ Enum representing the operating mode:
 - `Pipeline`: Default mode, retry indefinitely with defer and monopolization detection
 - `LowLatency`: Few retries then dead letter (requires FailureTopic)
 - `BestEffort`: Log failures, no retries
+
+`SpanRelation` selects `Child` or `FollowsFrom` for message and timer spans.
+
+### Requests
+
+- `Outcome<T>`: A `Success<T>` or `Failure<T>` result for one subsystem.
+- `Success<T>`: Contains the response in `Value`.
+- `Failure<T>`: Contains a `ResponseError` in `Error`.
+- `ResponseError`: Base record with a `Message` property.
+- `HandlerError`, `TimeoutError`, `FormatMismatchError`, and `MalformedResponseError`: The possible response errors.
+- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send.
 
 ### Keyed State
 
@@ -1416,6 +1479,8 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
+
+Each definition exposes its validated `Name`.
 
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
@@ -1467,13 +1532,39 @@ Published JSON collections use the same definition for owned and read-only acces
 
 `ScanDirection`: `Forward` (ascending) or `Backward` (descending).
 
+`StateReadCache.Disabled` disables published-read caching. `StateReadCache.For(ttl)` creates a cache setting with the specified TTL.
+
 Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
-- `TransientStateException : StateException`: the default for a temporary store failure or caller mistake. Examples include a `null` write or invalid index.
-- `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
-- `PermanentStateException : StateException, IPermanentError`: reserved for failures a retry cannot resolve in-process (unregistered/identity-mismatched collection, duplicate/invalid name or TTL), or one a handler throws explicitly.
+- `TransientStateException : StateException`: Reports a keyed-state error that Prosody can retry.
+- `NullValueException : TransientStateException`: Reports a rejected `null` write. Use `ClearAsync` or `RemoveAsync` to delete data.
+- `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
+
+Handler error classification:
+
+- `IPermanentError`: Marks an exception as permanent.
+- `PermanentException`: A permanent handler exception.
+- `PermanentErrorAttribute`: Classifies selected exception types as permanent for one handler method.
+- `IPermanentErrorClassifier`: Classifies handler exceptions without reflection.
+
+`IPermanentErrorClassifier` provides `IsMessageErrorPermanent`, `IsExciseErrorPermanent`, and `IsTimerErrorPermanent`.
+
+### Configuration and dependency injection
+
+- `ClientOptions`: Contains the client settings in [Configuration](CONFIGURATION.md).
+- `Prosody.CreateClient()`: Create a `ProsodyClientBuilder`.
+- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register `ProsodyClientProvider` with dependency injection.
+- `ProsodyServiceCollectionExtensions.AddProsodyLogging()`: Register Prosody logging.
+- `ProsodyClientProvider.GetAsync()`: Get the shared client.
+- `ProsodyClientProvider.Dispose()` and `DisposeAsync()`: Dispose the shared client.
+
+### Logging and telemetry
+
+- `ProsodyLogging.Configure(loggerFactory)`: Connect Prosody to Microsoft logging.
+- `ProsodyLogging.FlushTelemetry()`: Export pending telemetry.
+- `ProsodyLogging.ShutdownTelemetry()`: Export pending telemetry and stop its providers.
 
 ## License
 

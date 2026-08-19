@@ -57,11 +57,16 @@ internal static class KeyedStateWindowing
             await prosodyContext.ClearAndScheduleAsync(DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
         }
 
-        public Task OnExciseAsync(
+        public async Task OnExciseAsync(
             ProsodyContext prosodyContext,
             ExciseMessage message,
             CancellationToken cancellationToken
-        ) => Task.CompletedTask;
+        )
+        {
+            await prosodyContext.State(Pending).ClearAsync(cancellationToken);
+            await prosodyContext.State(Window).ClearAsync(cancellationToken);
+            await prosodyContext.ClearScheduledAsync();
+        }
 
         public async Task OnTimerAsync(
             ProsodyContext prosodyContext,
