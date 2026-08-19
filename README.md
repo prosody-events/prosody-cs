@@ -1359,21 +1359,21 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
-- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
+- `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send with the configured `JsonSerializerOptions`.
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Send with supplied JSON metadata. This overload supports trimming.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, SendOptions options, CancellationToken cancellationToken = default)`: Override event metadata during a trim-safe send.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
-- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
-- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
-- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Send a trim-safe excise request.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Classify errors without reflection. Use this overload in trimmed applications.
 - `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
 - `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
-- `void Dispose()`: Dispose of client resources synchronously.
+- `void Dispose()`: Release resources immediately. It does not wait for shutdown. Use `ShutdownAsync` or `DisposeAsync` to stop client services.
 - `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 
 ### AdminClient
@@ -1417,14 +1417,14 @@ An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, and `Key` pr
 
 ### ProsodyContext
 
-Represents the context of message processing:
+Represents the current event context:
 
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
 
 Keyed-state binding:
 
-- `State(definition)`: Binds a registered collection for the current attempt, returning `IValueState<T>` / `IMapState<TValue>` / `IDequeState<T>` (message definitions vend `*State<Message<TPayload>>`). Throws `PermanentStateException` for an unregistered name or a kind/payload identity mismatch. See the [Keyed State](#keyed-state-2) API reference below.
+- `State(definition)`: Bind a registered collection for the current attempt. Message definitions contain `Message<TPayload>`. An unregistered or mismatched definition throws `PermanentStateException`. See [Keyed State](#keyed-state-2).
 
 Timer scheduling methods:
 
@@ -1458,7 +1458,7 @@ Enum representing the operating mode:
 - `LowLatency`: Few retries then dead letter (requires FailureTopic)
 - `BestEffort`: Log failures, no retries
 
-`SpanRelation` selects `Parent` or `Link` for message and timer spans.
+`SpanRelation` selects `Child` or `FollowsFrom` for message and timer spans.
 
 ### Requests
 
@@ -1538,7 +1538,7 @@ Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
 - `TransientStateException : StateException`: Reports a keyed-state error that Prosody can retry.
-- `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
+- `NullValueException : TransientStateException`: Reports a rejected `null` write. Use `ClearAsync` or `RemoveAsync` to delete data.
 - `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
 
@@ -1546,7 +1546,7 @@ Handler error classification:
 
 - `IPermanentError`: Marks an exception as permanent.
 - `PermanentException`: A permanent handler exception.
-- `PermanentErrorAttribute`: Marks handler exception types as permanent.
+- `PermanentErrorAttribute`: Classifies selected exception types as permanent for one handler method.
 - `IPermanentErrorClassifier`: Classifies handler exceptions without reflection.
 
 `IPermanentErrorClassifier` provides `IsMessageErrorPermanent`, `IsExciseErrorPermanent`, and `IsTimerErrorPermanent`.
