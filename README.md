@@ -257,17 +257,23 @@ if (await client.IsStalledAsync())
 
 ## Subsystems
 
-Kafka uses a consumer group ID to make client processes share the work of processing records. This ID is a deployment detail.
+Kafka uses a consumer group ID for client processes that share records. Prosody uses this ID to separate the keyed state of each consumer group.
+
+The consumer group ID is part of the stream design. Applications must not use it in public interfaces for requests or published state.
 
 Applications need a stable name when they send requests or read published state.
 
 A subsystem provides a stable name. One or more consumer groups can use the same subsystem name.
 
-Callers use the subsystem name, not a consumer group ID. You can change the consumer groups without changing the callers.
+Prosody does not combine results from these consumer groups. A request uses the first response for the subsystem. A published-state read uses one consumer group that publishes the state.
+
+Callers use the subsystem name, not a consumer group ID. You can change the consumer groups. You do not need to change the callers.
 
 ## Requests
 
 A normal Kafka send does not return consumer results. A request lets a producer wait for results from selected subsystems.
+
+You can send a request from a handler or from other application code. The Prosody client does not need an active subscription.
 
 Requests return one outcome for each selected subsystem. The result dictionary uses canonical subsystem names as keys.
 
@@ -277,7 +283,11 @@ Do not rely on dictionary enumeration order.
 
 Prosody throws an exception if the request cannot produce the complete result dictionary.
 
-Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
+Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
+
+Message and excise handler return values become successful request outcomes. Each return value must have a JSON representation.
+
+Only message and excise results become request responses. Timer results are not request responses.
 
 Return a JSON response from each message and excise handler:
 
@@ -309,11 +319,7 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
 }
 ```
 
-Message and excise handler return values become successful request outcomes. Each return value must have a JSON representation.
-
-Only message and excise results become request responses. Timer results are not request responses.
-
-Send a request without a subscription on the requester:
+Send the request:
 
 ```csharp
 string[] subsystems = ["inventory", "billing"];
@@ -613,7 +619,7 @@ A handler can process events for different keys concurrently. Prosody processes 
 
 A Kafka key identifies the entity for an event, such as a customer or order. Keyed state stores separate data for each key. Prosody selects the current message or timer key automatically.
 
-Keyed state survives a process restart. It also survives when Kafka assigns a partition to a different process. By default, Prosody commits keyed-state changes after the handler completes without an error. Prosody discards pending keyed-state changes from a failed attempt.
+With Cassandra, keyed state survives a process restart. It also survives when Kafka assigns a partition to a different process. By default, Prosody commits keyed-state changes after the handler completes without an error. Prosody discards pending keyed-state changes from a failed attempt.
 
 Use keyed state for counters, duplicate detection, rolling totals, pending work, and per-key workflows. Use a database for business records, joins, and unplanned queries. Repeated database reads can make stream processing slow and expensive.
 
@@ -621,7 +627,7 @@ Give most collections a time to live (TTL). Set the TTL beyond the longest timer
 
 ### A counter for each key
 
-Declare each collection once, register it on the client, and ask the event context for the current key's state:
+Declare each collection once. Register it on the client. In a handler, ask the event context for the current key's state:
 
 ```csharp
 var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
@@ -663,7 +669,7 @@ Each Kafka key now has an independent counter. A counter expires when that key h
 
 This example groups a burst of activity for one user. It sends the first event immediately. It collects later events for five minutes.
 
-The timer sends one summary when the window ends. The user ID is the Kafka key, so each user has an independent window.
+If later events arrive, the timer sends one summary when the window ends. The user ID is the Kafka key, so each user has an independent window.
 
 ```csharp
 var window = StateDefinition.Value<bool>("window", ttl: TimeSpan.FromDays(1));
@@ -733,7 +739,7 @@ Do not reuse a durable name for a different collection kind or payload type. Cre
 
 Map and deque scans use `await foreach`. Map keys are strings.
 
-Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Use `ClearAsync` or `RemoveAsync` instead of storing `null`.
+Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Do not store `null`. Use `ClearAsync` or `RemoveAsync`.
 
 Payload types guide JSON serialization. They do not add runtime validation.
 
@@ -741,11 +747,11 @@ Payload types guide JSON serialization. They do not add runtime validation.
 
 Reads inside a handler see earlier keyed-state writes from that handler. By default, Prosody buffers keyed-state changes until the event succeeds.
 
-Prosody then commits the keyed-state changes together. If the handler throws, Prosody discards its pending keyed-state changes. This transaction does not include other handler side effects.
+Prosody then commits the pending keyed-state changes. If the handler throws, Prosody discards its pending keyed-state changes. This transaction does not include other handler side effects.
 
 Each collection also offers explicit controls for workflows that need different behavior:
 
-- `readUncommitted: true` writes changes before Prosody records the event as complete. A crash can make these changes visible before a retry. Use this option only when repeated processing produces the same result.
+- `readUncommitted: true` writes changes before Prosody records the event as complete. A crash can make these changes visible before a retry. Use this option only when each retry writes the same state.
 - `await state.CommitAsync()` commits the collection's pending changes before the handler ends. A later handler failure does not remove them.
 - `await state.RollbackAsync()` discards pending changes since the last `CommitAsync()`. It cannot undo committed changes.
 
@@ -755,7 +761,9 @@ Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimme
 
 Handlers normally read state only for their current event key. Sometimes another service needs that state but must not consume the owner's Kafka topics.
 
-Published state provides this read-only access. Each publisher uses the subsystem name, enables publication, and registers the collection definition:
+Published state provides this read-only access.
+
+Configure the subsystem name on each publisher. Enable publication on the collection definition. Register the definition on the Prosody client:
 
 ```csharp
 var currentOrder = StateDefinition.Value<Order>("current-order", published: true);
@@ -771,7 +779,9 @@ var ownedOrder = context.State(currentOrder);
 await ownedOrder.SetAsync(updatedOrder, cancellationToken);
 ```
 
-Another client uses the subsystem and the same definition to open a reader. The reader does not require a subscription:
+You can read published state from a handler or from other application code. The Prosody client does not need an active subscription.
+
+Use the subsystem and the same definition to open a reader:
 
 ```csharp
 PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentOrder);
@@ -784,7 +794,7 @@ Map and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. P
 
 The default cache window is five seconds. Set `readCache: StateReadCache.For(ttl)` to select a different window. Use `StateReadCache.Disabled` to bypass the cache.
 
-To stop publication, deploy the definition with `published: false`. Keep the definition registered and keep its `Subsystem` during that deployment.
+To stop publication, deploy the definition with `published: false`. Keep the definition registered during that deployment. Keep the subsystem configured during that deployment.
 
 ## OpenTelemetry Tracing
 
@@ -929,6 +939,8 @@ Strategies for achieving idempotence:
 
 ### Application shutdown
 
+`UnsubscribeAsync()` stops only the active subscription. Other client services continue to run.
+
 Call `ShutdownAsync()` when the application terminates. Shutdown stops the active subscription and all other client services. The client rejects new operations after shutdown.
 
 Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
@@ -937,7 +949,7 @@ Call `UnsubscribeAsync()` only when the application will use the client again. Y
 await client.ShutdownAsync();
 ```
 
-Implement shutdown handling in your application using `IHostedService` or `IHostApplicationLifetime`:
+Handle application shutdown with `IHostedService` or `IHostApplicationLifetime`:
 
 ```csharp
 using Microsoft.Extensions.Hosting;
