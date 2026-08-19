@@ -90,7 +90,11 @@ public class MyHandler : IProsodyHandler<MyPayload>
 
 ## Excise records
 
-A compacted Kafka topic keeps the latest value for each key. To remove a key, Kafka needs a record with that key and no payload.
+An excise record tells a consumer to delete all data for one key. Applications usually use excision to meet a regulatory or contractual deletion requirement.
+
+Prosody does not know which application stores contain the data. In `OnExciseAsync`, delete all data for the key from every store that the consumer owns.
+
+A compacted Kafka topic keeps the latest value for each key. Kafka uses a record with the key and no payload to remove that value.
 
 Call `ExciseAsync(topic, key)` to send this record. Prosody sends received excise records to `OnExciseAsync`, not to `OnMessageAsync`.
 
