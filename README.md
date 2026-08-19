@@ -267,7 +267,9 @@ Kafka decouples producers from consumers, so a send does not return consumer res
 
 Send a request from a handler or other application code. The Prosody client does not need an active subscription. The result dictionary uses canonical subsystem names as keys. Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
-Do not rely on dictionary order. Prosody throws an exception if it cannot produce the complete result dictionary. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns. Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
+Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. The request throws an exception for request-level failures, such as invalid input, a Kafka send failure, or shutdown. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
+
+Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
 
 Set `Subsystem` to `inventory` on the client that subscribes this handler.
 
