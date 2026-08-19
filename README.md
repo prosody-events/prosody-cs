@@ -59,10 +59,10 @@ await client.ShutdownAsync();
 // Handler implementation
 public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
+    public async Task OnExciseAsync(ProsodyContext prosodyContext, ExciseMessage message, CancellationToken cancellationToken)
     {
         Console.WriteLine($"Excise key: {message.Key}");
-        return Task.CompletedTask;
+        await prosodyContext.ClearScheduledAsync();
     }
 
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
@@ -257,7 +257,7 @@ if (await client.IsStalledAsync())
 
 ## Subsystems
 
-A consumer group ID determines which process handles each record and identifies its keyed state. If a public interface exposes this ID, callers depend on this internal layout.
+A consumer group ID groups the client processes that share records. Prosody also uses this ID to identify the group's keyed state. Callers must not depend on this stream design.
 
 A subsystem gives requests and published state a stable public name. One or more consumer groups can use this name. Their IDs can change without changing public interfaces. Prosody uses the first response to a subsystem request. It reads published state from one consumer group that publishes the state.
 
@@ -510,11 +510,13 @@ Prosody supports timer-based delayed execution within message handlers. When a t
 ```csharp
 public class MyHandler : IProsodyHandler<MyPayload>
 {
-    public Task OnExciseAsync(
+    public async Task OnExciseAsync(
         ProsodyContext prosodyContext,
         ExciseMessage message,
-        CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        await prosodyContext.ClearScheduledAsync();
+    }
 
     public async Task OnMessageAsync(ProsodyContext prosodyContext, Message<MyPayload> message, CancellationToken cancellationToken)
     {
@@ -599,7 +601,7 @@ Many stream transformations must reason across multiple events or timer firings.
 
 A Kafka key identifies an entity, such as a customer or order. Keyed state gives each key independent working state for these transformations. With Cassandra, the state survives restarts and partition reassignment.
 
-Prosody selects the current message or timer key. It processes one event at a time for that key but can process other keys concurrently. It commits state changes after a successful event and discards changes from a failed attempt.
+Prosody selects the current message or timer key. It processes one event at a time for that key but can process other keys concurrently. By default, it commits state changes after a successful event and discards changes from a failed attempt.
 
 Use a database for business records, joins, and unplanned queries.
 
@@ -615,11 +617,13 @@ var count = StateDefinition.Value<int>("count", ttl: TimeSpan.FromDays(30));
 public sealed class CountHandler(ValueStateDefinition<int> count)
     : IProsodyHandler<Event>
 {
-    public Task OnExciseAsync(
+    public async Task OnExciseAsync(
         ProsodyContext context,
         ExciseMessage message,
-        CancellationToken cancellationToken) =>
-        Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        await context.State(count).ClearAsync(cancellationToken);
+    }
 
     public async Task OnMessageAsync(
         ProsodyContext context,
@@ -690,6 +694,16 @@ public async Task OnTimerAsync(
     await pendingState.ClearAsync(cancellationToken);
     await context.State(window).ClearAsync(cancellationToken);
 }
+
+public async Task OnExciseAsync(
+    ProsodyContext context,
+    ExciseMessage message,
+    CancellationToken cancellationToken)
+{
+    await context.State(pending).ClearAsync(cancellationToken);
+    await context.State(window).ClearAsync(cancellationToken);
+    await context.ClearScheduledAsync();
+}
 ```
 
 See the complete, compiled example for imports, types, client setup, and `NotifyAsync`: [`examples/keyed_state_windowing.cs`](examples/keyed_state_windowing.cs).
@@ -723,7 +737,7 @@ Payload types guide JSON serialization. They do not add runtime validation.
 
 ### When keyed-state changes become visible
 
-Retries must not expose partial state from a failed attempt. Reads in a handler see its earlier keyed-state writes. Prosody commits pending changes when the event succeeds and discards them when the handler throws.
+By default, retries do not see pending state from a failed attempt. Reads in a handler see its earlier keyed-state writes. Prosody commits pending changes when the event succeeds and discards them when the handler throws.
 
 This transaction applies only to keyed state. Some workflows need state changes before the handler ends, so each collection also provides explicit controls:
 
@@ -737,7 +751,7 @@ Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimme
 
 Some callers need only the current value for a key. They can accept a stale value or a race with a concurrent update.
 
-Use topics and event sourcing when a consumer must process each state change in order. Use published state for direct, read-only lookup of committed keyed state. The caller does not need to consume the owner's topics or maintain a separate lookup store.
+Use topics and event sourcing when a consumer must process each state change in order. Use published state for direct, read-only lookup of persisted keyed state. The caller does not need to consume the owner's topics or maintain a separate lookup store.
 
 Configure the subsystem name on each publisher. Enable publication on the collection definition. Register the definition on the Prosody client:
 
@@ -764,7 +778,7 @@ PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentO
 StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellationToken);
 ```
 
-The reader returns only committed state. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
+The reader cannot see pending changes that exist only in a handler. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
 
 Map and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order.
 

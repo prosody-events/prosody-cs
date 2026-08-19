@@ -406,7 +406,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
     /// <remarks>
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// The method throws if it cannot produce the complete result dictionary.
+    /// A request-level failure throws instead of returning a partial dictionary.
     /// </remarks>
     /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
@@ -434,7 +434,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
     /// <remarks>
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// The method throws if it cannot produce the complete result dictionary.
+    /// A request-level failure throws instead of returning a partial dictionary.
     /// </remarks>
     /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
     /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
