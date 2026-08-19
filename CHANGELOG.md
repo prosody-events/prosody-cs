@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/prosody-events/prosody-cs/compare/v0.4.0...v0.5.0) (2026-08-19)
+
+
+### Features
+
+* add subsystem requests ([#84](https://github.com/prosody-events/prosody-cs/issues/84)) ([7b41f3a](https://github.com/prosody-events/prosody-cs/commit/7b41f3acc9d4dc828da9c79cba00b1d5551e61e2))
+* add typed excise records and requests ([#85](https://github.com/prosody-events/prosody-cs/issues/85)) ([ee03f8f](https://github.com/prosody-events/prosody-cs/commit/ee03f8fadc9c82f2210b6c000b29f6e88c78d898))
+* expose published keyed state ([#72](https://github.com/prosody-events/prosody-cs/issues/72)) ([411860e](https://github.com/prosody-events/prosody-cs/commit/411860eec836fde49e0232957cbb66982afac836))
+
+
+### Bug Fixes
+
+* **logging:** flush telemetry on client dispose and process exit ([#66](https://github.com/prosody-events/prosody-cs/issues/66)) ([9972442](https://github.com/prosody-events/prosody-cs/commit/9972442e39d750554a2623dc6a4fa65ea6a1a629))
+* **release:** build Linux package in compatibility container ([#65](https://github.com/prosody-events/prosody-cs/issues/65)) ([038102a](https://github.com/prosody-events/prosody-cs/commit/038102a5916140bb99086f41b158848cb4e4aca2))
+* **release:** preserve retry version ([#68](https://github.com/prosody-events/prosody-cs/issues/68)) ([de927c9](https://github.com/prosody-events/prosody-cs/commit/de927c97c6c070db255811b4d03bd0a4163404da))
+* **release:** propagate package version to tests ([#69](https://github.com/prosody-events/prosody-cs/issues/69)) ([81af81e](https://github.com/prosody-events/prosody-cs/commit/81af81e6fdb75d53023e114a892943343f46d833))
+* surface send cancellation as OperationCanceledException ([#80](https://github.com/prosody-events/prosody-cs/issues/80)) ([a9936d1](https://github.com/prosody-events/prosody-cs/commit/a9936d12ae942fb6e5965843e7be5815f0a4def2))
+
 ## [0.4.0](https://github.com/prosody-events/prosody-cs/compare/v0.3.1...v0.4.0) (2026-07-21)
 
 
