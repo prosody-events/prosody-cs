@@ -267,19 +267,11 @@ For a request, Prosody uses the first subsystem response. For a published-state 
 
 ## Requests
 
-A Kafka send does not return consumer results. A request waits for one outcome from each selected subsystem.
+Kafka decouples producers from consumers, so a send does not return consumer results. This asynchronous model lets each service process records independently. Some operations must wait for consumer results before they continue. A request recovers synchrony for the caller while consumers continue asynchronous processing.
 
-Send a request from a handler or other application code. The Prosody client does not need an active subscription.
+Send a request from a handler or other application code. The Prosody client does not need an active subscription. The result dictionary uses canonical subsystem names as keys. Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
-The result dictionary uses canonical subsystem names as keys.
-
-Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
-
-Do not rely on dictionary order. Prosody throws an exception if it cannot produce the complete result dictionary.
-
-Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
-
-Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
+Do not rely on dictionary order. Prosody throws an exception if it cannot produce the complete result dictionary. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns. Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
 
 Set `Subsystem` to `inventory` on the client that subscribes this handler.
 
@@ -925,13 +917,7 @@ Strategies for achieving idempotence:
 
 ### Application shutdown
 
-`UnsubscribeAsync()` stops only the active subscription.
-
-Call `ShutdownAsync()` when the application terminates. It stops the subscription and all client services.
-
-The client rejects new operations after shutdown.
-
-Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
+`UnsubscribeAsync()` stops only the active subscription. Call `ShutdownAsync()` when the application terminates. It stops the subscription and all client services. The client rejects new operations after shutdown. Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
 
 ```csharp
 await client.ShutdownAsync();
