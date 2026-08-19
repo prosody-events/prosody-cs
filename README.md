@@ -90,9 +90,13 @@ public class MyHandler : IProsodyHandler<MyPayload>
 
 ## Excise records
 
-Call `ExciseAsync(topic, key)` to send a Kafka record with a key and no payload. Use this record to delete the key from compacted views.
+A compacted Kafka topic keeps the latest value for each key. To remove a key, Kafka needs a record with that key and no payload.
 
-Each handler must implement `OnExciseAsync`. It receives an `ExciseMessage` with record metadata and no payload.
+Call `ExciseAsync(topic, key)` to send this record. Prosody sends received excise records to `OnExciseAsync`, not to `OnMessageAsync`.
+
+Each handler must implement `OnMessageAsync`, `OnExciseAsync`, and `OnTimerAsync`. `OnExciseAsync` receives record metadata and no payload.
+
+If an excise record is a request, return a response from `OnExciseAsync`. Prosody uses this response as the subsystem result.
 
 ## Architecture
 
@@ -253,7 +257,11 @@ if (await client.IsStalledAsync())
 
 ## Requests
 
-Requests return one outcome for each named subsystem. The result dictionary uses canonical subsystem names as keys.
+A normal Kafka send does not return consumer results. A request lets a producer wait for results from selected consumer roles.
+
+A subsystem is a stable name for one consumer role, such as `inventory` or `billing`. Configure the same subsystem name on all client instances for that role. A subsystem name also identifies the owner of published keyed state.
+
+Requests return one outcome for each selected subsystem. The result dictionary uses canonical subsystem names as keys.
 
 Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
@@ -263,7 +271,9 @@ Prosody throws an exception if the request cannot produce the complete result di
 
 Do not await a request from a handler for the same key and subsystem. The request cannot finish before that handler returns.
 
-Return a JSON response from each message handler:
+Return a JSON response from each message and excise handler:
+
+Set `Subsystem` to `inventory` on the client that subscribes this handler.
 
 ```csharp
 public sealed record Order(string Type);
@@ -291,9 +301,9 @@ public sealed class InventoryHandler : IProsodyRequestHandler<Order, InventoryRe
 }
 ```
 
-Message handler return values become successful request outcomes. Each return value must have a JSON representation.
+Message and excise handler return values become successful request outcomes. Each return value must have a JSON representation.
 
-Only message results become request responses. Timer results are not request responses.
+Only message and excise results become request responses. Timer results are not request responses.
 
 Send a request without a subscription on the requester:
 
@@ -591,11 +601,11 @@ await using var client = await ProsodyClientBuilder.Create()
 
 ## Keyed State
 
-Stream handlers usually receive one event at a time. Many decisions need data from earlier events. Counters, activity windows, and workflows all need this data.
+A handler can process events for different keys concurrently. Prosody processes only one event at a time for each key. Many decisions need data from earlier events for the same key.
 
-A Kafka key identifies the entity for an event, such as a customer or order. Keyed state stores separate data for each key. Prosody selects the current message or timer key automatically. Prosody also runs only one handler for that key at a time.
+A Kafka key identifies the entity for an event, such as a customer or order. Keyed state stores separate data for each key. Prosody selects the current message or timer key automatically.
 
-State survives a process restart. State also survives when Kafka assigns a partition to a different process. By default, Prosody makes changes visible after the handler completes without an error. A failed attempt cannot make its pending changes visible.
+Keyed state survives a process restart. It also survives when Kafka assigns a partition to a different process. By default, Prosody commits keyed-state changes after the handler completes without an error. Prosody discards pending keyed-state changes from a failed attempt.
 
 Use keyed state for counters, duplicate detection, rolling totals, pending work, and per-key workflows. Use a database for business records, joins, and unplanned queries. Repeated database reads can make stream processing slow and expensive.
 
@@ -719,16 +729,16 @@ Reads return `StateValue<T>`. This type distinguishes an absent value from a sto
 
 Payload types guide JSON serialization. They do not add runtime validation.
 
-### When changes become visible
+### When keyed-state changes become visible
 
-Reads inside a handler see earlier writes from that handler. By default, Prosody buffers changes until the event succeeds.
+Reads inside a handler see earlier keyed-state writes from that handler. By default, Prosody buffers keyed-state changes until the event succeeds.
 
-Prosody then publishes the changes together. If the handler throws, none of its pending changes become visible.
+Prosody then commits the keyed-state changes together. If the handler throws, Prosody discards its pending keyed-state changes. This transaction does not include other handler side effects.
 
 Each collection also offers explicit controls for workflows that need different behavior:
 
 - `readUncommitted: true` writes changes before Prosody records the event as complete. A crash can make these changes visible before a retry. Use this option only when repeated processing produces the same result.
-- `await state.CommitAsync()` immediately publishes the collection's pending changes. A later handler failure does not remove them.
+- `await state.CommitAsync()` commits the collection's pending changes before the handler ends. A later handler failure does not remove them.
 - `await state.RollbackAsync()` discards pending changes since the last `CommitAsync()`. It cannot undo committed changes.
 
 Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
@@ -909,20 +919,15 @@ Strategies for achieving idempotence:
 - Each message advances the state machine, allowing for idempotent processing and easy failure recovery.
 - Particularly useful for complex, distributed transactions across multiple services.
 
-### Proper Shutdown
+### Application shutdown
 
-Shut down the client before your application exits:
+Call `ShutdownAsync()` when the application terminates. Shutdown stops the active subscription and all other client services. The client rejects new operations after shutdown.
+
+Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
 
 ```csharp
-// Ensure proper shutdown
 await client.ShutdownAsync();
 ```
-
-This ensures:
-
-1. Completion and commitment of all in-flight work
-2. Quick rebalancing, allowing other consumers to take over partitions
-3. Proper release of resources
 
 Implement shutdown handling in your application using `IHostedService` or `IHostApplicationLifetime`:
 
@@ -941,8 +946,17 @@ public class ProsodyWorker : BackgroundService
         var client = await _clients.GetAsync();
         await client.SubscribeAsync(new MyHandler());
 
-        // Wait for shutdown signal
-        await Task.Delay(Timeout.Infinite, stoppingToken);
+        try
+        {
+            // Wait for a shutdown signal.
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // The host requested shutdown.
+        }
+
+        await client.ShutdownAsync();
     }
 
 }
