@@ -1334,6 +1334,9 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithAllowedEvents(params string[] prefixes)`: Set event type prefixes to allow
 - `WithSourceSystem(string sourceSystem)`: Set source system identifier
 - `WithMock(bool mock)`: Enable/disable in-memory mock client
+- `ForPipeline()`: Select pipeline mode.
+- `ForLowLatency(string failureTopic)`: Select low-latency mode and its failure topic.
+- `ForBestEffort()`: Select best-effort mode.
 - `WithMaxConcurrency(uint maxConcurrency)`: Set max concurrent messages
 - `WithMaxRetries(uint maxRetries)`: Set max retry attempts
 - `WithFailureTopic(string topic)`: Set dead letter topic
@@ -1358,10 +1361,12 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send a message to a specified topic (uses configured `JsonSerializerOptions`; annotated with `[RequiresUnreferencedCode]`).
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
-- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Trim-clean overload; serializes using the supplied `JsonTypeInfo<T>` instead of the client's options.
+- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Send with supplied JSON metadata. This overload supports trimming.
+- `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, SendOptions options, CancellationToken cancellationToken = default)`: Override event metadata during a trim-safe send.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Send a trim-safe request.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Send an excise request.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Send a trim-safe excise request.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Subscribe to messages using a strongly typed payload handler (annotated with `[RequiresUnreferencedCode]`).
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Trim-clean overload; bypasses `[PermanentError]` attribute reflection.
 - `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
@@ -1393,6 +1398,8 @@ public interface IProsodyHandler<TPayload>
 }
 ```
 
+`IProsodyRequestHandler<TPayload, TResponse>` has the same methods. Its message and excise methods return `Task<TResponse>`.
+
 ### `Message<T>`
 
 Represents a Kafka message with the following properties:
@@ -1403,6 +1410,10 @@ Represents a Kafka message with the following properties:
 - `Timestamp` (DateTimeOffset): The timestamp when the message was created or sent.
 - `Key` (string): The message key.
 - `T? Payload`: The deserialized payload (deserialized once before the handler is invoked).
+
+### ExciseMessage
+
+An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, and `Key` properties. It has no `Payload` property.
 
 ### ProsodyContext
 
@@ -1437,6 +1448,7 @@ Enum representing the consumer lifecycle state:
 - `Unconfigured`: Consumer has not been configured
 - `Configured`: Consumer is configured but not running
 - `Running`: Consumer is actively processing messages
+- `Shutdown`: Client is shut down.
 
 ### ClientMode
 
@@ -1445,6 +1457,17 @@ Enum representing the operating mode:
 - `Pipeline`: Default mode, retry indefinitely with defer and monopolization detection
 - `LowLatency`: Few retries then dead letter (requires FailureTopic)
 - `BestEffort`: Log failures, no retries
+
+`SpanRelation` selects `Parent` or `Link` for message and timer spans.
+
+### Requests
+
+- `Outcome<T>`: A `Success<T>` or `Failure<T>` result for one subsystem.
+- `Success<T>`: Contains the response in `Value`.
+- `Failure<T>`: Contains a `ResponseError` in `Error`.
+- `ResponseError`: Base record with a `Message` property.
+- `HandlerError`, `TimeoutError`, `FormatMismatchError`, and `MalformedResponseError`: The possible response errors.
+- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send.
 
 ### Keyed State
 
@@ -1456,6 +1479,8 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
+
+Each definition exposes its validated `Name`.
 
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
@@ -1507,13 +1532,39 @@ Published JSON collections use the same definition for owned and read-only acces
 
 `ScanDirection`: `Forward` (ascending) or `Backward` (descending).
 
+`StateReadCache.Disabled` disables published-read caching. `StateReadCache.For(ttl)` creates a cache setting with the specified TTL.
+
 Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
-- `TransientStateException : StateException`: the default for a temporary store failure or caller mistake. Examples include a `null` write or invalid index.
+- `TransientStateException : StateException`: Reports a keyed-state error that Prosody can retry.
 - `NullValueException : TransientStateException`: a rejected `null`/unrepresentable write; use `ClearAsync` / `RemoveAsync` to delete instead.
-- `PermanentStateException : StateException, IPermanentError`: reserved for failures a retry cannot resolve in-process (unregistered/identity-mismatched collection, duplicate/invalid name or TTL), or one a handler throws explicitly.
+- `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
+
+Handler error classification:
+
+- `IPermanentError`: Marks an exception as permanent.
+- `PermanentException`: A permanent handler exception.
+- `PermanentErrorAttribute`: Marks handler exception types as permanent.
+- `IPermanentErrorClassifier`: Classifies handler exceptions without reflection.
+
+`IPermanentErrorClassifier` provides `IsMessageErrorPermanent`, `IsExciseErrorPermanent`, and `IsTimerErrorPermanent`.
+
+### Configuration and dependency injection
+
+- `ClientOptions`: Contains the client settings in [Configuration](CONFIGURATION.md).
+- `Prosody.CreateClient()`: Create a `ProsodyClientBuilder`.
+- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register `ProsodyClientProvider` with dependency injection.
+- `ProsodyServiceCollectionExtensions.AddProsodyLogging()`: Register Prosody logging.
+- `ProsodyClientProvider.GetAsync()`: Get the shared client.
+- `ProsodyClientProvider.Dispose()` and `DisposeAsync()`: Dispose the shared client.
+
+### Logging and telemetry
+
+- `ProsodyLogging.Configure(loggerFactory)`: Connect Prosody to Microsoft logging.
+- `ProsodyLogging.FlushTelemetry()`: Export pending telemetry.
+- `ProsodyLogging.ShutdownTelemetry()`: Export pending telemetry and stop its providers.
 
 ## License
 
