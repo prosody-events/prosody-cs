@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/prosody-events/prosody-cs/compare/v0.5.0...v0.5.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* update mimalloc for thread lifecycle safety ([#92](https://github.com/prosody-events/prosody-cs/issues/92)) ([52a5e0d](https://github.com/prosody-events/prosody-cs/commit/52a5e0d1e94dbe647e47fc00b13867e1bee72176))
+
 ## [0.5.0](https://github.com/prosody-events/prosody-cs/compare/v0.4.0...v0.5.0) (2026-08-19)
 
 
