@@ -302,6 +302,7 @@ jobs:
 
       - name: Run tests
         run: |
+          mkdir -p /tmp/prosody-test-diagnostics
           docker run --rm --network release-test_default \
             -e PROSODY_BOOTSTRAP_SERVERS=kafka:9092 \
             -e PROSODY_CASSANDRA_NODES=cassandra:9042 \
@@ -310,7 +311,11 @@ jobs:
             -e DOTNET_NOLOGO=1 \
             -e NUGET_PACKAGES=/tmp/prosody-release-packages \
             -e NUGET_HTTP_CACHE_PATH=/tmp/prosody-release-http-cache \
+            -e DOTNET_DbgEnableMiniDump=1 \
+            -e DOTNET_DbgMiniDumpType=4 \
+            -e DOTNET_DbgMiniDumpName=/diagnostics/prosody-%p.dmp \
             -v ${{ github.workspace }}:/workspace \
+            -v /tmp/prosody-test-diagnostics:/diagnostics \
             -w /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
             bash -c "
@@ -325,8 +330,18 @@ jobs:
               # PROSODY_BOOTSTRAP_SERVERS with localhost:9094 (which is unreachable
               # from inside this container; Kafka is at kafka:9092 on the Docker network).
               dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore --no-launch-profile -c Release \
-                -p:TestPackage=true -p:TestPackageVersion=${{ needs.release-please.outputs.version }}
+                -p:TestPackage=true -p:TestPackageVersion=${{ needs.release-please.outputs.version }} \
+                -- --diagnostic --diagnostic-synchronous-write \
+                --diagnostic-output-directory /diagnostics --timeout 5m
             "
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-test-diagnostics-${{ matrix.target.name }}-net${{ matrix.dotnet }}
+          path: /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn
 
   publish:
     name: Publish

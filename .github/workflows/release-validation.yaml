@@ -214,6 +214,7 @@ jobs:
 
       - name: Test installed package
         run: |
+          mkdir -p /tmp/prosody-test-diagnostics
           docker run --rm --network host \
             -e PROSODY_BOOTSTRAP_SERVERS=localhost:9094 \
             -e PROSODY_CASSANDRA_NODES=localhost:9042 \
@@ -222,7 +223,11 @@ jobs:
             -e DOTNET_NOLOGO=1 \
             -e NUGET_PACKAGES=/tmp/prosody-release-packages \
             -e NUGET_HTTP_CACHE_PATH=/tmp/prosody-release-http-cache \
+            -e DOTNET_DbgEnableMiniDump=1 \
+            -e DOTNET_DbgMiniDumpType=4 \
+            -e DOTNET_DbgMiniDumpName=/diagnostics/prosody-%p.dmp \
             --volume "${{ github.workspace }}:/workspace" \
+            --volume "/tmp/prosody-test-diagnostics:/diagnostics" \
             --workdir /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
             bash -c '
@@ -237,5 +242,15 @@ jobs:
                 --no-launch-profile \
                 --configuration Release \
                 -p:TestPackage=true \
-                -p:TestPackageVersion=0.0.0-validation
+                -p:TestPackageVersion=0.0.0-validation \
+                -- --diagnostic --diagnostic-synchronous-write \
+                --diagnostic-output-directory /diagnostics --timeout 5m
             '
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-test-diagnostics-${{ matrix.target.rid }}-net${{ matrix.dotnet }}
+          path: /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn
