@@ -71,7 +71,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.target.rid }}
-          path: ffi/artifacts/${{ matrix.target.rid }}/
+          path: ffi/artifacts/${{ matrix.target.rid }}/libprosody_ffi.so
+          if-no-files-found: error
+
+      - name: Upload native symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: symbols-${{ matrix.target.rid }}
+          path: ffi/artifacts/${{ matrix.target.rid }}/symbols/
           if-no-files-found: error
 
   build-package:
@@ -211,6 +218,12 @@ jobs:
         with:
           name: validation-package
           path: packages/
+
+      - name: Download native symbols
+        uses: actions/download-artifact@v8
+        with:
+          name: symbols-${{ matrix.target.rid }}
+          path: /tmp/prosody-test-diagnostics/symbols/
 
       - name: Test installed package
         run: |
