@@ -30,8 +30,9 @@ public static class ProsodyLogging
     private static readonly object SyncLock = new();
 #endif
 
-    private static LogSinkBridge? _sink;
+    private static readonly LogSinkBridge Sink = new();
     private static ILoggerFactory? _loggerFactory;
+    private static bool _nativeSinkConfigured;
     private static bool _processExitHandlerRegistered;
 
     /// <summary>
@@ -46,17 +47,25 @@ public static class ProsodyLogging
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
-        var sink = new LogSinkBridge(loggerFactory);
         lock (SyncLock)
         {
-            if (_sink is not null)
+            if (_loggerFactory is not null)
             {
                 throw new InvalidOperationException("Prosody logging has already been configured.");
             }
 
-            _sink = sink;
+            if (!_nativeSinkConfigured)
+            {
+                if (!Native.Prosody_ffi.ConfigureLogSink(Sink))
+                {
+                    throw new InvalidOperationException("The native log sink is already configured.");
+                }
+
+                _nativeSinkConfigured = true;
+            }
+
+            Sink.SetLogger(loggerFactory.CreateLogger("Prosody.Native"));
             _loggerFactory = loggerFactory;
-            Native.Prosody_ffi.ConfigureLogSink(sink);
             RegisterProcessExitShutdown();
         }
     }
@@ -142,9 +151,8 @@ public static class ProsodyLogging
     {
         lock (SyncLock)
         {
-            _sink = null;
+            Sink.Clear();
             _loggerFactory = null;
-            Native.Prosody_ffi.ClearLogSink();
         }
     }
 

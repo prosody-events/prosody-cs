@@ -76,10 +76,7 @@ public sealed class LoggingTests : IDisposable
     [Fact]
     public async Task ClearAndConfigureAreAtomicUnderConcurrency()
     {
-        // Exercises the race window between Clear() and Configure().
-        // Before the fix, ClearLogSink() ran outside the lock, so a concurrent
-        // Configure() could succeed and then have its sink immediately cleared.
-        // With the fix, both operations are fully serialized under SyncLock.
+        // Exercise managed target changes while native logging stays active.
         const int iterations = 50;
 
         for (int i = 0; i < iterations; i++)
