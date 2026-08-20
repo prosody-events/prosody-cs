@@ -1,4 +1,4 @@
-use super::{Arc, EventHandler, HandlerResult, HandlerResultCode, HashMap};
+use super::{Arc, EventHandler, HandlerResult, HashMap};
 use crate::context::Context;
 use crate::error::CsHandlerError;
 use crate::event::{EventRegistry, NativeEvent};
@@ -24,16 +24,12 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 /// Returns [`CsHandlerError::Transient`] for retriable failures.
 /// Returns [`CsHandlerError::Permanent`] for non-retriable failures.
 fn map_handler_result(result: HandlerResult) -> Result<BinaryPayload, CsHandlerError> {
-    let error_msg = result.error_message.unwrap_or_default();
-
-    match result.code {
-        HandlerResultCode::Success => Ok(BinaryPayload::new(
-            result.response,
-            None::<String>,
-            None::<String>,
-        )),
-        HandlerResultCode::TransientError => Err(CsHandlerError::Transient(error_msg)),
-        HandlerResultCode::PermanentError => Err(CsHandlerError::Permanent(error_msg)),
+    match result {
+        HandlerResult::Success { response } => {
+            Ok(BinaryPayload::new(response, None::<String>, None::<String>))
+        }
+        HandlerResult::TransientError { message } => Err(CsHandlerError::Transient(message)),
+        HandlerResult::PermanentError { message } => Err(CsHandlerError::Permanent(message)),
     }
 }
 /// Adapter bridging C# [`EventHandler`] to prosody's [`FallibleHandler`] trait.

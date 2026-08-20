@@ -681,5 +681,5 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <inheritdoc/>
-    public void Dispose() => _native.Dispose();
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 }

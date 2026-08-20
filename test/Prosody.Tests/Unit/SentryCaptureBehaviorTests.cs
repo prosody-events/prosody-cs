@@ -5,7 +5,7 @@ using Prosody.Infrastructure;
 using Prosody.Logging;
 using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
-using NativeResultCode = Prosody.Native.HandlerResultCode;
+using NativeResult = Prosody.Native.HandlerResult;
 
 namespace Prosody.Tests.Unit;
 
@@ -43,7 +43,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             buildSentryContext: () => throw new InvalidOperationException("sentry context failed")
         );
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             buildSentryContext: () => throw new InvalidOperationException("sentry context failed")
         );
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public sealed class SentryCaptureBehaviorTests : IDisposable
             }
         );
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
         Assert.False(invoked);
     }
 

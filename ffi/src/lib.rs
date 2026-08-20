@@ -84,9 +84,7 @@ pub use cursor::{
 };
 pub use error::FfiError;
 pub use event::NativeEvent;
-pub use handler::{
-    EventHandler, HandlerResultCode, NativeExciseRequest, NativeRequest, NativeRequestResult,
-};
+pub use handler::{EventHandler, NativeExciseRequest, NativeRequest, NativeRequestResult};
 pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
 pub use message::{ExciseMessage, Message, MessageBatch};

@@ -33,30 +33,61 @@ public sealed class ProsodyContext
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
     internal ProsodyContext() { }
 
-    private Native.Context Native =>
-        _native
-        ?? throw (
-            _expired
-                ? new TransientStateException("The handler context is no longer active.")
-                : new InvalidOperationException("This context does not have a native handler.")
-        );
+    private object Gate => (object?)_stateHandles ?? this;
+
+    private Native.Context ActiveNative
+    {
+        get
+        {
+            if (!Monitor.IsEntered(Gate))
+            {
+                throw new InvalidOperationException("Native context access requires the context gate.");
+            }
+
+            return _native
+                ?? throw (
+                    _expired
+                        ? new TransientStateException("The handler context is no longer active.")
+                        : new InvalidOperationException("This context does not have a native handler.")
+                );
+        }
+    }
 
     internal void Invalidate()
     {
-        _expired = true;
-        _native?.Dispose();
-        _native = null;
+        lock (Gate)
+        {
+            _expired = true;
+            _native?.Dispose();
+            _native = null;
+            _stateHandles?.Clear();
+        }
     }
 
     /// <summary>
     /// Gets a value indicating whether cancellation has been requested.
     /// </summary>
-    public bool ShouldCancel => Native.ShouldCancel();
+    public bool ShouldCancel
+    {
+        get
+        {
+            lock (Gate)
+            {
+                return ActiveNative.ShouldCancel();
+            }
+        }
+    }
 
     /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
-    public Task OnCancelAsync() => Native.OnCancel();
+    public Task OnCancelAsync()
+    {
+        lock (Gate)
+        {
+            return ActiveNative.OnCancel();
+        }
+    }
 
     /// <summary>
     /// Schedule a new timer at the given time for the current message key.
@@ -65,7 +96,10 @@ public sealed class ProsodyContext
     public Task ScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return Native.Schedule(time.UtcDateTime, carrier);
+        lock (Gate)
+        {
+            return ActiveNative.Schedule(time.UtcDateTime, carrier);
+        }
     }
 
     /// <summary>
@@ -75,7 +109,10 @@ public sealed class ProsodyContext
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return Native.ClearAndSchedule(time.UtcDateTime, carrier);
+        lock (Gate)
+        {
+            return ActiveNative.ClearAndSchedule(time.UtcDateTime, carrier);
+        }
     }
 
     /// <summary>
@@ -85,7 +122,10 @@ public sealed class ProsodyContext
     public Task UnscheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return Native.Unschedule(time.UtcDateTime, carrier);
+        lock (Gate)
+        {
+            return ActiveNative.Unschedule(time.UtcDateTime, carrier);
+        }
     }
 
     /// <summary>
@@ -94,7 +134,10 @@ public sealed class ProsodyContext
     public Task ClearScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return Native.ClearScheduled(carrier);
+        lock (Gate)
+        {
+            return ActiveNative.ClearScheduled(carrier);
+        }
     }
 
     /// <summary>
@@ -104,7 +147,12 @@ public sealed class ProsodyContext
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        DateTime[] times = await Native.Scheduled(carrier).ConfigureAwait(false);
+        Task<DateTime[]> operation;
+        lock (Gate)
+        {
+            operation = ActiveNative.Scheduled(carrier);
+        }
+        DateTime[] times = await operation.ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
 
@@ -121,7 +169,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new ValueState<T>(
-                StateInterop.RunSync(() => Native.ValueState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.ValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
@@ -140,7 +188,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MapState<TValue>(
-                StateInterop.RunSync(() => Native.MapState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.MapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TValue>(options)
             )
         );
@@ -159,7 +207,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new DequeState<T>(
-                StateInterop.RunSync(() => Native.DequeState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.DequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
@@ -177,7 +225,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageValueState<TPayload>(
-                StateInterop.RunSync(() => Native.MessageValueState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.MessageValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -195,7 +243,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageMapState<TPayload>(
-                StateInterop.RunSync(() => Native.MessageMapState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.MessageMapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -213,13 +261,25 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageDequeState<TPayload>(
-                StateInterop.RunSync(() => Native.MessageDequeState(definition.Name)),
+                StateInterop.RunSync(() => ActiveNative.MessageDequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
     }
 
     private THandle GetOrAddHandle<THandle>(StateDefinition definition, Func<JsonSerializerOptions, THandle> factory)
+        where THandle : class
+    {
+        lock (Gate)
+        {
+            return GetOrAddHandleLocked(definition, factory);
+        }
+    }
+
+    private THandle GetOrAddHandleLocked<THandle>(
+        StateDefinition definition,
+        Func<JsonSerializerOptions, THandle> factory
+    )
         where THandle : class
     {
         if (_expired)
