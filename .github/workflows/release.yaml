@@ -335,6 +335,10 @@ jobs:
                 --diagnostic-output-directory /diagnostics --timeout 5m
             "
 
+      - name: Make failure diagnostics readable
+        if: failure()
+        run: sudo chmod --recursive a+rX /tmp/prosody-test-diagnostics
+
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
