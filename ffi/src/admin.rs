@@ -13,12 +13,12 @@ use prosody::admin::{AdminConfiguration, ProsodyAdminClient, TopicConfiguration}
 ///
 /// Wraps the Prosody admin client for FFI exposure. Primarily used in
 /// integration tests to set up and tear down test topics.
-#[derive(uniffi::Object)]
 pub struct AdminClient {
     client: Arc<ProsodyAdminClient>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl AdminClient {
     /// Creates a new admin client connected to the given brokers.
     ///
@@ -26,7 +26,6 @@ impl AdminClient {
     ///
     /// Returns [`FfiError`] if configuration is invalid or the underlying
     /// client fails to initialize.
-    #[uniffi::constructor]
     pub fn new(bootstrap_servers: Vec<String>) -> Result<Self, FfiError> {
         let config = AdminConfiguration::new(bootstrap_servers)?;
         let client = ProsodyAdminClient::new(&config)?;

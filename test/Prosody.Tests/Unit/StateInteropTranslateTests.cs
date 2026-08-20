@@ -1,5 +1,4 @@
 using Prosody.State;
-using Prosody.Tests.TestHelpers;
 using Native = Prosody.Native;
 
 namespace Prosody.Tests.Unit;
@@ -12,29 +11,12 @@ namespace Prosody.Tests.Unit;
 public sealed class StateInteropTranslateTests
 {
     [Fact]
-    public async Task NativePermanentFailure_SurfacesAsPermanentStateException()
+    public void NativePermanentFailure_SurfacesAsPermanentStateException()
     {
-        var handle = new PermanentFaultingValueStateHandle();
-        var state = new ValueState<int>(handle, TestJson.TypeInfo<int>());
+        var native = new Native.FfiErrorException(new Native.FfiError.PermanentState("boom"));
 
-        var exception = await Assert.ThrowsAsync<PermanentStateException>(() =>
-            state.CommitAsync(TestContext.Current.CancellationToken)
-        );
+        var exception = Assert.IsType<PermanentStateException>(StateInterop.Translate(native));
 
         Assert.Equal(StateErrorCategory.Permanent, exception.Category);
-    }
-
-    /// <summary>A native value handle whose <c>Commit</c> raises a generated permanent state failure.</summary>
-    private sealed class PermanentFaultingValueStateHandle : Native.IJsonValueStateHandle
-    {
-        public Task<byte[]?> Get(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
-
-        public Task Set(byte[] bytes, Dictionary<string, string> carrier) => Task.CompletedTask;
-
-        public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
-
-        public Task Commit(Dictionary<string, string> carrier) => throw new Native.FfiException.PermanentState("boom");
-
-        public Task Rollback(Dictionary<string, string> carrier) => Task.CompletedTask;
     }
 }

@@ -9,10 +9,11 @@ namespace Prosody.Messaging;
 /// </summary>
 public sealed class ProsodyContext
 {
-    private readonly Native.Context _native;
+    private Native.Context? _native;
     private readonly JsonSerializerOptions? _jsonOptions;
     private readonly IReadOnlySet<StateDefinition>? _stateDefinitions;
     private readonly Dictionary<StateDefinition, object>? _stateHandles;
+    private bool _expired;
 
     internal ProsodyContext(
         Native.Context native,
@@ -30,17 +31,32 @@ public sealed class ProsodyContext
     }
 
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
-    internal ProsodyContext() => _native = null!;
+    internal ProsodyContext() { }
+
+    private Native.Context Native =>
+        _native
+        ?? throw (
+            _expired
+                ? new TransientStateException("The handler context is no longer active.")
+                : new InvalidOperationException("This context does not have a native handler.")
+        );
+
+    internal void Invalidate()
+    {
+        _expired = true;
+        _native?.Dispose();
+        _native = null;
+    }
 
     /// <summary>
     /// Gets a value indicating whether cancellation has been requested.
     /// </summary>
-    public bool ShouldCancel => _native.ShouldCancel();
+    public bool ShouldCancel => Native.ShouldCancel();
 
     /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
-    public Task OnCancelAsync() => _native.OnCancel();
+    public Task OnCancelAsync() => Native.OnCancel();
 
     /// <summary>
     /// Schedule a new timer at the given time for the current message key.
@@ -49,7 +65,7 @@ public sealed class ProsodyContext
     public Task ScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.Schedule(time.UtcDateTime, carrier);
+        return Native.Schedule(time.UtcDateTime, carrier);
     }
 
     /// <summary>
@@ -59,7 +75,7 @@ public sealed class ProsodyContext
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.ClearAndSchedule(time.UtcDateTime, carrier);
+        return Native.ClearAndSchedule(time.UtcDateTime, carrier);
     }
 
     /// <summary>
@@ -69,7 +85,7 @@ public sealed class ProsodyContext
     public Task UnscheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.Unschedule(time.UtcDateTime, carrier);
+        return Native.Unschedule(time.UtcDateTime, carrier);
     }
 
     /// <summary>
@@ -78,7 +94,7 @@ public sealed class ProsodyContext
     public Task ClearScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.ClearScheduled(carrier);
+        return Native.ClearScheduled(carrier);
     }
 
     /// <summary>
@@ -88,7 +104,7 @@ public sealed class ProsodyContext
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        DateTime[] times = await _native.Scheduled(carrier).ConfigureAwait(false);
+        DateTime[] times = await Native.Scheduled(carrier).ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
 
@@ -105,7 +121,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new ValueState<T>(
-                StateInterop.RunSync(() => _native.ValueState(definition.Name)),
+                StateInterop.RunSync(() => Native.ValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
@@ -124,7 +140,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MapState<TValue>(
-                StateInterop.RunSync(() => _native.MapState(definition.Name)),
+                StateInterop.RunSync(() => Native.MapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TValue>(options)
             )
         );
@@ -143,7 +159,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new DequeState<T>(
-                StateInterop.RunSync(() => _native.DequeState(definition.Name)),
+                StateInterop.RunSync(() => Native.DequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
@@ -161,7 +177,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageValueState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageValueState(definition.Name)),
+                StateInterop.RunSync(() => Native.MessageValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -179,7 +195,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageMapState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageMapState(definition.Name)),
+                StateInterop.RunSync(() => Native.MessageMapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -197,7 +213,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageDequeState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageDequeState(definition.Name)),
+                StateInterop.RunSync(() => Native.MessageDequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -206,6 +222,11 @@ public sealed class ProsodyContext
     private THandle GetOrAddHandle<THandle>(StateDefinition definition, Func<JsonSerializerOptions, THandle> factory)
         where THandle : class
     {
+        if (_expired)
+        {
+            throw new TransientStateException("The handler context is no longer active.");
+        }
+
         if (_native is null || _stateHandles is null || _jsonOptions is null)
         {
             throw new InvalidOperationException("Keyed-state collections are not available on this context.");

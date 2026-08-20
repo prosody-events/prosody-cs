@@ -66,9 +66,8 @@ DOTNET_NATIVE_RELEASE := $(DOTNET_NATIVE_BASE)/release
 # C# generated bindings output
 BINDINGS_DIR := src/Prosody/Generated
 
-# uniffi-bindgen-cs configuration
-BINDGEN_REPO := https://github.com/NordSecurity/uniffi-bindgen-cs.git
-BINDGEN_TAG := v0.11.0+v0.31.0
+# BoltFFI configuration
+BOLTFFI_VERSION := 0.30.1
 
 # ==============================================================================
 # Help
@@ -106,8 +105,8 @@ setup:
 	@echo "==> Installing Rust dependencies..."
 	cargo fetch
 	@echo ""
-	@echo "==> Installing uniffi-bindgen-cs..."
-	cargo install uniffi-bindgen-cs --git $(BINDGEN_REPO) --tag $(BINDGEN_TAG) --force
+	@echo "==> Installing BoltFFI..."
+	cargo install boltffi_cli --version $(BOLTFFI_VERSION) --locked
 	@echo ""
 	@echo "==> Installing taplo (TOML formatter)..."
 	cargo install taplo-cli
@@ -126,57 +125,49 @@ setup:
 
 # Build FFI crate (debug) and copy to where .NET expects it
 build-ffi:
-	cargo build -p prosody-ffi
+	cargo build -p prosody_ffi
 	@mkdir -p "$(DOTNET_NATIVE_DEBUG)"
 	cp "$(CDYLIB)" "$(DOTNET_NATIVE_DEBUG)/$(LIB_NAME)"
 	@echo "Native library copied to $(DOTNET_NATIVE_DEBUG)/$(LIB_NAME)"
 
 # Build FFI crate (release) and copy to where .NET expects it
 build-ffi-release:
-	cargo build -p prosody-ffi --release
+	cargo build -p prosody_ffi --release
 	@mkdir -p "$(DOTNET_NATIVE_RELEASE)"
 	cp "$(CDYLIB_RELEASE)" "$(DOTNET_NATIVE_RELEASE)/$(LIB_NAME)"
 	@echo "Native library copied to $(DOTNET_NATIVE_RELEASE)/$(LIB_NAME)"
 
-# Generate C# bindings from compiled cdylib
-bindgen: $(CDYLIB)
+# Generate C# bindings from the Rust source
+bindgen:
 	@mkdir -p "$(BINDINGS_DIR)"
-	@rm -f "$(BINDINGS_DIR)"/*.cs
-	uniffi-bindgen-cs --library "$(CDYLIB)" --config uniffi.toml --out-dir "$(BINDINGS_DIR)"
-	@mv "$(BINDINGS_DIR)/prosody_ffi.cs" "$(BINDINGS_DIR)/ProsodyFfi.cs"
+	@rm -f "$(BINDINGS_DIR)"/*.cs "$(BINDINGS_DIR)"/*.h
+	boltffi generate csharp --deny-skipped
 	@echo "C# bindings generated in $(BINDINGS_DIR)"
 
-bindgen-release: $(CDYLIB_RELEASE)
-	@mkdir -p "$(BINDINGS_DIR)"
-	@rm -f "$(BINDINGS_DIR)"/*.cs
-	uniffi-bindgen-cs --library "$(CDYLIB_RELEASE)" --config uniffi.toml --out-dir "$(BINDINGS_DIR)"
-	@mv "$(BINDINGS_DIR)/prosody_ffi.cs" "$(BINDINGS_DIR)/ProsodyFfi.cs"
-	@echo "C# bindings generated in $(BINDINGS_DIR)"
+bindgen-release: bindgen
 
 # Build everything (FFI + bindings + .NET + copy native lib to test output)
-build: build-ffi bindgen
+build: bindgen
+	@$(MAKE) --no-print-directory build-ffi
 	@echo "Building .NET project..."
 	dotnet build
 	@$(MAKE) --no-print-directory copy-native-to-test-output
 	@echo "Build complete!"
 
-build-release: build-ffi-release bindgen-release
+build-release: bindgen-release
+	@$(MAKE) --no-print-directory build-ffi-release
 	@echo "Building .NET project (Release)..."
 	dotnet build -c Release
 	@$(MAKE) --no-print-directory copy-native-to-test-output CONFIG=Release
 	@echo "Release build complete!"
 
 # CI build: dev Rust FFI (faster) + Release .NET (matches test binary expectations)
-build-ci: build-ffi bindgen
+build-ci: bindgen
+	@$(MAKE) --no-print-directory build-ffi
 	@echo "Building .NET project (Release)..."
 	dotnet build -c Release
 	@$(MAKE) --no-print-directory copy-native-to-test-output CONFIG=Release NATIVE_LIB=$(CDYLIB)
 	@echo "CI build complete!"
-
-# Ensure cdylib exists before bindgen (triggers build-ffi if needed)
-$(CDYLIB): build-ffi
-
-$(CDYLIB_RELEASE): build-ffi-release
 
 # ==============================================================================
 # Lint
@@ -281,7 +272,8 @@ endif
 
 # Build NuGet package locally (current platform only)
 # This exercises the packaging machinery without needing all platform builds
-pack: build-ffi-release bindgen-release
+pack: bindgen-release
+	@$(MAKE) --no-print-directory build-ffi-release
 	@echo "==> Staging native library for NuGet packaging..."
 	@mkdir -p "ffi/artifacts/$(RID)"
 	cp "$(CDYLIB_RELEASE)" "ffi/artifacts/$(RID)/$(LIB_NAME)"

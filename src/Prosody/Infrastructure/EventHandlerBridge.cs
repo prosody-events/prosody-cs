@@ -91,6 +91,7 @@ internal static class EventHandlerBridge
     /// <summary>
     /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
     /// and classifies any exception as permanent or transient.
+    /// Cancellation never detaches a handler. This method returns only after the handler returns.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task<byte[]>> handler,
@@ -259,14 +260,14 @@ internal static class EventHandlerBridge
 
 /// <summary>
 /// Bridges a typed user-facing <see cref="IProsodyHandler{TPayload}"/> interface
-/// to the UniFFI-generated <see cref="NativeHandler"/> interface.
+/// to native event values.
 /// </summary>
 /// <remarks>
 /// Deserializes the payload once per message, inside the protected handler scope so that
 /// <see cref="JsonException"/> is classified by the error classification logic on
 /// <see cref="IProsodyHandler{TPayload}.OnMessageAsync"/> exactly like any other exception.
 /// </remarks>
-internal sealed class EventHandlerBridge<TPayload> : NativeHandler
+internal sealed class EventHandlerBridge<TPayload>
 {
     private readonly Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> _onMessage;
     private readonly Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> _onExcise;
@@ -482,8 +483,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnMessage(
+    internal Task<NativeResult> OnMessage(
         Native.Context context,
         Native.Message message,
         Dictionary<string, string> carrier
@@ -499,22 +499,25 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
         var bytes = message.Payload();
 
-        return HandleMessageAsync(
+        return WithContext(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
-            topic,
-            key,
-            partition,
-            offset,
-            timestamp,
-            bytes,
-            context.OnCancel,
-            carrier,
-            message
+            prosodyContext =>
+                HandleMessageAsync(
+                    prosodyContext,
+                    topic,
+                    key,
+                    partition,
+                    offset,
+                    timestamp,
+                    bytes,
+                    () => context.OnCancel(),
+                    carrier,
+                    message
+                )
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnExcise(
+    internal Task<NativeResult> OnExcise(
         Native.Context context,
         Native.ExciseMessage message,
         Dictionary<string, string> carrier
@@ -527,33 +530,54 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             message.Offset(),
             new DateTimeOffset(message.Timestamp(), TimeSpan.Zero)
         );
-        return EventHandlerBridge.InvokeHandlerAsync(
-            ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
-            _isExcisePermanent,
-            context.OnCancel,
-            carrier,
-            activityName: EventHandlerBridge.OnExciseActivityName,
-            eventType: SentryConstants.TagValues.EventTypeExcise,
-            buildSentryContext: SentryIntegration.IsEnabled
-                ? () =>
-                    EventHandlerBridge.BuildMessageSentryContext(
-                        record.Topic,
-                        record.Key,
-                        record.Partition,
-                        record.Offset
-                    )
-                : null
+        return WithContext(
+            new ProsodyContext(context, _jsonOptions, _stateDefinitions),
+            prosodyContext =>
+                EventHandlerBridge.InvokeHandlerAsync(
+                    ct => _onExcise(prosodyContext, record, ct),
+                    _isExcisePermanent,
+                    () => context.OnCancel(),
+                    carrier,
+                    activityName: EventHandlerBridge.OnExciseActivityName,
+                    eventType: SentryConstants.TagValues.EventTypeExcise,
+                    buildSentryContext: SentryIntegration.IsEnabled
+                        ? () =>
+                            EventHandlerBridge.BuildMessageSentryContext(
+                                record.Topic,
+                                record.Key,
+                                record.Partition,
+                                record.Offset
+                            )
+                        : null
+                )
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
-        HandleTimerAsync(
+    internal Task<NativeResult> OnTimer(
+        Native.Context context,
+        Native.Timer timer,
+        Dictionary<string, string> carrier
+    ) =>
+        WithContext(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
-            new ProsodyTimer(timer),
-            context.OnCancel,
-            carrier
+            prosodyContext =>
+                HandleTimerAsync(prosodyContext, new ProsodyTimer(timer), () => context.OnCancel(), carrier)
         );
+
+    private static async Task<NativeResult> WithContext(
+        ProsodyContext context,
+        Func<ProsodyContext, Task<NativeResult>> handler
+    )
+    {
+        try
+        {
+            return await handler(context).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.Invalidate();
+        }
+    }
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.

@@ -106,12 +106,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install uniffi-bindgen-cs
+      - name: Install BoltFFI
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: uniffi-bindgen-cs
-          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
+          crate: boltffi_cli
+          version: 0.30.1
 
       - name: Install CSharpier globally
         run: dotnet tool install -g csharpier
@@ -137,7 +136,7 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI for binding generation
-        run: cargo build -p prosody-ffi
+        run: cargo build -p prosody_ffi
 
       - name: Generate C# bindings
         run: make bindgen

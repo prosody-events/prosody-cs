@@ -23,13 +23,13 @@ RUN rustup target add "${RUST_TARGET}"
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/workspace/target \
-    cargo chef cook --release --package prosody-ffi --target "${RUST_TARGET}" --recipe-path recipe.json
+    cargo chef cook --release --package prosody_ffi --target "${RUST_TARGET}" --recipe-path recipe.json
 
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/workspace/target \
-    cargo build --release --package prosody-ffi --target "${RUST_TARGET}" \
+    cargo build --release --package prosody_ffi --target "${RUST_TARGET}" \
     && mkdir /output \
     && cp "target/${RUST_TARGET}/release/libprosody_ffi.so" /output/
 

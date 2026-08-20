@@ -12,74 +12,55 @@ namespace Prosody.Tests.Unit;
 public sealed class NullWriteRejectionTests
 {
     [Fact]
-    public async Task Value_SetNull_ThrowsNullValueException_TransientCategory_StoreUntouched()
+    public void Value_SetNull_ThrowsNullValueException_TransientCategory()
     {
-        var handle = new FakeJsonValueStateHandle();
-        var state = new ValueState<string>(handle, TestJson.TypeInfo<string>());
-
-        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
-            state.SetAsync(null!, TestContext.Current.CancellationToken)
+        var exception = Assert.Throws<NullValueException>(() =>
+            StateInterop.SerializeJsonOrThrowNull(null!, TestJson.TypeInfo<string>(), "Use ClearAsync.")
         );
 
         Assert.Multiple(
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
             () => Assert.IsAssignableFrom<TransientStateException>(exception),
-            () => Assert.Contains("ClearAsync", exception.Message, StringComparison.Ordinal),
-            () => Assert.Equal(0, handle.SetCalls)
+            () => Assert.Contains("ClearAsync", exception.Message, StringComparison.Ordinal)
         );
     }
 
     [Fact]
-    public async Task Map_SetNull_ThrowsNullValueException_NamesRemoveAsync_StoreUntouched()
+    public void Map_SetNull_ThrowsNullValueException_NamesRemoveOperation()
     {
-        var handle = new FakeMapStateHandle();
-        var state = new MapState<string>(handle, TestJson.TypeInfo<string>());
-
-        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
-            state.SetAsync("k", null!, TestContext.Current.CancellationToken)
+        var exception = Assert.Throws<NullValueException>(() =>
+            StateInterop.SerializeJsonOrThrowNull(null!, TestJson.TypeInfo<string>(), "Use RemoveAsync.")
         );
 
         Assert.Multiple(
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Contains("RemoveAsync", exception.Message, StringComparison.Ordinal),
-            () => Assert.Equal(0, handle.SetCalls)
+            () => Assert.Contains("RemoveAsync", exception.Message, StringComparison.Ordinal)
         );
     }
 
     [Fact]
-    public async Task Deque_PushNull_ThrowsNullValueException_TransientCategory_StoreUntouched()
+    public void Deque_PushNull_ThrowsNullValueException_TransientCategory()
     {
-        var handle = new FakeDequeStateHandle();
-        var state = new DequeState<string>(handle, TestJson.TypeInfo<string>());
-
-        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
-            state.PushBackAsync(null!, TestContext.Current.CancellationToken)
+        var exception = Assert.Throws<NullValueException>(() =>
+            StateInterop.SerializeJsonOrThrowNull(null!, TestJson.TypeInfo<string>(), "Use ClearAsync.")
         );
 
-        Assert.Multiple(
-            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.PushBackCalls)
-        );
+        Assert.Equal(StateErrorCategory.Transient, exception.Category);
     }
 
     [Fact]
-    public async Task Value_SetUnrepresentable_ThrowsTransient_StoreUntouched()
+    public void Value_SetUnrepresentable_ThrowsTransient()
     {
-        var handle = new FakeJsonValueStateHandle();
-        var state = new ValueState<Cyclic>(handle, TestJson.TypeInfo<Cyclic>());
-
-        // A self-referencing graph throws JsonException at serialize time (cycle detected).
         var value = new Cyclic();
         value.Self = value;
 
-        var exception = await Assert.ThrowsAsync<TransientStateException>(() =>
-            state.SetAsync(value, TestContext.Current.CancellationToken)
+        var exception = Assert.Throws<TransientStateException>(() =>
+            StateInterop.SerializeJsonOrThrowNull(value, TestJson.TypeInfo<Cyclic>(), "Use ClearAsync.")
         );
 
         Assert.Multiple(
             () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.IsType<JsonException>(exception.InnerException),
-            () => Assert.Equal(0, handle.SetCalls)
+            () => Assert.IsType<JsonException>(exception.InnerException)
         );
     }
 

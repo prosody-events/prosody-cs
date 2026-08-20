@@ -1,7 +1,7 @@
 //! Logging bridge from Rust tracing to C# `ILoggerFactory`.
 //!
 //! This module bridges Rust's [`tracing`] system to C#'s
-//! `Microsoft.Extensions.Logging.ILoggerFactory` via a `UniFFI` callback
+//! `Microsoft.Extensions.Logging.ILoggerFactory` via a `BoltFFI` callback
 //! interface. The logging configuration is global and thread-safe: once
 //! configured, all Prosody clients share the same logger.
 //!
@@ -13,7 +13,7 @@
 //!     ▼ on_event()
 //! LogSinkLayer (Rust, tracing Layer)
 //!     │
-//!     ▼ UniFFI callback
+//!     ▼ BoltFFI callback
 //! LogSinkBridge (C#, implements LogSink)
 //!     │
 //!     ▼ ILogger.Log()
@@ -56,7 +56,8 @@ use crate::error::FfiError;
 ///
 /// These values map directly to C#'s `Microsoft.Extensions.Logging.LogLevel`
 /// enum, preserving integer discriminants for efficient FFI conversion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
     /// Most detailed logging; may contain sensitive data.
     Trace = 0,
@@ -94,7 +95,8 @@ impl From<Level> for LogLevel {
 /// Values that cannot be represented in the native type maps (such as `i128`
 /// and `u128`) are converted to strings and stored in the
 /// [`strings`](Self::strings) map.
-#[derive(Debug, Clone, Default, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone, Default)]
 pub struct LogFields {
     /// String-typed fields, including debug-formatted values and `i128`/`u128`.
     pub strings: HashMap<String, String>,
@@ -117,15 +119,15 @@ static LOG_SINK: ArcSwapOption<Arc<dyn LogSink>> = ArcSwapOption::const_empty();
 
 /// Callback interface for forwarding log messages from Rust to C#.
 ///
-/// This trait is implemented by C# via `UniFFI`'s callback interface mechanism.
-/// The C# `LogSinkBridge` class implements this interface and forwards log
-/// messages to `Microsoft.Extensions.Logging.ILogger`.
+/// This trait is implemented by C# via `BoltFFI`'s callback interface
+/// mechanism. The C# `LogSinkBridge` class implements this interface and
+/// forwards log messages to `Microsoft.Extensions.Logging.ILogger`.
 ///
 /// # Implementation Notes
 ///
 /// Implementations must be thread-safe (`Send + Sync`) as log events may
 /// originate from any thread in the Prosody runtime.
-#[uniffi::export(with_foreign)]
+#[boltffi::export]
 pub trait LogSink: Send + Sync {
     /// Checks whether logging is enabled for the specified level.
     ///
@@ -187,7 +189,7 @@ pub(crate) fn ensure_tracing_initialized() {
 /// # Parameters
 ///
 /// - `sink`: The [`LogSink`] implementation provided by C#.
-#[uniffi::export]
+#[boltffi::export]
 pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
     // Ensure tracing is initialized before configuring the sink
     ensure_tracing_initialized();
@@ -201,7 +203,7 @@ pub fn configure_log_sink(sink: Arc<dyn LogSink>) {
 /// a new log sink is configured via [`configure_log_sink`].
 ///
 /// This is useful for graceful shutdown or temporarily disabling logging.
-#[uniffi::export]
+#[boltffi::export]
 pub fn clear_log_sink() {
     LOG_SINK.store(None);
 }
@@ -221,7 +223,7 @@ pub fn clear_log_sink() {
 /// # Errors
 ///
 /// Returns [`FfiError::Tracing`] if the span or metric exporter fails to flush.
-#[uniffi::export]
+#[boltffi::export]
 pub fn flush_telemetry() -> Result<(), FfiError> {
     flush_core_telemetry()?;
     Ok(())
@@ -242,7 +244,7 @@ pub fn flush_telemetry() -> Result<(), FfiError> {
 ///
 /// Returns [`FfiError::Tracing`] if the span or metric pipeline fails to shut
 /// down.
-#[uniffi::export]
+#[boltffi::export]
 pub fn shutdown_telemetry() -> Result<(), FfiError> {
     shutdown_core_telemetry()?;
     Ok(())

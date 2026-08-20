@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class MapState<TValue> : IMapState<TValue>
     where TValue : notnull
 {
-    private readonly Native.IJsonMapStateHandle _handle;
+    private readonly Native.JsonMapStateHandle _handle;
     private readonly JsonTypeInfo<TValue> _typeInfo;
 
-    internal MapState(Native.IJsonMapStateHandle handle, JsonTypeInfo<TValue> typeInfo)
+    internal MapState(Native.JsonMapStateHandle handle, JsonTypeInfo<TValue> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -82,7 +82,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
+        return new StateScanSequence<Native.MapKeyCursor, string, string>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
@@ -100,7 +100,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
+        return new StateScanSequence<Native.JsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())

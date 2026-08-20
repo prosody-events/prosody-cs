@@ -11,7 +11,7 @@ use prosody::consumer::message::ConsumerMessage;
 
 use crate::cursor::{JsonMapCursor, MapKeyCursor, MessageMapCursor};
 use crate::error::FfiError;
-use crate::message::Message;
+use crate::message::{Message, MessageBatch};
 use crate::state::{OwnedCarrier, ScanDirection, into_bytes, into_message, reject_null, traced};
 
 /// One optional JSON value from an ordered batch read.
@@ -19,21 +19,22 @@ use crate::state::{OwnedCarrier, ScanDirection, into_bytes, into_message, reject
 /// The C# generator emits `new byte[length][]?` for the nested optional byte
 /// vector. This syntax does not compile, so this record keeps the generated
 /// type valid.
-#[derive(uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct JsonMapValue {
     /// The JSON document bytes, or `None` when the key is absent.
     pub bytes: Option<Vec<u8>>,
 }
 
 /// A JSON ordered-map state handle for one event.
-#[derive(uniffi::Object)]
 pub struct JsonMapStateHandle {
     pub(crate) name: String,
     pub(crate) state: BoxMapState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl JsonMapStateHandle {
     /// Reads the JSON document bytes for `key`.
     ///
@@ -91,13 +92,13 @@ impl JsonMapStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<MapKeyCursor> {
+    ) -> MapKeyCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(MapKeyCursor {
+        MapKeyCursor {
             cursor: self.state.keys(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Inserts or replaces one JSON document.
@@ -148,13 +149,13 @@ impl JsonMapStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<JsonMapCursor> {
+    ) -> JsonMapCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(JsonMapCursor {
+        JsonMapCursor {
             cursor: self.state.scan(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Commits the buffered operations.
@@ -174,13 +175,13 @@ impl JsonMapStateHandle {
 }
 
 /// A Kafka-message ordered-map state handle for one event.
-#[derive(uniffi::Object)]
 pub struct MessageMapStateHandle {
     pub(crate) state: BoxMapState<ConsumerMessage<BinaryPayload>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl MessageMapStateHandle {
     /// Reads the Kafka message for `key`.
     ///
@@ -191,7 +192,7 @@ impl MessageMapStateHandle {
         &self,
         key: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.get(key))
             .await
             .map(|item| item.map(into_message))
@@ -206,14 +207,16 @@ impl MessageMapStateHandle {
         &self,
         keys: Vec<String>,
         carrier: HashMap<String, String>,
-    ) -> Result<Vec<Option<Arc<Message>>>, FfiError> {
+    ) -> Result<MessageBatch, FfiError> {
         traced(&self.propagator, carrier, self.state.get_many(keys))
             .await
             .map(|items| {
-                items
-                    .into_iter()
-                    .map(|item| item.map(into_message))
-                    .collect()
+                MessageBatch::optional(
+                    items
+                        .into_iter()
+                        .map(|item| item.map(into_message))
+                        .collect(),
+                )
             })
     }
 
@@ -236,13 +239,13 @@ impl MessageMapStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<MapKeyCursor> {
+    ) -> MapKeyCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(MapKeyCursor {
+        MapKeyCursor {
             cursor: self.state.keys(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Inserts or replaces one Kafka message.
@@ -253,7 +256,7 @@ impl MessageMapStateHandle {
     pub async fn set(
         &self,
         key: String,
-        message: Arc<Message>,
+        message: Message,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         traced(
@@ -292,13 +295,13 @@ impl MessageMapStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<MessageMapCursor> {
+    ) -> MessageMapCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(MessageMapCursor {
+        MessageMapCursor {
             cursor: self.state.scan(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Commits the buffered operations.

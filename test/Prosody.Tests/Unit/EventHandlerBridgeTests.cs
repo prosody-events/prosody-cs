@@ -548,6 +548,42 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
+    public async Task HandleMessageWaitsForCancelledHandlerToReturn()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new TypedLambdaHandler<JsonElement>(
+            onMessage: async (_, _, token) =>
+            {
+                handlerStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Continue until the test releases the handler.
+                }
+                cancellationObserved.TrySetResult();
+                await handlerRelease.Task.ConfigureAwait(false);
+            }
+        );
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
+        var resultTask = HandleMsg(bridge, onCancel: () => cancellation.Task);
+
+        await handlerStarted.Task;
+        cancellation.TrySetResult();
+        await cancellationObserved.Task;
+
+        Assert.False(resultTask.IsCompleted);
+        handlerRelease.TrySetResult();
+        var result = await resultTask;
+        Assert.Equal(NativeResultCode.Success, result.Code);
+    }
+
+    [Fact]
     public async Task HandleTimerCancelsTokenWhileHandlerIsRunning()
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -11,6 +11,43 @@ namespace Prosody.State;
 /// </summary>
 internal static class MessageInterop
 {
+    internal static async Task<Native.Message[]?> MessageBatch(Task<Native.MessageBatch?> pending)
+    {
+        using var batch = await pending.ConfigureAwait(false);
+        if (batch is null)
+        {
+            return null;
+        }
+
+        var messages = new Native.Message[checked((int)batch.Count())];
+        for (var i = 0; i < messages.Length; i++)
+        {
+            messages[i] = RequiredMessage(batch, i, "A message scan returned an empty slot.");
+        }
+
+        return messages;
+    }
+
+    internal static async Task<MessageMapEntry[]?> MapBatch(Task<Native.MessageBatch?> pending)
+    {
+        using var batch = await pending.ConfigureAwait(false);
+        if (batch is null)
+        {
+            return null;
+        }
+
+        var entries = new MessageMapEntry[checked((int)batch.Count())];
+        for (var i = 0; i < entries.Length; i++)
+        {
+            entries[i] = new MessageMapEntry(batch, i);
+        }
+
+        return entries;
+    }
+
+    private static Native.Message RequiredMessage(Native.MessageBatch batch, int index, string error) =>
+        batch.MessageAt((ulong)index) ?? throw new TransientStateException(error);
+
     /// <summary>
     /// Reconstructs a public <see cref="Message{T}"/> from a native message, deserializing the
     /// payload and retaining the native handle so the message can be written back to a collection.

@@ -6,10 +6,10 @@ namespace Prosody.State;
 public sealed class PublishedMap<TValue>
     where TValue : notnull
 {
-    private readonly Native.IPublishedMapHandle _handle;
+    private readonly Native.PublishedMapHandle _handle;
     private readonly JsonTypeInfo<TValue> _typeInfo;
 
-    internal PublishedMap(Native.IPublishedMapHandle handle, JsonTypeInfo<TValue> typeInfo) =>
+    internal PublishedMap(Native.PublishedMapHandle handle, JsonTypeInfo<TValue> typeInfo) =>
         (_handle, _typeInfo) = (handle, typeInfo);
 
     /// <summary>Reads one entry for a user key.</summary>
@@ -67,9 +67,9 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
+        return new StateScanSequence<Native.MapKeyCursor, string, string>(
             () =>
-                StateInterop.RunAsync<Native.IMapKeyCursor>(
+                StateInterop.RunAsync<Native.MapKeyCursor>(
                     async () =>
                         await _handle
                             .Keys(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
@@ -92,9 +92,9 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
+        return new StateScanSequence<Native.JsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
             () =>
-                StateInterop.RunAsync<Native.IJsonMapCursor>(
+                StateInterop.RunAsync<Native.JsonMapCursor>(
                     async () =>
                         await _handle
                             .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())

@@ -12,10 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::context::Context;
 use crate::error::FfiError;
-use crate::message::{ExciseMessage, Message};
-use crate::timer::Timer;
 use crate::types::EventMetadata;
 
 mod bridge;
@@ -27,7 +24,8 @@ pub(crate) use bridge::CsHandler;
 /// Handlers return this code to signal success or classify failures. Prosody
 /// uses this classification to determine retry behavior and dead-letter queue
 /// routing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HandlerResultCode {
     /// Handler completed successfully.
     ///
@@ -56,7 +54,8 @@ pub enum HandlerResultCode {
 /// Combines a [`HandlerResultCode`] with an optional error message. The C#
 /// wrapper populates `error_message` with the exception message when the
 /// handler fails, enabling Rust-side logging and diagnostics.
-#[derive(Debug, Clone, Default, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone, Default)]
 pub struct HandlerResult {
     /// Indicates whether the handler succeeded or how it failed.
     pub code: HandlerResultCode,
@@ -73,7 +72,8 @@ pub struct HandlerResult {
 }
 
 /// Values needed to send one request.
-#[derive(Debug, Clone, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct NativeRequest {
     /// Kafka topic.
     pub topic: String,
@@ -92,7 +92,8 @@ pub struct NativeRequest {
 }
 
 /// Values needed to send one excise subsystem request.
-#[derive(Debug, Clone, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct NativeExciseRequest {
     /// Kafka topic.
     pub topic: String,
@@ -107,7 +108,8 @@ pub struct NativeExciseRequest {
 }
 
 /// One subsystem outcome returned by a request.
-#[derive(Debug, Clone, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub enum NativeRequestResult {
     /// The handler returned encoded JSON.
     Ok {
@@ -146,8 +148,8 @@ pub enum NativeRequestResult {
 /// Both methods receive a `carrier` map for distributed tracing context
 /// propagation (e.g., W3C Trace Context headers). The C# wrapper extracts
 /// these headers to continue the trace span across the FFI boundary.
-#[uniffi::export(with_foreign)]
 #[async_trait::async_trait]
+#[boltffi::export]
 pub trait EventHandler: Send + Sync {
     /// Handles an incoming Kafka message.
     ///
@@ -170,16 +172,14 @@ pub trait EventHandler: Send + Sync {
     /// via [`HandlerResult`] instead.
     async fn on_message(
         &self,
-        context: Arc<Context>,
-        message: Arc<Message>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 
     /// Handles an excise record.
     async fn on_excise(
         &self,
-        context: Arc<Context>,
-        message: Arc<ExciseMessage>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 
@@ -203,8 +203,7 @@ pub trait EventHandler: Send + Sync {
     /// via [`HandlerResult`] instead.
     async fn on_timer(
         &self,
-        context: Arc<Context>,
-        timer: Arc<Timer>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 }

@@ -36,7 +36,7 @@ internal sealed class FakeStateCursor<T>
     public TaskCompletionSource? PullRelease { get; set; }
 
     /// <summary>When set, a pull throws this instead of returning a chunk.</summary>
-    public Func<global::Prosody.Native.FfiException>? PullError { get; set; }
+    public Func<global::Prosody.Native.FfiErrorException>? PullError { get; set; }
 
     /// <summary>When set, <c>Close</c> invokes this (for example to fault the close).</summary>
     public Func<Task>? CloseBehavior { get; set; }

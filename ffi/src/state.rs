@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
 
 use opentelemetry::Context;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
@@ -15,7 +14,8 @@ use crate::error::FfiError;
 use crate::message::Message;
 
 /// The direction of a collection scan.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScanDirection {
     /// Scans in ascending key or index order.
     Forward,
@@ -71,8 +71,8 @@ pub(crate) fn into_bytes(payload: Option<BinaryPayload>) -> Option<Vec<u8>> {
 }
 
 /// Wraps one resolved Kafka message for FFI.
-pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Arc<Message> {
-    Arc::new(Message::new(message))
+pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Message {
+    Message::new(message)
 }
 
 /// Converts an FFI deque index to the platform index type.

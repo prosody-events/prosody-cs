@@ -21,14 +21,14 @@ fn direction(direction: ScanDirection) -> ErasedDirection {
     }
 }
 
-#[derive(uniffi::Object)]
 /// Reads a published value collection.
 pub struct PublishedValueHandle {
     pub(crate) reader: Arc<dyn ErasedValueReader<JsonBinaryCodec>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl PublishedValueHandle {
     /// Reads the committed value for a user key.
     ///
@@ -46,14 +46,14 @@ impl PublishedValueHandle {
     }
 }
 
-#[derive(uniffi::Object)]
 /// Reads a published map collection.
 pub struct PublishedMapHandle {
     pub(crate) reader: Arc<dyn ErasedMapReader<JsonBinaryCodec>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl PublishedMapHandle {
     /// Reads one committed map entry.
     ///
@@ -127,17 +127,17 @@ impl PublishedMapHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<JsonMapCursor>, FfiError> {
+    ) -> Result<JsonMapCursor, FfiError> {
         let cursor = traced(
             &self.propagator,
             carrier,
             self.reader.stream(key, direction(direction_value)),
         )
         .await?;
-        Ok(Arc::new(JsonMapCursor {
+        Ok(JsonMapCursor {
             cursor,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Opens an ordered key-only map cursor.
@@ -150,28 +150,28 @@ impl PublishedMapHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<MapKeyCursor>, FfiError> {
+    ) -> Result<MapKeyCursor, FfiError> {
         let cursor = traced(
             &self.propagator,
             carrier,
             self.reader.keys(key, direction(direction_value)),
         )
         .await?;
-        Ok(Arc::new(MapKeyCursor {
+        Ok(MapKeyCursor {
             cursor,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 }
 
-#[derive(uniffi::Object)]
 /// Reads a published deque collection.
 pub struct PublishedDequeHandle {
     pub(crate) reader: Arc<dyn ErasedDequeReader<JsonBinaryCodec>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl PublishedDequeHandle {
     /// Reads one committed deque element.
     ///
@@ -258,16 +258,16 @@ impl PublishedDequeHandle {
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<JsonDequeCursor>, FfiError> {
+    ) -> Result<JsonDequeCursor, FfiError> {
         let cursor = traced(
             &self.propagator,
             carrier,
             self.reader.stream(key, direction(direction_value)),
         )
         .await?;
-        Ok(Arc::new(JsonDequeCursor {
+        Ok(JsonDequeCursor {
             cursor,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 }

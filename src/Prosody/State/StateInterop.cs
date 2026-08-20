@@ -15,11 +15,11 @@ internal static class StateInterop
     /// category from the generated exception <b>type</b>. An untagged native error passes through
     /// unchanged (it is not a categorized state error).
     /// </summary>
-    internal static Exception Translate(Native.FfiException error) =>
-        error switch
+    internal static Exception Translate(Native.FfiErrorException error) =>
+        error.Error switch
         {
-            Native.FfiException.PermanentState permanent => new PermanentStateException(permanent.Message, permanent),
-            Native.FfiException.TransientState transient => new TransientStateException(transient.Message, transient),
+            Native.FfiError.PermanentState permanent => new PermanentStateException(permanent.Field0, error),
+            Native.FfiError.TransientState transient => new TransientStateException(transient.Field0, error),
             _ => error,
         };
 
@@ -35,7 +35,7 @@ internal static class StateInterop
         {
             await operation().ConfigureAwait(false);
         }
-        catch (Native.FfiException ex)
+        catch (Native.FfiErrorException ex)
         {
             throw Translate(ex);
         }
@@ -55,7 +55,7 @@ internal static class StateInterop
         {
             return await operation().ConfigureAwait(false);
         }
-        catch (Native.FfiException ex)
+        catch (Native.FfiErrorException ex)
         {
             throw Translate(ex);
         }
@@ -71,7 +71,7 @@ internal static class StateInterop
         {
             return operation();
         }
-        catch (Native.FfiException ex)
+        catch (Native.FfiErrorException ex)
         {
             throw Translate(ex);
         }

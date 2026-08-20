@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Testing;
 using Prosody.Logging;
 using Prosody.Native;
 using Prosody.Tests.TestHelpers;
+using LogSinkBridge = Prosody.Logging.LogSinkBridge;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
 using NativeLogLevel = Prosody.Native.LogLevel;
 

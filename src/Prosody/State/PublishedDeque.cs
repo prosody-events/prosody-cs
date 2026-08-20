@@ -6,10 +6,10 @@ namespace Prosody.State;
 public sealed class PublishedDeque<T>
     where T : notnull
 {
-    private readonly Native.IPublishedDequeHandle _handle;
+    private readonly Native.PublishedDequeHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal PublishedDeque(Native.IPublishedDequeHandle handle, JsonTypeInfo<T> typeInfo) =>
+    internal PublishedDeque(Native.PublishedDequeHandle handle, JsonTypeInfo<T> typeInfo) =>
         (_handle, _typeInfo) = (handle, typeInfo);
 
     /// <summary>Reads one element for a user key.</summary>
@@ -84,9 +84,9 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
+        return new StateScanSequence<Native.JsonDequeCursor, byte[], T>(
             () =>
-                StateInterop.RunAsync<Native.IJsonDequeCursor>(
+                StateInterop.RunAsync<Native.JsonDequeCursor>(
                     async () =>
                         await _handle
                             .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())

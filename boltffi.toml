@@ -1,0 +1,9 @@
+[package]
+name = "ProsodyFfi"
+crate = "prosody_ffi"
+
+[targets.csharp]
+enabled = true
+namespace = "Prosody.Native"
+output = "src/Prosody/Generated"
+target_framework = "net8.0"

@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class ValueState<T> : IValueState<T>
     where T : notnull
 {
-    private readonly Native.IJsonValueStateHandle _handle;
+    private readonly Native.JsonValueStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal ValueState(Native.IJsonValueStateHandle handle, JsonTypeInfo<T> typeInfo)
+    internal ValueState(Native.JsonValueStateHandle handle, JsonTypeInfo<T> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;

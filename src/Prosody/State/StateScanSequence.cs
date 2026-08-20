@@ -21,7 +21,6 @@ namespace Prosody.State;
 /// <typeparam name="T">The public element type.</typeparam>
 internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<T>
     where TCursor : class
-    where TNative : class
 {
     private readonly Func<TCursor>? _cursorFactory;
     private readonly Func<Task<TCursor>>? _asyncCursorFactory;
@@ -146,34 +145,14 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
 
                 while (_offset >= _chunk.Length)
                 {
-                    _chunk = [];
-                    _offset = 0;
-
-                    TNative[]? pulled;
-                    try
+                    if (!await PullChunkAsync().ConfigureAwait(false))
                     {
-                        _cursor ??= await _cursorFactory().ConfigureAwait(false);
-                        pulled = await _nextChunk(_cursor, StateInterop.CreateCarrier()).ConfigureAwait(false);
-                    }
-                    catch (Native.FfiException ex)
-                    {
-                        _finished = true;
-                        await CloseQuietlyAsync().ConfigureAwait(false);
-                        throw StateInterop.Translate(ex);
-                    }
-
-                    if (pulled is null)
-                    {
-                        _finished = true;
-                        await CloseOrThrowAsync().ConfigureAwait(false);
                         return false;
                     }
-
-                    _chunk = pulled;
                 }
 
                 var item = _chunk[_offset];
-                _chunk[_offset] = null!;
+                _chunk[_offset] = default!;
                 _offset++;
 
                 try
@@ -183,6 +162,11 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
                 }
                 catch
                 {
+                    if (item is IDisposable disposable)
+                    {
+                        disposable.Dispose();
+                    }
+                    DisposeChunk();
                     // Preserve the transform failure after closing best-effort.
                     _finished = true;
                     await CloseQuietlyAsync().ConfigureAwait(false);
@@ -195,6 +179,34 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             }
         }
 
+        private async ValueTask<bool> PullChunkAsync()
+        {
+            _chunk = [];
+            _offset = 0;
+            TNative[]? pulled;
+            try
+            {
+                _cursor ??= await _cursorFactory().ConfigureAwait(false);
+                pulled = await _nextChunk(_cursor, StateInterop.CreateCarrier()).ConfigureAwait(false);
+            }
+            catch (Native.FfiErrorException ex)
+            {
+                _finished = true;
+                await CloseQuietlyAsync().ConfigureAwait(false);
+                throw StateInterop.Translate(ex);
+            }
+
+            if (pulled is not null)
+            {
+                _chunk = pulled;
+                return true;
+            }
+
+            _finished = true;
+            await CloseOrThrowAsync().ConfigureAwait(false);
+            return false;
+        }
+
         public async ValueTask DisposeAsync()
         {
             await _gate.WaitAsync().ConfigureAwait(false);
@@ -203,6 +215,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
                 if (!_finished)
                 {
                     _finished = true;
+                    DisposeChunk();
                     _chunk = [];
                     _offset = 0;
                     await CloseOrThrowAsync().ConfigureAwait(false);
@@ -222,6 +235,17 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             return cursor is null ? ValueTask.CompletedTask : BestEffort.RunAsync(() => _close(cursor));
         }
 
+        private void DisposeChunk()
+        {
+            for (; _offset < _chunk.Length; _offset++)
+            {
+                if (_chunk[_offset] is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+        }
+
         private async ValueTask CloseOrThrowAsync()
         {
             try
@@ -231,7 +255,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
                     await _close(_cursor).ConfigureAwait(false);
                 }
             }
-            catch (Native.FfiException ex)
+            catch (Native.FfiErrorException ex)
             {
                 throw StateInterop.Translate(ex);
             }

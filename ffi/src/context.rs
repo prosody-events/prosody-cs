@@ -34,7 +34,6 @@ use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 ///
 /// Timer operations accept an OpenTelemetry carrier for distributed tracing
 /// context propagation, allowing traces to span across service boundaries.
-#[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
@@ -42,7 +41,7 @@ pub struct Context {
 
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks for exported vs internal methods"
+    reason = "BoltFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
     /// Creates a new context wrapping the given event context and propagator.
@@ -55,7 +54,8 @@ impl Context {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl Context {
     /// Checks whether the handler should stop processing.
     ///
@@ -245,13 +245,13 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn value_state(&self, name: String) -> Result<Arc<JsonValueStateHandle>, FfiError> {
+    pub fn value_state(&self, name: String) -> Result<JsonValueStateHandle, FfiError> {
         let handle = self.inner.value_state(&name)?;
-        Ok(Arc::new(JsonValueStateHandle {
+        Ok(JsonValueStateHandle {
             name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Vends the state handle for the named JSON map collection.
@@ -264,13 +264,13 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn map_state(&self, name: String) -> Result<Arc<JsonMapStateHandle>, FfiError> {
+    pub fn map_state(&self, name: String) -> Result<JsonMapStateHandle, FfiError> {
         let handle = self.inner.map_state(&name)?;
-        Ok(Arc::new(JsonMapStateHandle {
+        Ok(JsonMapStateHandle {
             name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Vends the state handle for the named JSON deque collection.
@@ -283,13 +283,13 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn deque_state(&self, name: String) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
+    pub fn deque_state(&self, name: String) -> Result<JsonDequeStateHandle, FfiError> {
         let handle = self.inner.deque_state(&name)?;
-        Ok(Arc::new(JsonDequeStateHandle {
+        Ok(JsonDequeStateHandle {
             name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Vends the state handle for the named Kafka-message value collection.
@@ -302,18 +302,15 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_value_state(
-        &self,
-        name: String,
-    ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
+    pub fn message_value_state(&self, name: String) -> Result<MessageValueStateHandle, FfiError> {
         let handle = self.inner.message_value_state(&name)?;
         // Consume each message collection name after lookup. This keeps the by-value
         // FFI argument without a lint exception.
         drop(name);
-        Ok(Arc::new(MessageValueStateHandle {
+        Ok(MessageValueStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Vends the state handle for the named Kafka-message map collection.
@@ -326,13 +323,13 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_map_state(&self, name: String) -> Result<Arc<MessageMapStateHandle>, FfiError> {
+    pub fn message_map_state(&self, name: String) -> Result<MessageMapStateHandle, FfiError> {
         let handle = self.inner.message_map_state(&name)?;
         drop(name);
-        Ok(Arc::new(MessageMapStateHandle {
+        Ok(MessageMapStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Vends the state handle for the named Kafka-message deque collection.
@@ -345,15 +342,12 @@ impl Context {
     ///
     /// Returns a permanent state error if the name is unregistered or its
     /// registered identity mismatches.
-    pub fn message_deque_state(
-        &self,
-        name: String,
-    ) -> Result<Arc<MessageDequeStateHandle>, FfiError> {
+    pub fn message_deque_state(&self, name: String) -> Result<MessageDequeStateHandle, FfiError> {
         let handle = self.inner.message_deque_state(&name)?;
         drop(name);
-        Ok(Arc::new(MessageDequeStateHandle {
+        Ok(MessageDequeStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 }

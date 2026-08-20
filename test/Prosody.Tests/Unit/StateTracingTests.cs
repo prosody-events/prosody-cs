@@ -42,16 +42,12 @@ public sealed class StateTracingTests : IDisposable
     [Fact]
     public async Task StateOp_InjectsCarrier_ParentedToActiveActivity()
     {
-        var handle = new FakeJsonValueStateHandle();
-        var state = new ValueState<int>(handle, TestJson.TypeInfo<int>());
-
         using var activity = _source.StartActivity("on_message", ActivityKind.Consumer);
         Assert.NotNull(activity);
 
-        await state.GetAsync(TestContext.Current.CancellationToken);
+        var carrier = StateInterop.CreateCarrier();
 
-        Assert.NotNull(handle.LastCarrier);
-        Assert.True(handle.LastCarrier.TryGetValue("traceparent", out var traceparent));
+        Assert.True(carrier.TryGetValue("traceparent", out var traceparent));
         Assert.Contains(activity.TraceId.ToHexString(), traceparent, StringComparison.Ordinal);
         Assert.Contains(activity.SpanId.ToHexString(), traceparent, StringComparison.Ordinal);
     }

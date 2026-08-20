@@ -176,7 +176,10 @@ public sealed class StateScanSequenceTests
     [Fact]
     public async Task PullError_ClosesBestEffort_WrapsToStateError_Unmasked()
     {
-        var cursor = new FakeStateCursor<byte[]> { PullError = () => new Native.FfiException.TransientState("boom") };
+        var cursor = new FakeStateCursor<byte[]>
+        {
+            PullError = () => new Native.FfiErrorException(new Native.FfiError.TransientState("boom")),
+        };
         var sequence = Sequence(() => cursor, Decode, CancellationToken.None);
         var enumerator = sequence.GetAsyncEnumerator(TestContext.Current.CancellationToken);
 

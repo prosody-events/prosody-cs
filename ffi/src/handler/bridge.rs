@@ -1,5 +1,8 @@
-use super::{Arc, Context, EventHandler, HandlerResult, HandlerResultCode, HashMap, Timer};
+use super::{Arc, EventHandler, HandlerResult, HandlerResultCode, HashMap};
+use crate::context::Context;
 use crate::error::CsHandlerError;
+use crate::event::{EventRegistry, NativeEvent};
+use crate::timer::Timer;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use prosody::codec::BinaryPayload;
 use prosody::consumer::DemandType;
@@ -44,6 +47,7 @@ pub(crate) struct CsHandler {
     handler: Arc<dyn EventHandler>,
     /// OpenTelemetry propagator for distributed tracing context injection.
     propagator: Arc<TextMapCompositePropagator>,
+    registry: Arc<EventRegistry>,
 }
 
 impl Clone for CsHandler {
@@ -51,6 +55,7 @@ impl Clone for CsHandler {
         Self {
             handler: Arc::clone(&self.handler),
             propagator: Arc::clone(&self.propagator),
+            registry: Arc::clone(&self.registry),
         }
     }
 }
@@ -59,10 +64,12 @@ impl CsHandler {
     pub(crate) fn new(
         handler: Arc<dyn EventHandler>,
         propagator: Arc<TextMapCompositePropagator>,
+        registry: Arc<EventRegistry>,
     ) -> Self {
         Self {
             handler,
             propagator,
+            registry,
         }
     }
 
@@ -70,7 +77,7 @@ impl CsHandler {
         &self,
         context: C,
         message: ConsumerMessage<P>,
-    ) -> (tracing::Span, Arc<Context>, Arc<M>, HashMap<String, String>)
+    ) -> (tracing::Span, Context, M, HashMap<String, String>)
     where
         C: EventContext<Payload = BinaryPayload>,
         M: From<ConsumerMessage<P>>,
@@ -80,8 +87,8 @@ impl CsHandler {
         let mut carrier = HashMap::with_capacity(2);
         self.propagator
             .inject_context(&span.context(), &mut carrier);
-        let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        (span, context, Arc::new(message.into()), carrier)
+        let context = Context::new(context.boxed(), Arc::clone(&self.propagator));
+        (span, context, message.into(), carrier)
     }
 }
 
@@ -108,11 +115,15 @@ impl FallibleHandler for CsHandler {
         C: EventContext<Payload = Self::Payload>,
     {
         let (span, context, message, carrier) = self.record_args(context, message);
+        let event = self
+            .registry
+            .insert(NativeEvent::message(context, message))?;
         let result = self
             .handler
-            .on_message(context, message, carrier)
+            .on_message(event.id(), carrier)
             .instrument(span)
-            .await?;
+            .await;
+        let result = result?;
 
         // Map result to our error type, preserving error messages
         map_handler_result(result)
@@ -128,11 +139,15 @@ impl FallibleHandler for CsHandler {
         C: EventContext<Payload = Self::Payload>,
     {
         let (span, context, message, carrier) = self.record_args(context, message);
+        let event = self
+            .registry
+            .insert(NativeEvent::excise(context, message))?;
         let result = self
             .handler
-            .on_excise(context, message, carrier)
+            .on_excise(event.id(), carrier)
             .instrument(span)
-            .await?;
+            .await;
+        let result = result?;
         map_handler_result(result)
     }
 
@@ -167,16 +182,18 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and timer for C#
-        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
-        let tmr = Arc::new(Timer::new(trigger));
+        let ctx = Context::new(context.boxed(), Arc::clone(&self.propagator));
+        let tmr = Timer::new(trigger);
 
         // Call the C# handler - it returns a result with code and optional error
         // message
+        let event = self.registry.insert(NativeEvent::timer(ctx, tmr))?;
         let result = self
             .handler
-            .on_timer(ctx, tmr, carrier)
+            .on_timer(event.id(), carrier)
             .instrument(span)
-            .await?;
+            .await;
+        let result = result?;
 
         // Map result to our error type, preserving error messages
         map_handler_result(result)
