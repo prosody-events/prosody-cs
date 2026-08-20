@@ -5,7 +5,6 @@ using Prosody.State;
 using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResult = Prosody.Native.HandlerResult;
-using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
 
@@ -39,7 +38,7 @@ public sealed class StateExceptionBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -50,7 +49,7 @@ public sealed class StateExceptionBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public sealed class StateExceptionBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     private sealed class LambdaHandler(Func<ProsodyContext, Message<JsonElement>, CancellationToken, Task> onMessage)

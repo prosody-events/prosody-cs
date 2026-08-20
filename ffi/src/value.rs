@@ -14,14 +14,14 @@ use crate::message::Message;
 use crate::state::{into_bytes, into_message, reject_null, traced};
 
 /// A JSON single-value state handle for one event.
-#[derive(uniffi::Object)]
 pub struct JsonValueStateHandle {
     pub(crate) name: String,
     pub(crate) state: BoxValueState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl JsonValueStateHandle {
     /// Reads the current JSON document bytes.
     ///
@@ -75,23 +75,20 @@ impl JsonValueStateHandle {
 }
 
 /// A Kafka-message single-value state handle for one event.
-#[derive(uniffi::Object)]
 pub struct MessageValueStateHandle {
     pub(crate) state: BoxValueState<ConsumerMessage<BinaryPayload>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl MessageValueStateHandle {
     /// Reads the current Kafka message.
     ///
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn get(
-        &self,
-        carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    pub async fn get(&self, carrier: HashMap<String, String>) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.get())
             .await
             .map(|item| item.map(into_message))
@@ -104,7 +101,7 @@ impl MessageValueStateHandle {
     /// Returns a state error if the write fails.
     pub async fn set(
         &self,
-        message: Arc<Message>,
+        message: Message,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         traced(

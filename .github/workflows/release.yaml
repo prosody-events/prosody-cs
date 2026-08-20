@@ -156,7 +156,9 @@ jobs:
       - name: Build native library
         if: '!matrix.target.use_docker'
         shell: bash
-        run: cargo build -p prosody-ffi --release --target ${{ matrix.target.rust_target }}
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG: 2
+        run: cargo build -p prosody_ffi --release --target ${{ matrix.target.rust_target }}
 
       - name: Build native library in compatibility container
         if: matrix.target.use_docker
@@ -176,14 +178,38 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts/${{ matrix.target.rid }}
+          mkdir -p symbols/${{ matrix.target.rid }}
           cp target/${{ matrix.target.rust_target }}/release/${{ matrix.target.lib_prefix }}prosody_ffi${{ matrix.target.lib_ext }} \
              artifacts/${{ matrix.target.rid }}/
+
+          case "${{ matrix.target.rid }}" in
+            linux-*)
+              cp target/${{ matrix.target.rust_target }}/release/symbols/libprosody_ffi.so.debug \
+                 symbols/${{ matrix.target.rid }}/
+              ;;
+            osx-*)
+              dsymutil target/${{ matrix.target.rust_target }}/release/libprosody_ffi.dylib \
+                -o symbols/${{ matrix.target.rid }}/libprosody_ffi.dylib.dSYM
+              strip -S artifacts/${{ matrix.target.rid }}/libprosody_ffi.dylib
+              ;;
+            win-*)
+              cp target/${{ matrix.target.rust_target }}/release/prosody_ffi.pdb \
+                 symbols/${{ matrix.target.rid }}/
+              ;;
+          esac
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.target.rid }}
           path: artifacts/${{ matrix.target.rid }}/
+          if-no-files-found: error
+
+      - name: Upload native symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: symbols-${{ matrix.target.rid }}
+          path: symbols/${{ matrix.target.rid }}/
           if-no-files-found: error
 
   build-package:
@@ -219,15 +245,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install uniffi-bindgen-cs
+      - name: Install BoltFFI
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: uniffi-bindgen-cs
-          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
-
-      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
-        run: dotnet tool install -g csharpier
+          crate: boltffi_cli
+          version: 0.30.1
 
       - name: Download all native artifacts
         uses: actions/download-artifact@v8
@@ -255,7 +277,7 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI (for bindgen only, not packaging)
-        run: cargo build -p prosody-ffi
+        run: cargo build -p prosody_ffi
 
       - name: Generate C# bindings
         run: make bindgen
@@ -301,11 +323,18 @@ jobs:
           name: nuget-package
           path: ./packages
 
+      - name: Download native symbols
+        uses: actions/download-artifact@v8
+        with:
+          name: symbols-${{ matrix.target.name }}
+          path: /tmp/prosody-test-diagnostics/symbols/
+
       - name: Start healthy dependencies
         run: docker compose --project-name release-test up --detach --wait kafka cassandra
 
       - name: Run tests
         run: |
+          mkdir -p /tmp/prosody-test-diagnostics
           docker run --rm --network release-test_default \
             -e PROSODY_BOOTSTRAP_SERVERS=kafka:9092 \
             -e PROSODY_CASSANDRA_NODES=cassandra:9042 \
@@ -314,7 +343,11 @@ jobs:
             -e DOTNET_NOLOGO=1 \
             -e NUGET_PACKAGES=/tmp/prosody-release-packages \
             -e NUGET_HTTP_CACHE_PATH=/tmp/prosody-release-http-cache \
+            -e DOTNET_DbgEnableMiniDump=1 \
+            -e DOTNET_DbgMiniDumpType=4 \
+            -e DOTNET_DbgMiniDumpName=/diagnostics/prosody-%p.dmp \
             -v ${{ github.workspace }}:/workspace \
+            -v /tmp/prosody-test-diagnostics:/diagnostics \
             -w /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
             bash -c "
@@ -329,8 +362,22 @@ jobs:
               # PROSODY_BOOTSTRAP_SERVERS with localhost:9094 (which is unreachable
               # from inside this container; Kafka is at kafka:9092 on the Docker network).
               dotnet run --project test/Prosody.Tests --framework net${{ matrix.dotnet }} --no-restore --no-launch-profile -c Release \
-                -p:TestPackage=true -p:TestPackageVersion=${{ needs.release-please.outputs.version }}
+                -p:TestPackage=true -p:TestPackageVersion=${{ needs.release-please.outputs.version }} \
+                -- --diagnostic --diagnostic-synchronous-write \
+                --diagnostic-output-directory /diagnostics --timeout 5m
             "
+
+      - name: Make failure diagnostics readable
+        if: failure()
+        run: sudo chmod --recursive a+rX /tmp/prosody-test-diagnostics
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-test-diagnostics-${{ matrix.target.name }}-net${{ matrix.dotnet }}
+          path: /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn
 
   publish:
     name: Publish

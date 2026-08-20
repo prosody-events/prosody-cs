@@ -1,8 +1,8 @@
 //! FFI type definitions for the Prosody C# client.
 //!
-//! This module defines configuration and data types exposed to C# via `UniFFI`.
-//! Types are designed to be idiomatic for C# consumers while mapping cleanly
-//! to the underlying Prosody builder pattern.
+//! This module defines configuration and data types exposed to C# via
+//! `BoltFFI`. Types are designed to be idiomatic for C# consumers while mapping
+//! cleanly to the underlying Prosody builder pattern.
 //!
 //! # Design Principles
 //!
@@ -16,7 +16,8 @@
 use std::time::Duration;
 
 /// Controls how a new span relates to a propagated OpenTelemetry context.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SpanRelation {
     /// The propagated span becomes this span's `OTel` parent (child-of
     /// relationship).
@@ -35,7 +36,8 @@ pub enum SpanRelation {
 /// - [`LowLatency`][Self::LowLatency]: Bounded retries with dead-letter queue
 /// - [`BestEffort`][Self::BestEffort]: Fire-and-forget for non-critical
 ///   workloads
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ClientMode {
     /// Retries failed messages indefinitely using deferral and monopolization
     /// detection.
@@ -70,7 +72,8 @@ pub enum ClientMode {
 /// missing required fields), the state transitions to
 /// [`ConfigurationFailed`][Self::ConfigurationFailed] instead of
 /// [`Configured`][Self::Configured].
-#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ConsumerState {
     /// Initial state before configuration is applied.
     #[default]
@@ -93,7 +96,8 @@ pub enum ConsumerState {
 }
 
 /// The kind of a keyed-state collection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StateKind {
     /// A single-value collection.
     Value,
@@ -104,7 +108,8 @@ pub enum StateKind {
 }
 
 /// The item payload of a keyed-state collection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatePayload {
     /// JSON documents crossing as raw bytes.
     Json,
@@ -113,7 +118,8 @@ pub enum StatePayload {
 }
 
 /// Declares one keyed-state collection to register before subscribe.
-#[derive(Debug, Clone, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct StateCollectionConfig {
     /// The collection name. Must be non-empty and unique within the client's
     /// definition set.
@@ -128,35 +134,28 @@ pub struct StateCollectionConfig {
     /// Optional per-write TTL. Must be a whole number of seconds of at least 1
     /// (fractional and sub-second values are rejected) and must exceed the
     /// recovery delay (the latter checked at consumer build).
-    #[uniffi(default = None)]
     pub ttl: Option<Duration>,
 
     /// Optional opt-out of transactional staging (read-uncommitted, at-least
     /// once). Defaults to transactional.
-    #[uniffi(default = None)]
     pub read_uncommitted: Option<bool>,
 
     /// Optional map-only keyset bound (`0..=4096`; default 128 core-side; `0`
     /// disables ordered-scan tracking). Invalid on value or deque collections.
-    #[uniffi(default = None)]
     pub keyset_limit: Option<u32>,
 
     /// Optional deque-only capacity bound (positive). Runtime-only — never
     /// persisted, not part of identity; enforced lazily on push. Invalid on
     /// value or map collections.
-    #[uniffi(default = None)]
     pub capacity: Option<u32>,
 
     /// Whether owners advertise this collection for cross-group reads.
-    #[uniffi(default = false)]
     pub published: bool,
 
     /// Per-reader cache TTL override.
-    #[uniffi(default = None)]
     pub read_cache_ttl: Option<Duration>,
 
     /// Whether readers bypass their cache for this collection.
-    #[uniffi(default = false)]
     pub read_cache_disabled: bool,
 }
 
@@ -191,7 +190,8 @@ pub struct StateCollectionConfig {
 ///     failureTopic: "dead-letters"
 /// );
 /// ```
-#[derive(Debug, Clone, Default, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone, Default)]
 pub struct ClientOptions {
     // ========================================================================
     // Core options
@@ -201,13 +201,11 @@ pub struct ClientOptions {
     /// Falls back to `PROSODY_BOOTSTRAP_SERVERS` environment variable if unset.
     ///
     /// **Example:** `["localhost:9092"]` or `["broker1:9092", "broker2:9092"]`
-    #[uniffi(default = None)]
     pub bootstrap_servers: Option<Vec<String>>,
 
     /// Consumer group ID, typically your application name.
     ///
     /// Falls back to `PROSODY_GROUP_ID` environment variable if unset.
-    #[uniffi(default = None)]
     pub group_id: Option<String>,
 
     /// Topics to subscribe to for message consumption.
@@ -215,13 +213,11 @@ pub struct ClientOptions {
     /// Falls back to `PROSODY_SUBSCRIBED_TOPICS` environment variable if unset.
     ///
     /// **Example:** `["my-topic"]` or `["topic1", "topic2"]`
-    #[uniffi(default = None)]
     pub subscribed_topics: Option<Vec<String>>,
 
     /// Operating mode controlling failure handling behavior.
     ///
     /// **Default:** [`ClientMode::Pipeline`]
-    #[uniffi(default = None)]
     pub mode: Option<ClientMode>,
 
     /// Event type prefixes to process; `None` allows all events.
@@ -230,20 +226,17 @@ pub struct ClientOptions {
     ///
     /// **Example:** `["user.", "account."]` processes only events starting
     /// with those prefixes.
-    #[uniffi(default = None)]
     pub allowed_events: Option<Vec<String>>,
 
     /// Source system identifier attached to outgoing messages.
     ///
     /// Defaults to [`group_id`][Self::group_id] if unset. Set to a different
     /// value to enable consuming your own produced messages (loopback).
-    #[uniffi(default = None)]
     pub source_system: Option<String>,
 
     /// Enables in-memory mock client for testing.
     ///
     /// **Default:** `false`
-    #[uniffi(default = None)]
     pub mock: Option<bool>,
 
     /// Address for the peer listener.
@@ -251,31 +244,26 @@ pub struct ClientOptions {
     /// Core reads `PROSODY_PEER_BIND_ADDRESS` when this value is absent. If
     /// both values are absent, the network router selects a local address on
     /// port 9099.
-    #[uniffi(default = None)]
     pub peer_bind_address: Option<String>,
 
     /// gRPC connect URI that other clients use for this client.
     ///
     /// Core reads `PROSODY_PEER_ADVERTISED_CONNECT` when this value is absent.
-    #[uniffi(default = None)]
     pub peer_advertised_connect: Option<String>,
 
     /// Network name used to identify direct routes.
     ///
     /// Core reads `PROSODY_PEER_NETWORK_NAME` when this value is absent.
-    #[uniffi(default = None)]
     pub peer_network_name: Option<String>,
 
     /// Maximum number of peer channels and registrations in each cache.
     ///
     /// Core reads `PROSODY_PEER_CACHE_CAPACITY` when this value is absent.
-    #[uniffi(default = None)]
     pub peer_cache_capacity: Option<u64>,
 
     /// Duration of each peer registration lease.
     ///
     /// Core reads `PROSODY_PEER_REGISTRATION_TTL` when this value is absent.
-    #[uniffi(default = None)]
     pub peer_registration_ttl: Option<Duration>,
 
     // ========================================================================
@@ -284,7 +272,6 @@ pub struct ClientOptions {
     /// Maximum messages processed concurrently.
     ///
     /// **Default:** `32`
-    #[uniffi(default = None)]
     pub max_concurrency: Option<u32>,
 
     /// Maximum uncommitted messages before pausing consumption.
@@ -292,7 +279,6 @@ pub struct ClientOptions {
     /// Prevents unbounded memory growth when processing lags behind ingestion.
     ///
     /// **Default:** `64`
-    #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
     /// Global shared cache capacity across all partitions for deduplication.
@@ -303,7 +289,6 @@ pub struct ClientOptions {
     /// unset.
     ///
     /// **Default:** `8192`
-    #[uniffi(default = None)]
     pub idempotence_cache_size: Option<u32>,
 
     /// Version string for cache-busting deduplication hashes.
@@ -315,7 +300,6 @@ pub struct ClientOptions {
     /// unset.
     ///
     /// **Default:** `"1"`
-    #[uniffi(default = None)]
     pub idempotence_version: Option<String>,
 
     /// TTL for deduplication records in Cassandra.
@@ -326,7 +310,6 @@ pub struct ClientOptions {
     /// Falls back to `PROSODY_IDEMPOTENCE_TTL` environment variable if unset.
     ///
     /// **Default:** 7 days
-    #[uniffi(default = None)]
     pub idempotence_ttl: Option<Duration>,
 
     /// Maximum handler execution time before cancellation.
@@ -335,7 +318,6 @@ pub struct ClientOptions {
     /// retried according to the current [`mode`][Self::mode].
     ///
     /// **Default:** 80% of [`stall_threshold`][Self::stall_threshold]
-    #[uniffi(default = None)]
     pub timeout: Option<Duration>,
 
     /// Duration without progress before reporting unhealthy.
@@ -344,7 +326,6 @@ pub struct ClientOptions {
     /// been processed within this window.
     ///
     /// **Default:** 5 minutes
-    #[uniffi(default = None)]
     pub stall_threshold: Option<Duration>,
 
     /// Grace period for in-flight work during shutdown.
@@ -353,7 +334,6 @@ pub struct ClientOptions {
     /// work is abandoned.
     ///
     /// **Default:** 30 seconds
-    #[uniffi(default = None)]
     pub shutdown_timeout: Option<Duration>,
 
     /// Interval between Kafka poll operations.
@@ -361,7 +341,6 @@ pub struct ClientOptions {
     /// Lower values reduce latency; higher values reduce CPU usage.
     ///
     /// **Default:** 100ms
-    #[uniffi(default = None)]
     pub poll_interval: Option<Duration>,
 
     /// Interval between offset commits to Kafka.
@@ -370,7 +349,6 @@ pub struct ClientOptions {
     /// increase broker load.
     ///
     /// **Default:** 1 second
-    #[uniffi(default = None)]
     pub commit_interval: Option<Duration>,
 
     /// HTTP port for health check endpoints (`/livez`, `/readyz`).
@@ -378,7 +356,6 @@ pub struct ClientOptions {
     /// - `None`: Use default port `8000` or `PROSODY_PROBE_PORT` env var
     /// - `Some(0)`: Disable the probe server entirely
     /// - `Some(1..=65535)`: Use the specified port
-    #[uniffi(default = None)]
     pub probe_port: Option<u16>,
 
     /// Timer storage bucket granularity.
@@ -387,7 +364,6 @@ pub struct ClientOptions {
     /// more storage but allow finer-grained queries. Rarely needs adjustment.
     ///
     /// **Default:** 1 hour
-    #[uniffi(default = None)]
     pub slab_size: Option<Duration>,
 
     // ========================================================================
@@ -398,7 +374,6 @@ pub struct ClientOptions {
     /// Messages not acknowledged within this duration are considered failed.
     ///
     /// **Default:** 1 second
-    #[uniffi(default = None)]
     pub send_timeout: Option<Duration>,
 
     // ========================================================================
@@ -410,7 +385,6 @@ pub struct ClientOptions {
     /// Pipeline mode uses deferral and does not use this limit.
     ///
     /// **Default:** `3`
-    #[uniffi(default = None)]
     pub max_retries: Option<u32>,
 
     /// Initial delay for exponential backoff between retries.
@@ -419,7 +393,6 @@ pub struct ClientOptions {
     /// [`max_retry_delay`][Self::max_retry_delay].
     ///
     /// **Default:** 20ms
-    #[uniffi(default = None)]
     pub retry_base: Option<Duration>,
 
     /// Maximum delay between retry attempts.
@@ -427,14 +400,12 @@ pub struct ClientOptions {
     /// Caps the exponential backoff to prevent excessively long waits.
     ///
     /// **Default:** 5 minutes
-    #[uniffi(default = None)]
     pub max_retry_delay: Option<Duration>,
 
     /// Dead-letter topic for unprocessable messages.
     ///
     /// Required when using [`LowLatency`][ClientMode::LowLatency] mode.
     /// Messages exceeding [`max_retries`][Self::max_retries] are sent here.
-    #[uniffi(default = None)]
     pub failure_topic: Option<String>,
 
     // ========================================================================
@@ -447,19 +418,16 @@ pub struct ClientOptions {
     /// [`Pipeline`][ClientMode::Pipeline] mode.
     ///
     /// **Default:** `true`
-    #[uniffi(default = None)]
     pub defer_enabled: Option<bool>,
 
     /// Initial delay before retrying a deferred message.
     ///
     /// **Default:** 1 second
-    #[uniffi(default = None)]
     pub defer_base: Option<Duration>,
 
     /// Maximum delay between deferred retry attempts.
     ///
     /// **Default:** 24 hours
-    #[uniffi(default = None)]
     pub defer_max_delay: Option<Duration>,
 
     /// Failure rate threshold for disabling deferral.
@@ -472,13 +440,11 @@ pub struct ClientOptions {
     /// **Range:** `0.0` to `1.0`
     ///
     /// **Default:** `0.9` (90%)
-    #[uniffi(default = None)]
     pub defer_failure_threshold: Option<f64>,
 
     /// Time window for measuring failure rate.
     ///
     /// **Default:** 5 minutes
-    #[uniffi(default = None)]
     pub defer_failure_window: Option<Duration>,
 
     /// Maximum deferred store cache entries per Cassandra defer store.
@@ -487,7 +453,6 @@ pub struct ClientOptions {
     /// entries (next offset/timer + retry count).
     ///
     /// **Default:** `8192`
-    #[uniffi(default = None)]
     pub defer_store_cache_size: Option<u32>,
 
     // ========================================================================
@@ -498,13 +463,11 @@ pub struct ClientOptions {
     /// The loader evicts messages when it reaches this bound.
     ///
     /// **Default:** `1024`
-    #[uniffi(default = None)]
     pub loader_cache_size: Option<u32>,
 
     /// Timeout for Kafka loader seek operations.
     ///
     /// **Default:** 30 seconds
-    #[uniffi(default = None)]
     pub loader_seek_timeout: Option<Duration>,
 
     /// Sequential-read distance before the loader seeks.
@@ -512,7 +475,6 @@ pub struct ClientOptions {
     /// Advanced tuning parameter; rarely needs adjustment.
     ///
     /// **Default:** `100`
-    #[uniffi(default = None)]
     pub loader_discard_threshold: Option<u32>,
 
     // ========================================================================
@@ -525,7 +487,6 @@ pub struct ClientOptions {
     /// [`Pipeline`][ClientMode::Pipeline] mode.
     ///
     /// **Default:** `true`
-    #[uniffi(default = None)]
     pub monopolization_enabled: Option<bool>,
 
     /// Processing time fraction that triggers monopolization throttling.
@@ -536,13 +497,11 @@ pub struct ClientOptions {
     /// **Range:** `0.0` to `1.0`
     ///
     /// **Default:** `0.9` (90%)
-    #[uniffi(default = None)]
     pub monopolization_threshold: Option<f64>,
 
     /// Time window for measuring key processing time.
     ///
     /// **Default:** 5 minutes
-    #[uniffi(default = None)]
     pub monopolization_window: Option<Duration>,
 
     /// Maximum distinct keys tracked for monopolization detection.
@@ -551,7 +510,6 @@ pub struct ClientOptions {
     /// tracked individually.
     ///
     /// **Default:** `8192`
-    #[uniffi(default = None)]
     pub monopolization_cache_size: Option<u32>,
 
     // ========================================================================
@@ -564,7 +522,6 @@ pub struct ClientOptions {
     /// **Range:** `0.0` to `1.0`
     ///
     /// **Default:** `0.3` (30%)
-    #[uniffi(default = None)]
     pub scheduler_failure_weight: Option<f64>,
 
     /// Wait duration for maximum priority boost.
@@ -573,7 +530,6 @@ pub struct ClientOptions {
     /// [`scheduler_wait_weight`][Self::scheduler_wait_weight].
     ///
     /// **Default:** 2 minutes
-    #[uniffi(default = None)]
     pub scheduler_max_wait: Option<Duration>,
 
     /// Priority boost multiplier for waiting messages.
@@ -583,7 +539,6 @@ pub struct ClientOptions {
     /// [`scheduler_max_wait`][Self::scheduler_max_wait].
     ///
     /// **Default:** `200.0`
-    #[uniffi(default = None)]
     pub scheduler_wait_weight: Option<f64>,
 
     /// Maximum distinct keys tracked by the fair scheduler.
@@ -591,7 +546,6 @@ pub struct ClientOptions {
     /// Limits memory usage for scheduling state.
     ///
     /// **Default:** `8192`
-    #[uniffi(default = None)]
     pub scheduler_cache_size: Option<u32>,
 
     // ========================================================================
@@ -603,33 +557,27 @@ pub struct ClientOptions {
     /// `false`.
     ///
     /// **Example:** `["localhost:9042"]` or `["cass1:9042", "cass2:9042"]`
-    #[uniffi(default = None)]
     pub cassandra_nodes: Option<Vec<String>>,
 
     /// Cassandra keyspace for timer tables.
     ///
     /// **Default:** `"prosody"`
-    #[uniffi(default = None)]
     pub cassandra_keyspace: Option<String>,
 
     /// Cassandra datacenter for query routing.
     ///
     /// Used for datacenter-aware load balancing.
-    #[uniffi(default = None)]
     pub cassandra_datacenter: Option<String>,
 
     /// Cassandra rack for query routing.
     ///
     /// Used for rack-aware load balancing within a datacenter.
-    #[uniffi(default = None)]
     pub cassandra_rack: Option<String>,
 
     /// Username for Cassandra authentication.
-    #[uniffi(default = None)]
     pub cassandra_user: Option<String>,
 
     /// Password for Cassandra authentication.
-    #[uniffi(default = None)]
     pub cassandra_password: Option<String>,
 
     /// Retention period for timer data.
@@ -637,7 +585,6 @@ pub struct ClientOptions {
     /// Timer records older than this are automatically deleted via TTL.
     ///
     /// **Default:** 1 year
-    #[uniffi(default = None)]
     pub cassandra_retention: Option<Duration>,
 
     // ========================================================================
@@ -648,7 +595,6 @@ pub struct ClientOptions {
     /// Falls back to `PROSODY_TELEMETRY_TOPIC` environment variable if unset.
     ///
     /// **Default:** `"prosody.telemetry-events"`
-    #[uniffi(default = None)]
     pub telemetry_topic: Option<String>,
 
     /// Enables or disables the telemetry emitter.
@@ -656,7 +602,6 @@ pub struct ClientOptions {
     /// Falls back to `PROSODY_TELEMETRY_ENABLED` environment variable if unset.
     ///
     /// **Default:** `true`
-    #[uniffi(default = None)]
     pub telemetry_enabled: Option<bool>,
 
     /// Span linking for message execution spans.
@@ -666,7 +611,6 @@ pub struct ClientOptions {
     /// environment variable if unset.
     ///
     /// **Default:** `Child`
-    #[uniffi(default = None)]
     pub message_spans: Option<SpanRelation>,
 
     /// Span linking for timer execution spans.
@@ -676,7 +620,6 @@ pub struct ClientOptions {
     /// variable if unset.
     ///
     /// **Default:** `FollowsFrom`
-    #[uniffi(default = None)]
     pub timer_spans: Option<SpanRelation>,
 
     // ========================================================================
@@ -686,7 +629,6 @@ pub struct ClientOptions {
     ///
     /// Each entry declares one collection by name, kind, and payload. Duplicate
     /// names within this set are rejected.
-    #[uniffi(default = None)]
     pub state_collections: Option<Vec<StateCollectionConfig>>,
 
     /// Root directory for the local keyed-state cache (the committed-value
@@ -695,27 +637,21 @@ pub struct ClientOptions {
     /// Each live client needs its own directory. Falls back to the
     /// `PROSODY_STATE_CACHE_DIR` environment variable, then a per-client
     /// temporary directory. Must not be an empty string when set.
-    #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
 
     /// Capacity of the owning keyed-state cache, such as `64 MiB`.
-    #[uniffi(default = None)]
     pub state_owned_cache_size: Option<String>,
 
     /// Capacity of the published-state read cache, such as `1 MiB`.
-    #[uniffi(default = None)]
     pub state_read_cache_size: Option<String>,
 
     /// Default published-state read cache TTL.
-    #[uniffi(default = None)]
     pub state_read_cache_ttl: Option<Duration>,
 
     /// Bypasses the published-state read cache when true.
-    #[uniffi(default = None)]
     pub state_read_cache_disabled: Option<bool>,
 
     /// Subsystem under which published collections are advertised.
-    #[uniffi(default = None)]
     pub subsystem: Option<String>,
 
     /// Delay between staging a provisional cell and the keyed-state recovery
@@ -725,7 +661,6 @@ pub struct ClientOptions {
     /// `PROSODY_STATE_RECOVERY_DELAY` environment variable, then to 30
     /// seconds. Must be a whole number of seconds of at least 1 when set
     /// (fractional and sub-second values are rejected).
-    #[uniffi(default = None)]
     pub state_recovery_delay: Option<Duration>,
 }
 
@@ -736,13 +671,12 @@ pub struct ClientOptions {
 /// for downstream consumers that filter on `allowed_events`. Pulling these
 /// from the typed object on the C# side avoids re-parsing the JSON payload
 /// in Rust.
-#[derive(Debug, Clone, Default, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone, Default)]
 pub struct EventMetadata {
     /// Stable identifier for the event, used by producer idempotence dedup.
-    #[uniffi(default = None)]
     pub event_id: Option<String>,
 
     /// Event-type tag, used by consumer-side `allowed_events` filtering.
-    #[uniffi(default = None)]
     pub event_type: Option<String>,
 }

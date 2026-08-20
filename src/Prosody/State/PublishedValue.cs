@@ -6,10 +6,10 @@ namespace Prosody.State;
 public sealed class PublishedValue<T>
     where T : notnull
 {
-    private readonly Native.IPublishedValueHandle _handle;
+    private readonly Native.PublishedValueHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal PublishedValue(Native.IPublishedValueHandle handle, JsonTypeInfo<T> typeInfo) =>
+    internal PublishedValue(Native.PublishedValueHandle handle, JsonTypeInfo<T> typeInfo) =>
         (_handle, _typeInfo) = (handle, typeInfo);
 
     /// <summary>Reads the committed value for a user key.</summary>

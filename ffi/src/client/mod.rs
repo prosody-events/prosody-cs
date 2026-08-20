@@ -1,4 +1,4 @@
-//! Low-level `UniFFI` client for the C# binding.
+//! Low-level client for the C# binding.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,11 +10,11 @@ use tracing::field::Empty;
 use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use crate::cancellation::CancellationSignal;
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
 use crate::error::FfiError;
+use crate::event::{EventRegistry, NativeEvent};
 use crate::handler::{
     CsHandler, EventHandler, NativeExciseRequest, NativeRequest, NativeRequestResult,
 };
@@ -44,7 +44,7 @@ fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, 
     }
 }
 
-/// Native Prosody client exposed to C# via `UniFFI`.
+/// Native Prosody client exposed to C# via `BoltFFI`.
 ///
 /// This is the low-level FFI client. C# wraps this in `Prosody.ProsodyClient`
 /// which provides typed JSON, `CancellationToken` support, and idiomatic
@@ -77,7 +77,6 @@ fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, 
 ///
 /// This type is `Send + Sync` and can be safely shared across threads.
 /// The internal state is protected by atomic operations and async-aware locks.
-#[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
     client: SharedHighLevelClient<CsHandler>,
@@ -85,10 +84,13 @@ pub struct ProsodyClient {
     ///
     /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
     handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
+    /// Transfers each callback's resources into one `BoltFFI` class handle.
+    registry: Arc<EventRegistry>,
 }
 
-/// UniFFI-exported methods for [`ProsodyClient`].
-#[uniffi::export(async_runtime = "tokio")]
+/// BoltFFI-exported methods for [`ProsodyClient`].
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl ProsodyClient {
     /// Creates a new client with the specified configuration.
     ///
@@ -101,7 +103,6 @@ impl ProsodyClient {
     /// - Kafka bootstrap servers are unreachable
     /// - Configuration options are invalid
     /// - Cassandra connection fails (when persistence is enabled)
-    #[uniffi::constructor]
     pub async fn new(options: ClientOptions) -> Result<Self, FfiError> {
         // Ensure tracing is initialized (idempotent)
         ensure_tracing_initialized();
@@ -109,6 +110,12 @@ impl ProsodyClient {
         // Build all configuration from ClientOptions
         let mut producer_config = build_producer_config(&options);
         let consumer_builders = build_consumer_builders(&options)?;
+        let event_capacity = consumer_builders
+            .scheduler
+            .clone()
+            .build()
+            .map_err(|error| FfiError::Validation(error.to_string()))?
+            .max_concurrency;
         let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
@@ -117,7 +124,17 @@ impl ProsodyClient {
         Ok(Self {
             client,
             handler: ArcSwap::new(Arc::new(None)),
+            registry: Arc::new(EventRegistry::new(event_capacity)),
         })
+    }
+
+    /// Takes the resources for one handler callback.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transient error if the event ID is not active.
+    pub fn take_event(&self, event_id: u64) -> Result<NativeEvent, FfiError> {
+        self.registry.take(event_id)
     }
 
     /// Opens a read-only published value collection.
@@ -131,16 +148,16 @@ impl ProsodyClient {
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
-    ) -> Result<Arc<PublishedValueHandle>, FfiError> {
+    ) -> Result<PublishedValueHandle, FfiError> {
         let reader = self
             .client
             .value_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
             .await
             .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedValueHandle {
+        Ok(PublishedValueHandle {
             reader,
             propagator: Arc::new(new_propagator()),
-        }))
+        })
     }
 
     /// Opens a read-only published map collection.
@@ -154,16 +171,16 @@ impl ProsodyClient {
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
-    ) -> Result<Arc<PublishedMapHandle>, FfiError> {
+    ) -> Result<PublishedMapHandle, FfiError> {
         let reader = self
             .client
             .map_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
             .await
             .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedMapHandle {
+        Ok(PublishedMapHandle {
             reader,
             propagator: Arc::new(new_propagator()),
-        }))
+        })
     }
 
     /// Opens a read-only published deque collection.
@@ -177,16 +194,16 @@ impl ProsodyClient {
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
-    ) -> Result<Arc<PublishedDequeHandle>, FfiError> {
+    ) -> Result<PublishedDequeHandle, FfiError> {
         let reader = self
             .client
             .deque_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
             .await
             .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedDequeHandle {
+        Ok(PublishedDequeHandle {
             reader,
             propagator: Arc::new(new_propagator()),
-        }))
+        })
     }
 
     /// Subscribes to configured topics and begins consuming messages.
@@ -204,7 +221,11 @@ impl ProsodyClient {
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
         // Create the internal handler with propagator for distributed tracing
-        let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
+        let cs_handler = CsHandler::new(
+            handler,
+            Arc::new(new_propagator()),
+            Arc::clone(&self.registry),
+        );
         self.client.subscribe(cs_handler).await?;
 
         Ok(())
@@ -253,16 +274,14 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
     /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
         &self,
         topic: String,
         key: String,
         metadata: EventMetadata,
-        payload: Vec<u8>,
+        payload: Vec<i8>,
         carrier: HashMap<String, String>,
-        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
         // Extract OpenTelemetry context from carrier passed by C#
         let context = self.client.propagator().extract(&carrier);
@@ -273,29 +292,19 @@ impl ProsodyClient {
             debug!("failed to set parent span: {err:#}");
         }
 
-        let binary_payload = BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
+        let binary_payload = BinaryPayload::new(
+            bytemuck::cast_vec(payload),
+            metadata.event_id,
+            metadata.event_type,
+        );
 
-        // Send the message with tracing, with optional cancellation
         let send_future = self
             .client
             .send(topic.as_str().into(), key, binary_payload)
             .instrument(span.clone());
 
-        if let Some(signal) = cancel {
-            tokio::select! {
-                result = send_future => {
-                    span.record("aborted", false);
-                    result?;
-                }
-                () = signal.cancelled() => {
-                    span.record("aborted", true);
-                    return Err(FfiError::Cancelled);
-                }
-            }
-        } else {
-            send_future.await?;
-            span.record("aborted", false);
-        }
+        send_future.await?;
+        span.record("aborted", false);
 
         Ok(())
     }
@@ -311,7 +320,6 @@ impl ProsodyClient {
         topic: String,
         key: String,
         carrier: HashMap<String, String>,
-        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
         let context = self.client.propagator().extract(&carrier);
         let span = info_span!("csharp-Excise", %topic, %key, aborted = Empty);
@@ -322,18 +330,8 @@ impl ProsodyClient {
             .client
             .excise(topic.as_str().into(), key)
             .instrument(span.clone());
-        if let Some(signal) = cancel {
-            tokio::select! {
-                result = excise_future => { span.record("aborted", false); result?; }
-                () = signal.cancelled() => {
-                    span.record("aborted", true);
-                    return Err(FfiError::Cancelled);
-                }
-            }
-        } else {
-            excise_future.await?;
-            span.record("aborted", false);
-        }
+        excise_future.await?;
+        span.record("aborted", false);
         Ok(())
     }
 
@@ -345,7 +343,6 @@ impl ProsodyClient {
     pub async fn request(
         &self,
         request: NativeRequest,
-        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
         let subsystems = request
             .subsystems
@@ -374,14 +371,7 @@ impl ProsodyClient {
                 request.timeout,
             )
             .instrument(span);
-        let results = if let Some(signal) = cancel {
-            tokio::select! {
-                result = request => result?,
-                () = signal.cancelled() => return Err(FfiError::Cancelled),
-            }
-        } else {
-            request.await?
-        };
+        let results = request.await?;
         Ok(results
             .into_iter()
             .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
@@ -396,7 +386,6 @@ impl ProsodyClient {
     pub async fn request_excise(
         &self,
         request: NativeExciseRequest,
-        cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
         let subsystems = request
             .subsystems
@@ -419,14 +408,7 @@ impl ProsodyClient {
                 request.timeout,
             )
             .instrument(span);
-        let results = if let Some(signal) = cancel {
-            tokio::select! {
-                result = request => result?,
-                () = signal.cancelled() => return Err(FfiError::Cancelled),
-            }
-        } else {
-            request.await?
-        };
+        let results = request.await?;
         Ok(results
             .into_iter()
             .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))

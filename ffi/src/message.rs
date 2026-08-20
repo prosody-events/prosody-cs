@@ -1,7 +1,7 @@
 //! FFI-safe Kafka message wrapper.
 //!
 //! This module provides [`Message`], a wrapper around prosody's
-//! [`ConsumerMessage`] that exposes message data through UniFFI-exported
+//! [`ConsumerMessage`] that exposes message data through BoltFFI-exported
 //! methods for C# consumption.
 
 use std::time::SystemTime;
@@ -10,30 +10,117 @@ use prosody::codec::BinaryPayload;
 use prosody::consumer::Keyed;
 use prosody::consumer::message::ConsumerMessage;
 
+use crate::error::FfiError;
+
 /// A Kafka message received from a consumer.
 ///
 /// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
 /// through FFI-safe accessor methods. The payload bytes are copied verbatim
 /// from the wire by [`JsonBinaryMessageCodec`] when the message is decoded.
 /// Each accessor clones once into the FFI return buffer as required by
-/// `UniFFI`.
+/// `BoltFFI`.
 ///
 /// [`JsonBinaryMessageCodec`]: prosody::codec::JsonBinaryMessageCodec
-#[derive(uniffi::Object)]
+#[derive(Clone)]
 pub struct Message {
     /// The underlying prosody message.
     inner: ConsumerMessage<BinaryPayload>,
 }
 
 /// A Kafka excise record received from a consumer.
-#[derive(uniffi::Object)]
+#[derive(Clone)]
 pub struct ExciseMessage {
     inner: ConsumerMessage<()>,
 }
 
+/// A bounded group of resolved messages.
+pub struct MessageBatch {
+    items: Vec<MessageBatchItem>,
+}
+
+enum MessageBatchItem {
+    Missing,
+    Message(Message),
+    Entry(String, Message),
+}
+
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
+impl MessageBatch {
+    pub(crate) fn messages(items: Vec<Message>) -> Self {
+        Self {
+            items: items.into_iter().map(MessageBatchItem::Message).collect(),
+        }
+    }
+
+    pub(crate) fn optional(items: Vec<Option<Message>>) -> Self {
+        Self {
+            items: items
+                .into_iter()
+                .map(|item| item.map_or(MessageBatchItem::Missing, MessageBatchItem::Message))
+                .collect(),
+        }
+    }
+
+    pub(crate) fn entries(items: Vec<(String, Message)>) -> Self {
+        Self {
+            items: items
+                .into_iter()
+                .map(|(key, message)| MessageBatchItem::Entry(key, message))
+                .collect(),
+        }
+    }
+
+    /// Returns the number of batch slots.
+    #[must_use]
+    pub fn count(&self) -> u64 {
+        self.items.len() as u64
+    }
+
+    /// Returns the message at `index`, or `None` for a missing slot.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transient error if the index is outside the batch.
+    pub fn message_at(&self, index: u64) -> Result<Option<Message>, FfiError> {
+        let index = usize::try_from(index).map_err(|_| {
+            FfiError::TransientState("batch index exceeds platform range".to_owned())
+        })?;
+        self.items
+            .get(index)
+            .map(|item| match item {
+                MessageBatchItem::Missing => None,
+                MessageBatchItem::Message(message) | MessageBatchItem::Entry(_, message) => {
+                    Some(message.clone())
+                }
+            })
+            .ok_or_else(|| FfiError::TransientState("batch index is out of range".to_owned()))
+    }
+
+    /// Returns the map key at `index`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a transient error if the slot is not a map entry.
+    pub fn key_at(&self, index: u64) -> Result<String, FfiError> {
+        let index = usize::try_from(index).map_err(|_| {
+            FfiError::TransientState("batch index exceeds platform range".to_owned())
+        })?;
+        match self.items.get(index) {
+            Some(MessageBatchItem::Entry(key, _)) => Ok(key.clone()),
+            Some(MessageBatchItem::Missing | MessageBatchItem::Message(_)) => Err(
+                FfiError::TransientState("batch slot has no map key".to_owned()),
+            ),
+            None => Err(FfiError::TransientState(
+                "batch index is out of range".to_owned(),
+            )),
+        }
+    }
+}
+
 #[expect(
     clippy::multiple_inherent_impl,
-    reason = "UniFFI requires separate impl blocks for exported vs internal methods"
+    reason = "BoltFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Message {
     /// Creates a new `Message` from a [`ConsumerMessage`].
@@ -53,7 +140,8 @@ impl Message {
     }
 }
 
-#[uniffi::export]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl Message {
     /// The Kafka topic this message was consumed from.
     #[must_use]
@@ -104,7 +192,8 @@ impl From<ConsumerMessage<()>> for ExciseMessage {
     }
 }
 
-#[uniffi::export]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl ExciseMessage {
     /// The Kafka topic this record was consumed from.
     #[must_use]

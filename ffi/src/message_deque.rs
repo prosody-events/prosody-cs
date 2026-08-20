@@ -15,13 +15,13 @@ use crate::message::Message;
 use crate::state::{OwnedCarrier, ScanDirection, into_message, platform_index, traced};
 
 /// A Kafka-message deque state handle for one event.
-#[derive(uniffi::Object)]
 pub struct MessageDequeStateHandle {
     pub(crate) state: BoxDequeState<ConsumerMessage<BinaryPayload>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl MessageDequeStateHandle {
     /// Returns the live element count.
     ///
@@ -52,7 +52,7 @@ impl MessageDequeStateHandle {
         &self,
         index: u64,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(
             &self.propagator,
             carrier,
@@ -69,7 +69,7 @@ impl MessageDequeStateHandle {
     /// Returns a state error if the write fails.
     pub async fn push_back(
         &self,
-        message: Arc<Message>,
+        message: Message,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         traced(
@@ -87,7 +87,7 @@ impl MessageDequeStateHandle {
     /// Returns a state error if the write fails.
     pub async fn push_front(
         &self,
-        message: Arc<Message>,
+        message: Message,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         traced(
@@ -106,7 +106,7 @@ impl MessageDequeStateHandle {
     pub async fn pop_front(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.pop_front())
             .await
             .map(|item| item.map(into_message))
@@ -120,7 +120,7 @@ impl MessageDequeStateHandle {
     pub async fn pop_back(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.pop_back())
             .await
             .map(|item| item.map(into_message))
@@ -134,7 +134,7 @@ impl MessageDequeStateHandle {
     pub async fn peek_front(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.peek_front())
             .await
             .map(|item| item.map(into_message))
@@ -148,7 +148,7 @@ impl MessageDequeStateHandle {
     pub async fn peek_back(
         &self,
         carrier: HashMap<String, String>,
-    ) -> Result<Option<Arc<Message>>, FfiError> {
+    ) -> Result<Option<Message>, FfiError> {
         traced(&self.propagator, carrier, self.state.peek_back())
             .await
             .map(|item| item.map(into_message))
@@ -169,13 +169,13 @@ impl MessageDequeStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<MessageDequeCursor> {
+    ) -> MessageDequeCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(MessageDequeCursor {
+        MessageDequeCursor {
             cursor: self.state.scan(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Commits the buffered operations.

@@ -7,7 +7,6 @@ using Prosody.State;
 using Prosody.Tests.TestHelpers;
 using static Prosody.Tests.TestHelpers.TestDefaults;
 using NativeResult = Prosody.Native.HandlerResult;
-using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
 
@@ -34,7 +33,7 @@ public sealed class EventHandlerBridgeTests
     private static Task<NativeResult> HandleMsg<T>(
         EventHandlerBridge<T> bridge,
         byte[]? payload = null,
-        Func<Task>? onCancel = null
+        Func<CancellationToken, Task>? onCancel = null
     ) =>
         bridge.HandleMessageAsync(
             AnyContext,
@@ -49,6 +48,14 @@ public sealed class EventHandlerBridgeTests
         );
 
     private static byte[] ToJson<T>(T value) => JsonSerializer.SerializeToUtf8Bytes(value, TestJson.Options);
+
+    private static string ErrorMessage(NativeResult result) =>
+        result switch
+        {
+            NativeResult.TransientError error => error.Message,
+            NativeResult.PermanentError error => error.Message,
+            _ => throw new Xunit.Sdk.XunitException("The handler result does not contain an error."),
+        };
 
     #region Constructor Tests
 
@@ -85,10 +92,7 @@ public sealed class EventHandlerBridgeTests
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
         NativeResult result = await HandleMsg(bridge);
 
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.Success, result.Code),
-            () => Assert.Null(result.ErrorMessage)
-        );
+        Assert.IsType<NativeResult.Success>(result);
     }
 
     [Fact]
@@ -102,8 +106,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("transient failure", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.TransientError>(result),
+            () => Assert.Contains("transient failure", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -118,8 +122,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("permanent failure", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("permanent failure", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -134,8 +138,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("custom permanent", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("custom permanent", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -152,7 +156,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -167,7 +171,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -179,8 +183,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("bad format", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("bad format", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -194,7 +198,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -215,7 +219,7 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge, payload: ToJson(new BridgePayload("typed", 3)));
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.Success, result.Code),
+            () => Assert.IsType<NativeResult.Success>(result),
             () => Assert.Equal(new BridgePayload("typed", 3), observedPayload),
             () => Assert.Equal("test-topic", observedMessage?.Topic),
             () => Assert.Equal("test-key", observedMessage?.Key)
@@ -231,8 +235,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge, payload: "{not valid json"u8.ToArray());
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains(nameof(JsonException), result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains(nameof(JsonException), ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -247,8 +251,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("not in attribute list", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.TransientError>(result),
+            () => Assert.Contains("not in attribute list", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -267,7 +271,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge, payload: "null"u8.ToArray());
 
-        Assert.Multiple(() => Assert.Equal(NativeResultCode.Success, result.Code), () => Assert.Null(observedPayload));
+        Assert.Multiple(() => Assert.IsType<NativeResult.Success>(result), () => Assert.Null(observedPayload));
     }
 
     [Fact]
@@ -278,7 +282,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge, payload: Array.Empty<byte>());
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -290,7 +294,7 @@ public sealed class EventHandlerBridgeTests
         // Valid JSON but wrong shape (array instead of object) → JsonException during deserialization
         var result = await HandleMsg(bridge, payload: "[1,2,3]"u8.ToArray());
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     #endregion OnMessage Tests
@@ -305,10 +309,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.Success, result.Code),
-            () => Assert.Null(result.ErrorMessage)
-        );
+        Assert.IsType<NativeResult.Success>(result);
     }
 
     [Fact]
@@ -322,8 +323,8 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("transient timer failure", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.TransientError>(result),
+            () => Assert.Contains("transient timer failure", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -338,8 +339,8 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("permanent timer failure", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("permanent timer failure", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -352,8 +353,8 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("bad timer format", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("bad timer format", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -368,8 +369,8 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("not in timer attribute list", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.TransientError>(result),
+            () => Assert.Contains("not in timer attribute list", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -386,7 +387,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -398,7 +399,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     [Fact]
@@ -418,7 +419,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -432,7 +433,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -467,7 +468,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     [Fact]
@@ -482,7 +483,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMsg(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.IsType<NativeResult.PermanentError>(result);
     }
 
     #endregion IPermanentErrorClassifier Tests
@@ -492,22 +493,12 @@ public sealed class EventHandlerBridgeTests
     [Fact]
     public async Task BridgeCancellationCancelsCtsWhenOnCancelCompletes()
     {
-        using var cts = new CancellationTokenSource();
+        var cts = new CancellationTokenSource();
 
-        // onCancel completes immediately — cancelTask is already completed when WhenAny
-        // evaluates, so the cancellation branch wins deterministically without needing
-        // handlerDone to complete.
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(
-            () => Task.CompletedTask,
-            cts,
-            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task
-        );
-#pragma warning restore CA2025
-
+        var monitor = EventHandlerBridge.BridgeCancellationAsync(_ => Task.CompletedTask, cts, CancellationToken.None);
         await monitor;
-
         Assert.True(cts.IsCancellationRequested);
+        cts.Dispose();
     }
 
     [Fact]
@@ -534,7 +525,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
+        var handleTask = HandleMsg(bridge, onCancel: _ => cancelTcs.Task);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
@@ -543,8 +534,44 @@ public sealed class EventHandlerBridgeTests
 
         Assert.Multiple(
             () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
-            () => Assert.Equal(NativeResultCode.Success, result.Code)
+            () => Assert.IsType<NativeResult.Success>(result)
         );
+    }
+
+    [Fact]
+    public async Task HandleMessageWaitsForCancelledHandlerToReturn()
+    {
+        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handlerRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new TypedLambdaHandler<JsonElement>(
+            onMessage: async (_, _, token) =>
+            {
+                handlerStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Continue until the test releases the handler.
+                }
+                cancellationObserved.TrySetResult();
+                await handlerRelease.Task.ConfigureAwait(false);
+            }
+        );
+        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
+        var resultTask = HandleMsg(bridge, onCancel: _ => cancellation.Task);
+
+        await handlerStarted.Task;
+        cancellation.TrySetResult();
+        await cancellationObserved.Task;
+
+        Assert.False(resultTask.IsCompleted);
+        handlerRelease.TrySetResult();
+        var result = await resultTask;
+        Assert.IsType<NativeResult.Success>(result);
     }
 
     [Fact]
@@ -571,7 +598,7 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
+        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, _ => cancelTcs.Task, EmptyCarrier);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
@@ -580,7 +607,7 @@ public sealed class EventHandlerBridgeTests
 
         Assert.Multiple(
             () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
-            () => Assert.Equal(NativeResultCode.Success, result.Code)
+            () => Assert.IsType<NativeResult.Success>(result)
         );
     }
 
@@ -603,14 +630,14 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = HandleMsg(bridge, onCancel: () => cancelTcs.Task);
+        var handleTask = HandleMsg(bridge, onCancel: _ => cancelTcs.Task);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
 
         var result = await handleTask;
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     [Fact]
@@ -628,92 +655,61 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, () => cancelTcs.Task, EmptyCarrier);
+        var handleTask = bridge.HandleTimerAsync(AnyContext, AnyTimer, _ => cancelTcs.Task, EmptyCarrier);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
 
         var result = await handleTask;
 
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
+        Assert.IsType<NativeResult.TransientError>(result);
     }
 
     [Fact]
-    public async Task BridgeCancellationDoesNotCancelCtsWhenHandlerCompletesFirst()
+    public async Task BridgeCancellationStopsWaitWhenHandlerCompletesFirst()
     {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cts = new CancellationTokenSource();
+        var monitorStop = new CancellationTokenSource();
+        var waitStopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var monitor = EventHandlerBridge.BridgeCancellationAsync(
+            async token =>
+            {
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    waitStopped.TrySetResult();
+                }
+            },
+            cts,
+            monitorStop.Token
+        );
 
-        // onCancel never completes
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(NeverCancel, cts, handlerDone.Task);
-#pragma warning restore CA2025
-
-        handlerDone.TrySetResult();
+        await monitorStop.CancelAsync();
         await monitor;
+        monitorStop.Dispose();
 
+        Assert.True(waitStopped.Task.IsCompleted);
         Assert.False(cts.IsCancellationRequested);
+        cts.Dispose();
     }
 
     [Fact]
     public async Task BridgeCancellationSwallowsSynchronousOnCancelFault()
     {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // onCancel throws synchronously — simulates native context torn down
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
+        var cts = new CancellationTokenSource();
         var monitor = EventHandlerBridge.BridgeCancellationAsync(
-            () => throw new InvalidOperationException("native context destroyed"),
+            _ => throw new InvalidOperationException("native context destroyed"),
             cts,
-            handlerDone.Task
+            CancellationToken.None
         );
-#pragma warning restore CA2025
-
-        handlerDone.TrySetResult();
 
         // Must not throw
         await monitor;
-
         Assert.False(cts.IsCancellationRequested);
-    }
-
-    [Fact]
-    public async Task BridgeCancellationSwallowsLateFaultWhenHandlerCompletesFirst()
-    {
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // onCancel returns a task that will fault after the handler completes
-#pragma warning disable CA2025 // CTS outlives the monitor: awaited before using scope ends
-        var monitor = EventHandlerBridge.BridgeCancellationAsync(() => cancelTcs.Task, cts, handlerDone.Task);
-#pragma warning restore CA2025
-
-        handlerDone.TrySetResult();
-        await monitor;
-
-        // Now fault the cancel task — should not trigger UnobservedTaskException
-        cancelTcs.TrySetException(new InvalidOperationException("late native fault"));
-
-        // Force GC + finalizers to flush any unobserved task exceptions
-        var unobservedFaulted = false;
-        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs e) => unobservedFaulted = true;
-        TaskScheduler.UnobservedTaskException += OnUnobserved;
-        try
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            GC.Collect();
-
-            Assert.False(unobservedFaulted);
-        }
-        finally
-        {
-            TaskScheduler.UnobservedTaskException -= OnUnobserved;
-        }
-
-        Assert.False(cts.IsCancellationRequested);
+        cts.Dispose();
     }
 
     [Fact]
@@ -729,9 +725,9 @@ public sealed class EventHandlerBridgeTests
         );
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
 
-        var result = await HandleMsg(bridge, onCancel: () => throw new InvalidOperationException("context torn down"));
+        var result = await HandleMsg(bridge, onCancel: _ => throw new InvalidOperationException("context torn down"));
 
-        Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
+        Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.IsType<NativeResult.Success>(result));
     }
 
     [Fact]
@@ -750,11 +746,11 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(
             AnyContext,
             AnyTimer,
-            () => throw new InvalidOperationException("context torn down"),
+            _ => throw new InvalidOperationException("context torn down"),
             EmptyCarrier
         );
 
-        Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
+        Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.IsType<NativeResult.Success>(result));
     }
 
     #endregion BridgeCancellationAsync Tests
@@ -770,8 +766,8 @@ public sealed class EventHandlerBridgeTests
         var result = await HandleMsg(bridge);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("explicit permanent", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("explicit permanent", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 
@@ -786,8 +782,8 @@ public sealed class EventHandlerBridgeTests
         var result = await bridge.HandleTimerAsync(AnyContext, AnyTimer, NeverCancel, EmptyCarrier);
 
         Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("explicit timer permanent", result.ErrorMessage, StringComparison.Ordinal)
+            () => Assert.IsType<NativeResult.PermanentError>(result),
+            () => Assert.Contains("explicit timer permanent", ErrorMessage(result), StringComparison.Ordinal)
         );
     }
 

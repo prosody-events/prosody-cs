@@ -12,68 +12,37 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::context::Context;
 use crate::error::FfiError;
-use crate::message::{ExciseMessage, Message};
-use crate::timer::Timer;
 use crate::types::EventMetadata;
 
 mod bridge;
 
 pub(crate) use bridge::CsHandler;
 
-/// Result code indicating how the event handler completed.
-///
-/// Handlers return this code to signal success or classify failures. Prosody
-/// uses this classification to determine retry behavior and dead-letter queue
-/// routing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
-pub enum HandlerResultCode {
-    /// Handler completed successfully.
-    ///
-    /// The message or timer was processed without error. Prosody will
-    /// acknowledge the message and proceed to the next event.
-    #[default]
-    Success,
-
-    /// Transient error that may resolve on retry.
-    ///
-    /// Use this for temporary failures like network timeouts, service
-    /// unavailability, or rate limiting. Prosody will retry the event
-    /// with exponential backoff.
-    TransientError,
-
-    /// Permanent error that will not resolve on retry.
-    ///
-    /// Use this for unrecoverable failures like malformed data, validation
-    /// errors, or business logic violations. Prosody will route the event
-    /// to the dead-letter queue without retrying.
-    PermanentError,
-}
-
 /// Result returned by event handlers.
-///
-/// Combines a [`HandlerResultCode`] with an optional error message. The C#
-/// wrapper populates `error_message` with the exception message when the
-/// handler fails, enabling Rust-side logging and diagnostics.
-#[derive(Debug, Clone, Default, uniffi::Record)]
-pub struct HandlerResult {
-    /// Indicates whether the handler succeeded or how it failed.
-    pub code: HandlerResultCode,
-
-    /// Error message describing the failure.
-    ///
-    /// This is `Some` when `code` is [`HandlerResultCode::TransientError`] or
-    /// [`HandlerResultCode::PermanentError`], containing the exception message
-    /// from the C# handler. It is `None` on success.
-    pub error_message: Option<String>,
-
-    /// Encoded JSON response on success.
-    pub response: Vec<u8>,
+#[boltffi::data]
+#[derive(Debug, Clone)]
+pub enum HandlerResult {
+    /// The handler returned encoded JSON.
+    Success {
+        /// Encoded JSON response.
+        response: Vec<u8>,
+    },
+    /// The handler returned a transient error.
+    TransientError {
+        /// Error text.
+        message: String,
+    },
+    /// The handler returned a permanent error.
+    PermanentError {
+        /// Error text.
+        message: String,
+    },
 }
 
 /// Values needed to send one request.
-#[derive(Debug, Clone, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct NativeRequest {
     /// Kafka topic.
     pub topic: String,
@@ -92,7 +61,8 @@ pub struct NativeRequest {
 }
 
 /// Values needed to send one excise subsystem request.
-#[derive(Debug, Clone, uniffi::Record)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub struct NativeExciseRequest {
     /// Kafka topic.
     pub topic: String,
@@ -107,7 +77,8 @@ pub struct NativeExciseRequest {
 }
 
 /// One subsystem outcome returned by a request.
-#[derive(Debug, Clone, uniffi::Enum)]
+#[boltffi::data]
+#[derive(Debug, Clone)]
 pub enum NativeRequestResult {
     /// The handler returned encoded JSON.
     Ok {
@@ -146,8 +117,8 @@ pub enum NativeRequestResult {
 /// Both methods receive a `carrier` map for distributed tracing context
 /// propagation (e.g., W3C Trace Context headers). The C# wrapper extracts
 /// these headers to continue the trace span across the FFI boundary.
-#[uniffi::export(with_foreign)]
 #[async_trait::async_trait]
+#[boltffi::export]
 pub trait EventHandler: Send + Sync {
     /// Handles an incoming Kafka message.
     ///
@@ -170,16 +141,14 @@ pub trait EventHandler: Send + Sync {
     /// via [`HandlerResult`] instead.
     async fn on_message(
         &self,
-        context: Arc<Context>,
-        message: Arc<Message>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 
     /// Handles an excise record.
     async fn on_excise(
         &self,
-        context: Arc<Context>,
-        message: Arc<ExciseMessage>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 
@@ -203,8 +172,7 @@ pub trait EventHandler: Send + Sync {
     /// via [`HandlerResult`] instead.
     async fn on_timer(
         &self,
-        context: Arc<Context>,
-        timer: Arc<Timer>,
+        event_id: u64,
         carrier: HashMap<String, String>,
     ) -> Result<HandlerResult, FfiError>;
 }

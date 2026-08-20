@@ -13,29 +13,37 @@ internal sealed class LogSinkBridge : LogSink
 {
     private static readonly EventId NativeLogEvent = new(99, "ProsodyNative");
 
-    private readonly ILogger _logger;
+    private ILogger? _logger;
 
-    internal LogSinkBridge(ILoggerFactory loggerFactory)
-    {
-        _logger = loggerFactory.CreateLogger("Prosody.Native");
-    }
+    internal LogSinkBridge() { }
+
+    internal LogSinkBridge(ILoggerFactory loggerFactory) => SetLogger(loggerFactory.CreateLogger("Prosody.Native"));
+
+    internal void SetLogger(ILogger logger) => Volatile.Write(ref _logger, logger);
+
+    internal void Clear() => Volatile.Write(ref _logger, null);
 
     // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
     /// <inheritdoc />
-    public bool IsEnabled(NativeLogLevel level) => _logger.IsEnabled((MsLogLevel)level);
+    public bool IsEnabled(NativeLogLevel level) => Volatile.Read(ref _logger)?.IsEnabled((MsLogLevel)level) ?? false;
 
     /// <inheritdoc />
     public void Log(NativeLogLevel level, string target, string message, string? file, uint? line, LogFields fields)
     {
-        var logLevel = (MsLogLevel)level;
+        ILogger? logger = Volatile.Read(ref _logger);
+        if (logger is null)
+        {
+            return;
+        }
 
-        if (!_logger.IsEnabled(logLevel))
+        var logLevel = (MsLogLevel)level;
+        if (!logger.IsEnabled(logLevel))
         {
             return;
         }
 
         var state = new NativeLogState(target, message, file, line, fields);
-        _logger.Log(logLevel, NativeLogEvent, state: state, exception: null, formatter: static (s, _) => s.Formatted);
+        logger.Log(logLevel, NativeLogEvent, state: state, exception: null, formatter: static (s, _) => s.Formatted);
     }
 
     /// <summary>

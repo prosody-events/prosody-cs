@@ -61,7 +61,7 @@
   </ItemGroup>
 
   <!-- Native library configuration -->
-  <!-- Library name matches UniFFI-generated bindings: prosody_ffi -->
+  <!-- BoltFFI uses the Rust crate name for the native library. -->
   <PropertyGroup>
     <ProsodyNativeLibraryName>prosody_ffi</ProsodyNativeLibraryName>
   </PropertyGroup>

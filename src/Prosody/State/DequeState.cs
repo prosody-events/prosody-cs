@@ -9,10 +9,10 @@ namespace Prosody.State;
 internal sealed class DequeState<T> : IDequeState<T>
     where T : notnull
 {
-    private readonly Native.IJsonDequeStateHandle _handle;
+    private readonly Native.JsonDequeStateHandle _handle;
     private readonly JsonTypeInfo<T> _typeInfo;
 
-    internal DequeState(Native.IJsonDequeStateHandle handle, JsonTypeInfo<T> typeInfo)
+    internal DequeState(Native.JsonDequeStateHandle handle, JsonTypeInfo<T> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -105,7 +105,7 @@ internal sealed class DequeState<T> : IDequeState<T>
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
+        return new StateScanSequence<Native.JsonDequeCursor, byte[], T>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())

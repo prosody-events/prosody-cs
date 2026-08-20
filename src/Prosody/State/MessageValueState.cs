@@ -9,10 +9,10 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload>>
 {
-    private readonly Native.IMessageValueStateHandle _handle;
+    private readonly Native.MessageValueStateHandle _handle;
     private readonly JsonTypeInfo<TPayload> _typeInfo;
 
-    internal MessageValueState(Native.IMessageValueStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
+    internal MessageValueState(Native.MessageValueStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;

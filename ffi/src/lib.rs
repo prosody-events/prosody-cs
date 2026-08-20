@@ -3,17 +3,16 @@
 //!
 //! This crate provides FFI bindings for the Prosody Kafka client library,
 //! enabling C# applications to use Prosody's event-driven message processing
-//! capabilities. Bindings are generated automatically using `UniFFI` via
-//! uniffi-bindgen-cs.
+//! capabilities. `BoltFFI` generates the C# bindings.
 //!
 //! # Building
 //!
 //! ```bash
 //! # Build the cdylib (produces libprosody_ffi.dylib/.so/.dll)
-//! cargo build -p prosody-ffi --release
+//! cargo build -p prosody_ffi --release
 //!
-//! # Generate C# bindings (via uniffi-bindgen-cs)
-//! uniffi-bindgen-cs --library target/release/libprosody_ffi.dylib -o src/Prosody/Generated
+//! # Generate C# bindings
+//! boltffi generate csharp --deny-skipped
 //! ```
 //!
 //! # Architecture
@@ -27,8 +26,6 @@
 //! # Modules
 //!
 //! - [`admin`]: Admin client for Kafka topic management (create, delete)
-//! - [`cancellation`]: Cancellation signaling for cooperative async
-//!   cancellation
 //! - [`client`]: Core [`ProsodyClient`] service implementation
 //! - [`config`]: Configuration conversion utilities for builder types
 //! - [`context`]: Event context for timer scheduling and cancellation checks
@@ -48,12 +45,12 @@ static GLOBAL: MiMalloc = MiMalloc;
 use std::collections::HashMap;
 
 pub mod admin;
-pub mod cancellation;
 pub mod client;
 pub mod config;
 pub mod context;
 pub mod cursor;
 pub mod error;
+pub mod event;
 pub mod handler;
 pub mod json_deque;
 pub mod logging;
@@ -61,6 +58,7 @@ pub mod map;
 pub mod message;
 pub mod message_deque;
 pub mod published;
+pub(crate) mod runtime;
 pub mod state;
 pub mod timer;
 pub mod types;
@@ -75,26 +73,21 @@ pub mod value;
 /// In C#, this maps to `IDictionary<string, string>`.
 pub type Carrier = HashMap<String, String>;
 
-// Re-exports for UniFFI scaffolding.
-//
-// UniFFI discovers exported types through the crate root. These re-exports
-// ensure all public FFI types are visible for binding generation.
+// Re-export the FFI types from the crate root.
 
 pub use admin::AdminClient;
-pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
 pub use context::Context;
 pub use cursor::{
     JsonDequeCursor, JsonMapCursor, JsonMapEntry, MapKeyCursor, MessageDequeCursor,
-    MessageMapCursor, MessageMapEntry,
+    MessageMapCursor,
 };
 pub use error::FfiError;
-pub use handler::{
-    EventHandler, HandlerResultCode, NativeExciseRequest, NativeRequest, NativeRequestResult,
-};
+pub use event::NativeEvent;
+pub use handler::{EventHandler, NativeExciseRequest, NativeRequest, NativeRequestResult};
 pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
-pub use message::{ExciseMessage, Message};
+pub use message::{ExciseMessage, Message, MessageBatch};
 pub use message_deque::MessageDequeStateHandle;
 pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
 pub use state::ScanDirection;
@@ -103,6 +96,3 @@ pub use types::{
     ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,
 };
 pub use value::{JsonValueStateHandle, MessageValueStateHandle};
-
-// Initialize UniFFI scaffolding (proc-macro approach, no UDL file required).
-uniffi::setup_scaffolding!();

@@ -157,6 +157,14 @@ indent_size = 2
 # CA1819: ClientOptions uses string[] properties for IConfiguration.Bind() compatibility
 dotnet_diagnostic.CA1819.severity = none
 
+[src/Prosody/Configuration/ClientOptions.Native.cs]
+# The generated binding has one flat constructor with more than 60 fields.
+MA0051.maximum_lines_per_method = 70
+
+[src/Prosody/Configuration/ClientOptions.State.cs]
+# CA1819: ClientOptions uses arrays for IConfiguration.Bind() compatibility.
+dotnet_diagnostic.CA1819.severity = none
+
 [src/Prosody/Configuration/ClientOptionsValidator.cs]
 # MA0076: Suppress culture-sensitive analyzer for ClientOptionsValidator
 dotnet_diagnostic.MA0076.severity = none
@@ -164,6 +172,6 @@ dotnet_diagnostic.MA0076.severity = none
 # Exclude generated code from all analyzers
 [src/Prosody/Generated/**]
 generated_code = true
-# CS1587: stray XML doc comments emitted by uniffi-bindgen-cs; compiler diagnostic
-# not governed by generated_code, so suppress it explicitly (generated code only).
+# Compiler diagnostics do not use the generated-code setting.
 dotnet_diagnostic.CS1587.severity = none
+dotnet_diagnostic.CS1591.severity = none

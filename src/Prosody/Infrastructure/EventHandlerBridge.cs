@@ -12,7 +12,6 @@ using Prosody.Messaging;
 using Prosody.State;
 using NativeHandler = Prosody.Native.EventHandler;
 using NativeResult = Prosody.Native.HandlerResult;
-using NativeResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Infrastructure;
 
@@ -91,11 +90,12 @@ internal static class EventHandlerBridge
     /// <summary>
     /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
     /// and classifies any exception as permanent or transient.
+    /// Cancellation never detaches a handler. This method returns only after the handler returns.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task<byte[]>> handler,
         Func<Exception, bool> isPermanentError,
-        Func<Task> onCancel,
+        Func<CancellationToken, Task> onCancel,
         Dictionary<string, string> carrier,
         string activityName,
         string eventType = "handler",
@@ -108,47 +108,53 @@ internal static class EventHandlerBridge
             ActivityKind.Consumer,
             propagation.ActivityContext
         );
-        using var cts = new CancellationTokenSource();
-        var handlerDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cts = new CancellationTokenSource();
+        var monitorStop = new CancellationTokenSource();
 
-        // Start the cancellation bridge — races OnCancel() against handler completion
-        // so the monitor exits promptly regardless of which finishes first.
-        // Awaited in finally to ensure the monitor itself completes before CTS disposal.
-#pragma warning disable CA2025 // CTS outlives the monitor: finally awaits the monitor before the using scope disposes the CTS
-        Task cancelMonitor = BridgeCancellationAsync(onCancel, cts, handlerDone.Task);
-#pragma warning restore CA2025
+        Task cancelMonitor = BridgeCancellationAsync(onCancel, cts, monitorStop.Token);
 
         try
         {
             byte[] response = await handler(cts.Token).ConfigureAwait(false);
-            return new NativeResult(NativeResultCode.Success, ErrorMessage: null, response);
+            return new NativeResult.Success(response);
         }
         catch (Exception ex) when (isPermanentError(ex))
         {
             RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Permanent);
-            return new NativeResult(NativeResultCode.PermanentError, ex.ToString(), JsonNull);
+            return new NativeResult.PermanentError(ex.ToString());
         }
         catch (OperationCanceledException ex)
         {
             // Cancellation is normal during shutdown/rebalance — report to Rust but skip Sentry.
-            return new NativeResult(NativeResultCode.TransientError, ex.ToString(), JsonNull);
+            return new NativeResult.TransientError(ex.ToString());
         }
 #pragma warning disable CA1031 // FFI boundary: must catch all exceptions to classify and return appropriate result code to Rust
         catch (Exception ex)
         {
             RecordExceptionOnActivity(activity, ex);
             TryCaptureToSentry(ex, eventType, buildSentryContext, ErrorClass.Transient);
-            return new NativeResult(NativeResultCode.TransientError, ex.ToString(), JsonNull);
+            return new NativeResult.TransientError(ex.ToString());
         }
 #pragma warning restore CA1031
         finally
         {
-            // Signal the monitor to stop waiting, then await it so no task leaks.
-            // The using-scoped CTS is disposed after this finally block completes,
-            // guaranteeing it outlives any CancelAsync() call inside the monitor.
-            handlerDone.TrySetResult();
-            await cancelMonitor.ConfigureAwait(false);
+            try
+            {
+                await monitorStop.CancelAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    await cancelMonitor.ConfigureAwait(false);
+                }
+                finally
+                {
+                    monitorStop.Dispose();
+                    cts.Dispose();
+                }
+            }
         }
     }
 
@@ -189,24 +195,19 @@ internal static class EventHandlerBridge
     /// Bridges a cancellation signal to a <see cref="CancellationTokenSource"/>.
     /// </summary>
     /// <remarks>
-    /// Races <paramref name="onCancel"/> against <paramref name="handlerDone"/> so the
-    /// monitor exits promptly whether cancellation arrives or the handler completes first.
-    /// When the handler completes first, the <c>OnCancel()</c> task (which may block
-    /// indefinitely in native code) is observed via a fault-swallowing continuation to
-    /// prevent <see cref="TaskScheduler.UnobservedTaskException"/>.
-    /// Callers must <c>await</c> the returned task in a <see langword="finally"/> block after signalling
-    /// <paramref name="handlerDone"/>.
+    /// The stop token cancels the native wait after the handler returns.
+    /// The method completes only after the native wait releases its resources.
     /// </remarks>
     internal static async Task BridgeCancellationAsync(
-        Func<Task> onCancel,
+        Func<CancellationToken, Task> onCancel,
         CancellationTokenSource cts,
-        Task handlerDone
+        CancellationToken stopToken
     )
     {
         Task cancelTask;
         try
         {
-            cancelTask = onCancel();
+            cancelTask = onCancel(stopToken);
         }
 #pragma warning disable CA1031 // Infrastructure — synchronous faults from OnCancel() must not propagate
         catch (Exception ex)
@@ -218,55 +219,32 @@ internal static class EventHandlerBridge
 
         try
         {
-            var completed = await Task.WhenAny(cancelTask, handlerDone).ConfigureAwait(false);
-
-            if (completed != handlerDone)
-            {
-                // OnCancel() won the race — observe it (may have faulted) then trigger the CTS so the handler sees cancellation.
-                await cancelTask.ConfigureAwait(false);
-                try
-                {
-                    await cts.CancelAsync().ConfigureAwait(false);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // CTS already disposed — handler completed between WhenAny and here.
-                }
-            }
-            else
-            {
-                // Handler completed first.
-                // The cancelTask may still be running (native OnCancel() can block indefinitely) or may fault later.
-                // Attach a continuation to observe any future fault and prevent UnobservedTaskException.
-                _ = cancelTask.ContinueWith(
-                    static t => LogHelper.LogOnCancelLateFault(Logger, t.Exception),
-                    CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                    TaskScheduler.Default
-                );
-            }
+            await cancelTask.ConfigureAwait(false);
+            await cts.CancelAsync().ConfigureAwait(false);
         }
-#pragma warning disable CA1031, RCS1075 // Infrastructure — faults from OnCancel() must not propagate to the handler
+#pragma warning disable CA1031 // Infrastructure faults must not cross the handler boundary
         catch (Exception ex)
         {
-            // OnCancel() faulted (e.g., native context was torn down). Nothing useful to do —
-            // the handler will complete on its own or observe cancellation via ShouldCancel.
+            if (ex is OperationCanceledException && stopToken.IsCancellationRequested)
+            {
+                return;
+            }
             LogHelper.LogOnCancelFault(Logger, ex);
         }
-#pragma warning restore CA1031, RCS1075
+#pragma warning restore CA1031
     }
 }
 
 /// <summary>
 /// Bridges a typed user-facing <see cref="IProsodyHandler{TPayload}"/> interface
-/// to the UniFFI-generated <see cref="NativeHandler"/> interface.
+/// to native event values.
 /// </summary>
 /// <remarks>
 /// Deserializes the payload once per message, inside the protected handler scope so that
 /// <see cref="JsonException"/> is classified by the error classification logic on
 /// <see cref="IProsodyHandler{TPayload}.OnMessageAsync"/> exactly like any other exception.
 /// </remarks>
-internal sealed class EventHandlerBridge<TPayload> : NativeHandler
+internal sealed class EventHandlerBridge<TPayload>
 {
     private readonly Func<ProsodyContext, Message<TPayload>, CancellationToken, Task<byte[]>> _onMessage;
     private readonly Func<ProsodyContext, ExciseMessage, CancellationToken, Task<byte[]>> _onExcise;
@@ -482,8 +460,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnMessage(
+    internal Task<NativeResult> OnMessage(
         Native.Context context,
         Native.Message message,
         Dictionary<string, string> carrier
@@ -499,22 +476,25 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
         var bytes = message.Payload();
 
-        return HandleMessageAsync(
+        return WithContext(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
-            topic,
-            key,
-            partition,
-            offset,
-            timestamp,
-            bytes,
-            context.OnCancel,
-            carrier,
-            message
+            prosodyContext =>
+                HandleMessageAsync(
+                    prosodyContext,
+                    topic,
+                    key,
+                    partition,
+                    offset,
+                    timestamp,
+                    bytes,
+                    ct => context.OnCancel(ct),
+                    carrier,
+                    message
+                )
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnExcise(
+    internal Task<NativeResult> OnExcise(
         Native.Context context,
         Native.ExciseMessage message,
         Dictionary<string, string> carrier
@@ -527,33 +507,54 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             message.Offset(),
             new DateTimeOffset(message.Timestamp(), TimeSpan.Zero)
         );
-        return EventHandlerBridge.InvokeHandlerAsync(
-            ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
-            _isExcisePermanent,
-            context.OnCancel,
-            carrier,
-            activityName: EventHandlerBridge.OnExciseActivityName,
-            eventType: SentryConstants.TagValues.EventTypeExcise,
-            buildSentryContext: SentryIntegration.IsEnabled
-                ? () =>
-                    EventHandlerBridge.BuildMessageSentryContext(
-                        record.Topic,
-                        record.Key,
-                        record.Partition,
-                        record.Offset
-                    )
-                : null
+        return WithContext(
+            new ProsodyContext(context, _jsonOptions, _stateDefinitions),
+            prosodyContext =>
+                EventHandlerBridge.InvokeHandlerAsync(
+                    ct => _onExcise(prosodyContext, record, ct),
+                    _isExcisePermanent,
+                    ct => context.OnCancel(ct),
+                    carrier,
+                    activityName: EventHandlerBridge.OnExciseActivityName,
+                    eventType: SentryConstants.TagValues.EventTypeExcise,
+                    buildSentryContext: SentryIntegration.IsEnabled
+                        ? () =>
+                            EventHandlerBridge.BuildMessageSentryContext(
+                                record.Topic,
+                                record.Key,
+                                record.Partition,
+                                record.Offset
+                            )
+                        : null
+                )
         );
     }
 
-    /// <inheritdoc/>
-    public Task<NativeResult> OnTimer(Native.Context context, Native.Timer timer, Dictionary<string, string> carrier) =>
-        HandleTimerAsync(
+    internal Task<NativeResult> OnTimer(
+        Native.Context context,
+        Native.Timer timer,
+        Dictionary<string, string> carrier
+    ) =>
+        WithContext(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
-            new ProsodyTimer(timer),
-            context.OnCancel,
-            carrier
+            prosodyContext =>
+                HandleTimerAsync(prosodyContext, new ProsodyTimer(timer), ct => context.OnCancel(ct), carrier)
         );
+
+    private static async Task<NativeResult> WithContext(
+        ProsodyContext context,
+        Func<ProsodyContext, Task<NativeResult>> handler
+    )
+    {
+        try
+        {
+            return await handler(context).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.Invalidate();
+        }
+    }
 
     /// <summary>
     /// Core message handling logic, decoupled from native types for testability.
@@ -568,7 +569,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         long offset,
         DateTimeOffset timestamp,
         byte[] payload,
-        Func<Task> onCancel,
+        Func<CancellationToken, Task> onCancel,
         Dictionary<string, string> carrier,
         Native.Message? nativeMessage = null
     ) =>
@@ -595,7 +596,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     internal Task<NativeResult> HandleTimerAsync(
         ProsodyContext prosodyContext,
         ProsodyTimer wrappedTimer,
-        Func<Task> onCancel,
+        Func<CancellationToken, Task> onCancel,
         Dictionary<string, string> carrier
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(

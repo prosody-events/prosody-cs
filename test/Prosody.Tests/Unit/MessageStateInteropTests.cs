@@ -1,6 +1,5 @@
 using Prosody.Messaging;
 using Prosody.State;
-using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
@@ -12,37 +11,20 @@ namespace Prosody.Tests.Unit;
 public sealed class MessageStateInteropTests
 {
     [Fact]
-    public async Task Set_NullMessage_ThrowsNullValueException_TransientCategory_StoreUntouched()
+    public void Set_NullMessage_ThrowsNullValueException_TransientCategory()
     {
-        var handle = new FakeMessageValueStateHandle();
-        var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
+        var exception = Assert.Throws<NullValueException>(() => MessageInterop.ToNative<int>(null!));
 
-        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
-            state.SetAsync(null!, TestContext.Current.CancellationToken)
-        );
-
-        Assert.Multiple(
-            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.SetCalls)
-        );
+        Assert.Equal(StateErrorCategory.Transient, exception.Category);
     }
 
     [Fact]
-    public async Task Set_MessageWithoutNativeHandle_ThrowsTransient_StoreUntouched()
+    public void Set_MessageWithoutNativeHandle_ThrowsTransient()
     {
-        var handle = new FakeMessageValueStateHandle();
-        var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
-
-        // A hand-constructed message carries no native handle, so it cannot be written back.
         var message = new Message<int>("topic", "key", 0, 0, DateTimeOffset.UtcNow, 5);
 
-        var exception = await Assert.ThrowsAsync<TransientStateException>(() =>
-            state.SetAsync(message, TestContext.Current.CancellationToken)
-        );
+        var exception = Assert.Throws<TransientStateException>(() => MessageInterop.ToNative(message));
 
-        Assert.Multiple(
-            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.SetCalls)
-        );
+        Assert.Equal(StateErrorCategory.Transient, exception.Category);
     }
 }

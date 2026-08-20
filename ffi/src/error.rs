@@ -1,9 +1,7 @@
 //! Error types for FFI boundary crossing.
 //!
 //! This module defines error types that safely cross the FFI boundary using
-//! `UniFFI`'s error handling mechanism. Errors are serialized to strings via
-//! the `flat_error` attribute, which generates corresponding exception types
-//! in C#.
+//! `BoltFFI` exports each variant as a corresponding C# record.
 //!
 //! # Error Classification
 //!
@@ -31,15 +29,10 @@ use tokio::task::JoinError;
 
 /// Primary error type for FFI boundary operations.
 ///
-/// `UniFFI` generates a corresponding `FfiException` type in C#. The
-/// `flat_error` attribute serializes all variants to strings via their
-/// `Display` implementation, preserving error messages across the language
-/// boundary.
-///
 /// All variants support automatic conversion via [`From`] implementations,
 /// allowing use of the `?` operator in FFI functions.
-#[derive(Debug, thiserror::Error, uniffi::Error)]
-#[uniffi(flat_error)]
+#[boltffi::error]
+#[derive(Debug, thiserror::Error)]
 pub enum FfiError {
     /// The operation was cancelled before completion.
     #[error("operation cancelled")]
@@ -49,26 +42,26 @@ pub enum FfiError {
     ///
     /// Kafka topic names must be valid C strings for interop with librdkafka.
     #[error("topic name contains null byte: {0:#}")]
-    TopicContainsNul(#[from] NulError),
+    TopicContainsNul(String),
 
-    /// An unexpected error occurred in a `UniFFI` callback.
+    /// An unexpected error occurred in a callback.
     ///
     /// This typically indicates a bug in the generated bindings or a panic
     /// in callback code.
     #[error("unexpected callback error: {0:#}")]
-    UnexpectedCallback(#[from] uniffi::UnexpectedUniFFICallbackError),
+    UnexpectedCallback(String),
 
     /// A Kafka admin operation failed.
     ///
     /// Wraps errors from topic creation, deletion, and metadata operations.
     #[error("admin operation failed: {0:#}")]
-    Admin(#[from] ProsodyAdminClientError),
+    Admin(String),
 
     /// Configuration validation failed.
     ///
     /// One or more configuration values did not pass validation rules.
     #[error("configuration validation failed: {0:#}")]
-    Validation(#[from] ValidationErrors),
+    Validation(String),
 
     /// A telemetry emitter configuration builder could not be finalized.
     ///
@@ -76,14 +69,14 @@ pub enum FfiError {
     /// corresponding configuration field (e.g. `PROSODY_TELEMETRY_ENABLED`
     /// is not a valid boolean).
     #[error("telemetry configuration build failed: {0:#}")]
-    TelemetryConfig(#[from] TelemetryEmitterConfigurationBuilderError),
+    TelemetryConfig(String),
 
     /// Flushing or shutting down the telemetry pipeline failed.
     ///
     /// Wraps errors from exporting buffered OpenTelemetry spans/metrics or from
     /// tearing the export pipeline down at process exit.
     #[error("telemetry operation failed: {0:#}")]
-    Tracing(#[from] TracingError),
+    Tracing(String),
 
     /// A Kafka message loader configuration could not be finalized.
     ///
@@ -92,55 +85,55 @@ pub enum FfiError {
     /// `loader_discard_threshold` fails validation (e.g. a zero cache
     /// size).
     #[error("loader configuration build failed: {0:#}")]
-    LoaderConfig(#[from] KafkaLoaderConfigError),
+    LoaderConfig(String),
 
     /// Kafka consumer configuration is invalid or incomplete.
     #[error("consumer configuration failed: {0:#}")]
-    ConsumerConfiguration(#[from] ConsumerConfigurationBuilderError),
+    ConsumerConfiguration(String),
 
     /// Cassandra configuration is invalid or incomplete.
     #[error("Cassandra configuration failed: {0:#}")]
-    CassandraConfiguration(#[from] CassandraConfigurationBuilderError),
+    CassandraConfiguration(String),
 
     /// Topic configuration is invalid or incomplete.
     #[error("topic configuration failed: {0:#}")]
-    TopicConfiguration(#[from] TopicConfigurationBuilderError),
+    TopicConfiguration(String),
 
     /// A high-level client operation failed.
     ///
     /// Wraps errors from the main Prosody client API.
     #[error("client operation failed: {0:#}")]
-    Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+    Client(String),
 
     /// A request failed before it returned subsystem results.
     #[error("request failed: {0:#}")]
-    Request(#[from] RequestError<BinaryCodecError<JsonExtractError>>),
+    Request(String),
 
     /// Construction of the backend-erased FFI client failed.
     #[error("client construction failed: {0:#}")]
-    ClientBuild(#[from] ErasedClientBuildError<BinaryCodecError<JsonExtractError>>),
+    ClientBuild(String),
 
     /// A producer operation failed.
     ///
     /// Occurs when publishing messages to Kafka fails.
     #[error("producer operation failed: {0:#}")]
-    Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
+    Producer(String),
 
     /// An event context operation failed.
     ///
     /// Wraps errors from event acknowledgment and state management.
     #[error("event context operation failed: {0:#}")]
-    EventContext(#[from] BoxEventContextError),
+    EventContext(String),
 
     /// A timestamp value is invalid or out of range.
     #[error("invalid timestamp: {0:#}")]
-    CompactDateTime(#[from] CompactDateTimeError),
+    CompactDateTime(String),
 
     /// A background task failed or panicked.
     ///
     /// Indicates that an async task did not complete successfully.
     #[error("task join failed: {0:#}")]
-    Join(#[from] JoinError),
+    Join(String),
 
     /// A permanent keyed-state failure that must not be retried.
     ///
@@ -164,6 +157,34 @@ pub enum FfiError {
     #[error("transient state error: {0}")]
     TransientState(String),
 }
+
+macro_rules! string_error {
+    ($source:ty => $variant:ident) => {
+        impl From<$source> for FfiError {
+            fn from(error: $source) -> Self {
+                Self::$variant(error.to_string())
+            }
+        }
+    };
+}
+
+string_error!(NulError => TopicContainsNul);
+string_error!(boltffi::UnexpectedFfiCallbackError => UnexpectedCallback);
+string_error!(ProsodyAdminClientError => Admin);
+string_error!(ValidationErrors => Validation);
+string_error!(TelemetryEmitterConfigurationBuilderError => TelemetryConfig);
+string_error!(TracingError => Tracing);
+string_error!(KafkaLoaderConfigError => LoaderConfig);
+string_error!(ConsumerConfigurationBuilderError => ConsumerConfiguration);
+string_error!(CassandraConfigurationBuilderError => CassandraConfiguration);
+string_error!(TopicConfigurationBuilderError => TopicConfiguration);
+string_error!(HighLevelClientError<BinaryCodecError<JsonExtractError>> => Client);
+string_error!(RequestError<BinaryCodecError<JsonExtractError>> => Request);
+string_error!(ErasedClientBuildError<BinaryCodecError<JsonExtractError>> => ClientBuild);
+string_error!(ProducerError<BinaryCodecError<JsonExtractError>> => Producer);
+string_error!(BoxEventContextError => EventContext);
+string_error!(CompactDateTimeError => CompactDateTime);
+string_error!(JoinError => Join);
 
 /// Recovers the state-error category structurally from [`ErasedStateError`].
 ///

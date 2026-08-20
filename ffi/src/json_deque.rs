@@ -13,14 +13,14 @@ use crate::error::FfiError;
 use crate::state::{OwnedCarrier, ScanDirection, into_bytes, platform_index, reject_null, traced};
 
 /// A JSON deque state handle for one event.
-#[derive(uniffi::Object)]
 pub struct JsonDequeStateHandle {
     pub(crate) name: String,
     pub(crate) state: BoxDequeState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[prosody_ffi_macros::ffi_async]
+#[boltffi::export]
 impl JsonDequeStateHandle {
     /// Returns the live element count.
     ///
@@ -162,13 +162,13 @@ impl JsonDequeStateHandle {
         &self,
         direction: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Arc<JsonDequeCursor> {
+    ) -> JsonDequeCursor {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
-        Arc::new(JsonDequeCursor {
+        JsonDequeCursor {
             cursor: self.state.scan(direction.into()),
             propagator: Arc::clone(&self.propagator),
-        })
+        }
     }
 
     /// Commits the buffered operations.

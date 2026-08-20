@@ -367,7 +367,7 @@ pub fn build_dedup_config(
                 "idempotence_cache_size",
                 ValidationError::new("idempotence_cache_size_must_be_non_zero"),
             );
-            FfiError::Validation(errors)
+            FfiError::Validation(errors.to_string())
         })?;
         builder.cache_capacity(cache_capacity);
     }

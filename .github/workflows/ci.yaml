@@ -108,15 +108,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install uniffi-bindgen-cs
+      - name: Install BoltFFI
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: uniffi-bindgen-cs
-          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
-
-      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
-        run: dotnet tool install -g csharpier
+          crate: boltffi_cli
+          version: 0.30.1
 
       - name: Restore .NET tools
         run: dotnet tool restore
@@ -136,11 +132,27 @@ jobs:
         run: make build-ci
 
       - name: Run tests
-        run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
+        run: >-
+          dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
+          --no-launch-profile -c Release -- --diagnostic --diagnostic-synchronous-write
+          --diagnostic-output-directory /tmp/prosody-test-diagnostics --timeout 5m
         env:
           PROSODY_BOOTSTRAP_SERVERS: localhost:9094
           PROSODY_CASSANDRA_NODES: localhost:9042
           PROSODY_CASSANDRA_KEYSPACE: prosody_test
+          DOTNET_DbgEnableMiniDump: 1
+          DOTNET_DbgMiniDumpType: 4
+          DOTNET_DbgMiniDumpName: /tmp/prosody-%p.dmp
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-failure-diagnostics
+          path: |
+            /tmp/prosody-*.dmp
+            /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn
 
   dotnet-lint:
     name: .NET Lint
@@ -174,15 +186,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install uniffi-bindgen-cs
+      - name: Install BoltFFI
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: uniffi-bindgen-cs
-          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
-
-      - name: Install CSharpier globally (for uniffi-bindgen-cs auto-formatting)
-        run: dotnet tool install -g csharpier
+          crate: boltffi_cli
+          version: 0.30.1
 
       - name: Restore .NET tools
         run: dotnet tool restore

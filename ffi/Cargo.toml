@@ -5,30 +5,36 @@ edition = "2024"
 homepage = "https://github.com/prosody-events/prosody-cs"
 keywords = ["bindings", "client", "csharp", "kafka", "prosody"]
 license = "MIT"
-name = "prosody-ffi"
+name = "prosody_ffi"
 readme = "../README.md"
 repository = "https://github.com/prosody-events/prosody-cs"
 version = "0.5.0"
 
 # Produces libprosody_ffi.dylib (macOS) / libprosody_ffi.so (Linux) / prosody_ffi.dll (Windows)
-# C# loads this via P/Invoke, and uniffi-bindgen-cs reads it to generate bindings
+# C# loads this library through the generated BoltFFI bindings.
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 arc-swap.workspace = true
+ahash.workspace = true
 async-trait.workspace = true
+boltffi.workspace = true
+bytemuck.workspace = true
 futures.workspace = true
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] }
 opentelemetry.workspace = true
+parking_lot.workspace = true
+pin-project-lite.workspace = true
+prosody-ffi-macros = { path = "../ffi-macros" }
 prosody.workspace = true
+scc.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
-uniffi = { workspace = true, features = ["tokio"] }
 validator.workspace = true
 
 [dev-dependencies]

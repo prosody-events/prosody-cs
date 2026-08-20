@@ -15,9 +15,8 @@ internal sealed record SendTestPayload(string OrderTotal, int ItemCount);
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 internal sealed partial class SnakeCaseSendContext : JsonSerializerContext;
 
-// Payload whose converter cancels the token during serialization — after the entry
-// ThrowIfCancellationRequested, before the native signal is created — so the native
-// send starts with a pre-cancelled signal and deterministically reports Cancelled.
+// This payload cancels the token during serialization.
+// The cancellation occurs after the method entry check and before the Bolt call.
 internal sealed record CancelOnWritePayload;
 
 internal sealed class CancelOnWriteConverter(CancellationTokenSource cts) : JsonConverter<CancelOnWritePayload>
@@ -112,9 +111,7 @@ public sealed class ProsodyClientSendTests : IAsyncLifetime
             client.SendAsync("topic", "key", new CancelOnWritePayload(), cts.Token)
         );
 
-        // The inner exception proves the cancellation crossed the native boundary and was
-        // translated, rather than being caught by the entry-point token check.
-        Assert.IsType<Native.FfiException.Cancelled>(ex.InnerException);
+        Assert.Equal(cts.Token, ex.CancellationToken);
     }
 
     [Fact]

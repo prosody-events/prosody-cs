@@ -30,8 +30,9 @@ public static class ProsodyLogging
     private static readonly object SyncLock = new();
 #endif
 
-    private static LogSinkBridge? _sink;
+    private static readonly LogSinkBridge Sink = new();
     private static ILoggerFactory? _loggerFactory;
+    private static bool _nativeSinkConfigured;
     private static bool _processExitHandlerRegistered;
 
     /// <summary>
@@ -46,17 +47,25 @@ public static class ProsodyLogging
     {
         ArgumentNullException.ThrowIfNull(loggerFactory);
 
-        var sink = new LogSinkBridge(loggerFactory);
         lock (SyncLock)
         {
-            if (_sink is not null)
+            if (_loggerFactory is not null)
             {
                 throw new InvalidOperationException("Prosody logging has already been configured.");
             }
 
-            _sink = sink;
+            if (!_nativeSinkConfigured)
+            {
+                if (!Native.Prosody_ffi.ConfigureLogSink(Sink))
+                {
+                    throw new InvalidOperationException("The native log sink is already configured.");
+                }
+
+                _nativeSinkConfigured = true;
+            }
+
+            Sink.SetLogger(loggerFactory.CreateLogger("Prosody.Native"));
             _loggerFactory = loggerFactory;
-            ProsodyFfiMethods.ConfigureLogSink(sink);
             RegisterProcessExitShutdown();
         }
     }
@@ -73,8 +82,8 @@ public static class ProsodyLogging
     /// their timers. For a deterministic final export at process exit, prefer
     /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes.
     /// </remarks>
-    /// <exception cref="Native.FfiException">Thrown if the span or metric exporter fails to flush.</exception>
-    public static void FlushTelemetry() => ProsodyFfiMethods.FlushTelemetry();
+    /// <exception cref="Native.FfiErrorException">Thrown if the span or metric exporter fails to flush.</exception>
+    public static void FlushTelemetry() => Native.Prosody_ffi.FlushTelemetry();
 
     /// <summary>
     /// Flushes and shuts down the process-global telemetry pipeline. A safe no-op
@@ -88,8 +97,8 @@ public static class ProsodyLogging
     /// directly only when managing process teardown yourself. Blocks until the
     /// final export completes.
     /// </remarks>
-    /// <exception cref="Native.FfiException">Thrown if the span or metric pipeline fails to shut down.</exception>
-    public static void ShutdownTelemetry() => ProsodyFfiMethods.ShutdownTelemetry();
+    /// <exception cref="Native.FfiErrorException">Thrown if the span or metric pipeline fails to shut down.</exception>
+    public static void ShutdownTelemetry() => Native.Prosody_ffi.ShutdownTelemetry();
 
     /// <summary>
     /// Registers a one-shot <see cref="AppDomain.ProcessExit"/> handler that shuts
@@ -109,7 +118,7 @@ public static class ProsodyLogging
             {
                 ShutdownTelemetry();
             }
-            catch (Native.FfiException)
+            catch (Native.FfiErrorException)
             {
                 // Best-effort at process exit: a telemetry shutdown failure must not
                 // fault a process that is already tearing down.
@@ -142,9 +151,8 @@ public static class ProsodyLogging
     {
         lock (SyncLock)
         {
-            _sink = null;
+            Sink.Clear();
             _loggerFactory = null;
-            ProsodyFfiMethods.ClearLogSink();
         }
     }
 

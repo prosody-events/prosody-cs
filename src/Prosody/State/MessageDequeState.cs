@@ -9,10 +9,10 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload>>
 {
-    private readonly Native.IMessageDequeStateHandle _handle;
+    private readonly Native.MessageDequeStateHandle _handle;
     private readonly JsonTypeInfo<TPayload> _typeInfo;
 
-    internal MessageDequeState(Native.IMessageDequeStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
+    internal MessageDequeState(Native.MessageDequeStateHandle handle, JsonTypeInfo<TPayload> typeInfo)
     {
         _handle = handle;
         _typeInfo = typeInfo;
@@ -105,12 +105,12 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
+        return new StateScanSequence<Native.MessageDequeCursor, Native.Message, Message<TPayload>>(
             () =>
                 StateInterop.RunSync(() =>
                     _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static (cursor, carrier) => MessageInterop.MessageBatch(cursor.NextChunk(carrier)),
             static cursor => cursor.Close(),
             message => MessageInterop.FromNative(message, _typeInfo),
             cancellationToken

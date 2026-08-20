@@ -71,7 +71,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.target.rid }}
-          path: ffi/artifacts/${{ matrix.target.rid }}/
+          path: ffi/artifacts/${{ matrix.target.rid }}/libprosody_ffi.so
+          if-no-files-found: error
+
+      - name: Upload native symbols
+        uses: actions/upload-artifact@v7
+        with:
+          name: symbols-${{ matrix.target.rid }}
+          path: ffi/artifacts/${{ matrix.target.rid }}/symbols/
           if-no-files-found: error
 
   build-package:
@@ -106,12 +113,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
 
-      - name: Install uniffi-bindgen-cs
+      - name: Install BoltFFI
         uses: baptiste0928/cargo-install@v3
         with:
-          crate: uniffi-bindgen-cs
-          git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
+          crate: boltffi_cli
+          version: 0.30.1
 
       - name: Install CSharpier globally
         run: dotnet tool install -g csharpier
@@ -137,7 +143,7 @@ jobs:
         run: dotnet restore
 
       - name: Build FFI for binding generation
-        run: cargo build -p prosody-ffi
+        run: cargo build -p prosody_ffi
 
       - name: Generate C# bindings
         run: make bindgen
@@ -213,8 +219,15 @@ jobs:
           name: validation-package
           path: packages/
 
+      - name: Download native symbols
+        uses: actions/download-artifact@v8
+        with:
+          name: symbols-${{ matrix.target.rid }}
+          path: /tmp/prosody-test-diagnostics/symbols/
+
       - name: Test installed package
         run: |
+          mkdir -p /tmp/prosody-test-diagnostics
           docker run --rm --network host \
             -e PROSODY_BOOTSTRAP_SERVERS=localhost:9094 \
             -e PROSODY_CASSANDRA_NODES=localhost:9042 \
@@ -223,7 +236,11 @@ jobs:
             -e DOTNET_NOLOGO=1 \
             -e NUGET_PACKAGES=/tmp/prosody-release-packages \
             -e NUGET_HTTP_CACHE_PATH=/tmp/prosody-release-http-cache \
+            -e DOTNET_DbgEnableMiniDump=1 \
+            -e DOTNET_DbgMiniDumpType=4 \
+            -e DOTNET_DbgMiniDumpName=/diagnostics/prosody-%p.dmp \
             --volume "${{ github.workspace }}:/workspace" \
+            --volume "/tmp/prosody-test-diagnostics:/diagnostics" \
             --workdir /workspace \
             mcr.microsoft.com/dotnet/sdk:${{ matrix.dotnet }} \
             bash -c '
@@ -238,5 +255,19 @@ jobs:
                 --no-launch-profile \
                 --configuration Release \
                 -p:TestPackage=true \
-                -p:TestPackageVersion=0.0.0-validation
+                -p:TestPackageVersion=0.0.0-validation \
+                -- --diagnostic --diagnostic-synchronous-write \
+                --diagnostic-output-directory /diagnostics --timeout 5m
             '
+
+      - name: Make failure diagnostics readable
+        if: failure()
+        run: sudo chmod --recursive a+rX /tmp/prosody-test-diagnostics
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-test-diagnostics-${{ matrix.target.rid }}-net${{ matrix.dotnet }}
+          path: /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn

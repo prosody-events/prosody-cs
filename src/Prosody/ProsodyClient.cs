@@ -73,7 +73,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         return new ProsodyClient(
-            await Native.ProsodyClient.ProsodyClientAsync(options.ToNative()).ConfigureAwait(false),
+            await Native.ProsodyClient.New(options.ToNative()).ConfigureAwait(false),
             BuildJsonOptions(options),
             RegisteredStateDefinitions(options)
         );
@@ -265,23 +265,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        try
-        {
-            await _native.Excise(topic, key, carrier, linked?.Signal).ConfigureAwait(false);
-        }
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The excise was cancelled.", ex, cancellationToken);
-        }
-        finally
-        {
-            if (linked is { } value)
-            {
-                await value.Registration.DisposeAsync().ConfigureAwait(false);
-                value.Signal.Dispose();
-            }
-        }
+        await _native.Excise(topic, key, carrier, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -380,27 +364,9 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         TracePropagation.Inject(carrier);
 
         var metadata = new Native.EventMetadata(EventId: eventId, EventType: eventType);
-
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        try
-        {
-            await _native.Send(topic, key, metadata, jsonBytes, carrier, linked?.Signal).ConfigureAwait(false);
-        }
-        // Invariant: the signal is triggered only by cancellationToken's registration
-        // (CancellationHelper.CreateSignal), so a native Cancelled from the send path always
-        // means the caller's token fired — surface it as the standard .NET cancellation type.
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The send was cancelled.", ex, cancellationToken);
-        }
-        finally
-        {
-            if (linked is { } l)
-            {
-                await l.Registration.DisposeAsync().ConfigureAwait(false);
-                l.Signal.Dispose();
-            }
-        }
+        await NativeSend
+            .Send(_native, topic, key, metadata, jsonBytes, carrier, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
@@ -490,7 +456,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         );
         return await CompleteRequestAsync(
                 responseType,
-                signal => _native.Request(request, signal),
+                token => _native.Request(request, token),
                 nameof(subsystems),
                 cancellationToken
             )
@@ -540,7 +506,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         var request = new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier);
         return await CompleteRequestAsync(
                 responseType,
-                signal => _native.RequestExcise(request, signal),
+                token => _native.RequestExcise(request, token),
                 nameof(subsystems),
                 cancellationToken
             )
@@ -549,32 +515,19 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
 
     private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
         JsonTypeInfo<TResponse> responseType,
-        Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
+        Func<CancellationToken, Task<Dictionary<string, Native.NativeRequestResult>>> send,
         string subsystemParameterName,
         CancellationToken cancellationToken
     )
     {
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
         Dictionary<string, Native.NativeRequestResult> nativeResults;
         try
         {
-            nativeResults = await send(linked?.Signal).ConfigureAwait(false);
+            nativeResults = await send(cancellationToken).ConfigureAwait(false);
         }
-        catch (Native.FfiException.Cancelled ex)
+        catch (Native.FfiErrorException ex) when (ex.Error is Native.FfiError.PermanentState permanent)
         {
-            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
-        }
-        catch (Native.FfiException.PermanentState ex)
-        {
-            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
-        }
-        finally
-        {
-            if (linked is { } value)
-            {
-                await value.Registration.DisposeAsync().ConfigureAwait(false);
-                value.Signal.Dispose();
-            }
+            throw new ArgumentException(permanent.Field0, subsystemParameterName, ex);
         }
         var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
         foreach (var (subsystem, result) in nativeResults)
@@ -637,7 +590,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
     {
         var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions);
-        return _native.Subscribe(bridge);
+        return _native.Subscribe(new NativeEventHandler<TPayload>(_native, bridge));
     }
 
     /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
@@ -646,7 +599,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)
     {
         var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions);
-        return _native.Subscribe(bridge);
+        return _native.Subscribe(new NativeEventHandler<TPayload>(_native, bridge));
     }
 
     /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
@@ -657,7 +610,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     )
     {
         var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier);
-        return _native.Subscribe(bridge);
+        return _native.Subscribe(new NativeEventHandler<TPayload>(_native, bridge));
     }
 
     /// <summary>
@@ -679,7 +632,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier)
     {
         var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions);
-        return _native.Subscribe(bridge);
+        return _native.Subscribe(new NativeEventHandler<TPayload>(_native, bridge));
     }
 
     /// <summary>
@@ -702,7 +655,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         {
             await ShutdownAsync().ConfigureAwait(false);
         }
-        catch (Native.FfiException error)
+        catch (Native.FfiErrorException error)
         {
             LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
         }
@@ -718,7 +671,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
             {
                 ProsodyLogging.FlushTelemetry();
             }
-            catch (Native.FfiException)
+            catch (Native.FfiErrorException)
             {
                 // Telemetry flush is best-effort during disposal.
             }
@@ -728,5 +681,5 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <inheritdoc/>
-    public void Dispose() => _native.Dispose();
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 }

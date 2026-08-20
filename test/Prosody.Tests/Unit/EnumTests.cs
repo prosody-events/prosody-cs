@@ -1,6 +1,5 @@
 using Prosody.Configuration;
 using Prosody.Messaging;
-using HandlerResultCode = Prosody.Native.HandlerResultCode;
 
 namespace Prosody.Tests.Unit;
 
@@ -33,19 +32,6 @@ public sealed class EnumTests
             () => Assert.Contains(ConsumerState.Configured, values),
             () => Assert.Contains(ConsumerState.Running, values),
             () => Assert.Contains(ConsumerState.Shutdown, values)
-        );
-    }
-
-    [Fact]
-    public void HandlerResultCodeHasExpectedVariants()
-    {
-        var values = Enum.GetValues<HandlerResultCode>();
-
-        Assert.Multiple(
-            () => Assert.Equal(3, values.Length),
-            () => Assert.Contains(HandlerResultCode.Success, values),
-            () => Assert.Contains(HandlerResultCode.TransientError, values),
-            () => Assert.Contains(HandlerResultCode.PermanentError, values)
         );
     }
 }
