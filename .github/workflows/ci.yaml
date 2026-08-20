@@ -132,11 +132,27 @@ jobs:
         run: make build-ci
 
       - name: Run tests
-        run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
+        run: >-
+          dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
+          --no-launch-profile -c Release -- --diagnostic --diagnostic-synchronous-write
+          --diagnostic-output-directory /tmp/prosody-test-diagnostics --timeout 5m
         env:
           PROSODY_BOOTSTRAP_SERVERS: localhost:9094
           PROSODY_CASSANDRA_NODES: localhost:9042
           PROSODY_CASSANDRA_KEYSPACE: prosody_test
+          DOTNET_DbgEnableMiniDump: 1
+          DOTNET_DbgMiniDumpType: 4
+          DOTNET_DbgMiniDumpName: /tmp/prosody-%p.dmp
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-failure-diagnostics
+          path: |
+            /tmp/prosody-*.dmp
+            /tmp/prosody-test-diagnostics/
+          if-no-files-found: warn
 
   dotnet-lint:
     name: .NET Lint
