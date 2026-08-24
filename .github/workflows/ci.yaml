@@ -101,7 +101,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
@@ -167,7 +167,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
@@ -220,7 +220,7 @@ jobs:
           components: rustfmt
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
@@ -263,7 +263,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
@@ -298,7 +298,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
@@ -330,7 +330,7 @@ jobs:
           components: clippy
 
       - name: Setup mold
-        uses: rui314/setup-mold@9c9c13bf4c3f1adef0cc596abc155580bcb04444 # v1
+        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
         with:
           make-default: false
 
