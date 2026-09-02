@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Prosody.Native;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -15,6 +16,11 @@ namespace Prosody.Logging;
 /// channel and UniFFI panics on an unexpected error. A failed <see cref="IsEnabled"/> reports
 /// <see langword="false"/>. A failed <see cref="Log"/> drops the record.
 /// </remarks>
+[SuppressMessage(
+    "Design",
+    "CA1031:Do not catch general exception types",
+    Justification = "The callback has no error channel"
+)]
 internal sealed class LogSinkBridge : LogSink
 {
     private static readonly EventId NativeLogEvent = new(99, "ProsodyNative");
@@ -26,20 +32,18 @@ internal sealed class LogSinkBridge : LogSink
         _logger = loggerFactory.CreateLogger("Prosody.Native");
     }
 
-    // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
     /// <inheritdoc />
     public bool IsEnabled(NativeLogLevel level)
     {
         try
         {
+            // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
             return _logger.IsEnabled((MsLogLevel)level);
         }
-#pragma warning disable CA1031 // The callback has no error channel; see the class remarks.
-        catch (Exception)
+        catch
         {
             return false;
         }
-#pragma warning restore CA1031
     }
 
     /// <inheritdoc />
@@ -62,12 +66,10 @@ internal sealed class LogSinkBridge : LogSink
                 formatter: static (s, _) => s.Formatted
             );
         }
-#pragma warning disable CA1031, RCS1075 // The callback has no error channel; see the class remarks.
-        catch (Exception)
+        catch
         {
             // The bridge drops the record. Logging must not change client control flow.
         }
-#pragma warning restore CA1031, RCS1075
     }
 
     /// <summary>
