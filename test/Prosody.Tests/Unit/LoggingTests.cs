@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Testing;
 using Prosody.Configuration;
 using Prosody.Extensions;
 using Prosody.Logging;
+using Prosody.Messaging;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -71,6 +72,19 @@ public sealed class LoggingTests : IDisposable
         // Assert - logs should go to collector2
         Assert.Empty(collector1.GetSnapshot());
         AssertContainsDisabledConsumerLog(collector2);
+    }
+
+    [Fact]
+    public async Task ThrowingLoggerDoesNotChangeNativeClientBehavior()
+    {
+        using var provider = new ThrowingLoggerProvider(ThrowFrom.Log);
+        using var factory = new LoggerFactory([provider]);
+        ProsodyLogging.Configure(factory);
+
+        // A producer-only client emits one native "consumer is disabled" event on creation.
+        await CreateProducerOnlyClientAsync();
+
+        Assert.True(provider.ThrownCallCount > 0, "the native side emitted no log event, so this test proves nothing");
     }
 
     [Fact]
