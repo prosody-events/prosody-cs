@@ -219,7 +219,6 @@ variable applies, then the default.
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy. Use `StateReadCache.For(ttl)`, `StateReadCache.Disabled`, or the environment value `none`. | 5s |
 | `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON collections whose definitions set `published: true`. | (none) |
-| `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants).
 The [API reference](README.md#api-reference) documents these factories. Their parameters map to these fields:
@@ -229,7 +228,7 @@ Published collections require `Subsystem`. Keep it configured for one deployment
 | Option | Applies to | Description | Default |
 |---|---|---|---|
 | `name` | all | Collection name; non-empty and unique within the client. | (required) |
-| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
+| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`. | (none) |
 | `published` | JSON | Advertises the owned collection for cross-group read-only access. | `false` |
 | `readCache` | JSON | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
 | `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |

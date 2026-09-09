@@ -126,8 +126,7 @@ pub struct StateCollectionConfig {
     pub payload: StatePayload,
 
     /// Optional per-write TTL. Must be a whole number of seconds of at least 1
-    /// (fractional and sub-second values are rejected) and must exceed the
-    /// recovery delay (the latter checked at consumer build).
+    /// (fractional and sub-second values are rejected). The Cassandra TTL limit applies.
     #[uniffi(default = None)]
     pub ttl: Option<Duration>,
 
@@ -717,16 +716,6 @@ pub struct ClientOptions {
     /// Subsystem under which published collections are advertised.
     #[uniffi(default = None)]
     pub subsystem: Option<String>,
-
-    /// Delay between staging a provisional cell and the keyed-state recovery
-    /// sweep.
-    ///
-    /// Every registered TTL must strictly exceed this. Falls back to the
-    /// `PROSODY_STATE_RECOVERY_DELAY` environment variable, then to 30
-    /// seconds. Must be a whole number of seconds of at least 1 when set
-    /// (fractional and sub-second values are rejected).
-    #[uniffi(default = None)]
-    pub state_recovery_delay: Option<Duration>,
 }
 
 /// Optional event metadata supplied by the caller on send.

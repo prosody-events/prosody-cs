@@ -623,11 +623,6 @@ pub fn build_keyed_state_config(
         builder.cache_dir(PathBuf::from(dir));
     }
 
-    if let Some(delay) = options.state_recovery_delay {
-        let seconds = whole_seconds(delay, "stateRecoveryDelay")?;
-        builder.recovery_delay(CompactDuration::new(seconds));
-    }
-
     if let Some(size) = &options.state_owned_cache_size {
         let size = size
             .parse::<ByteSize>()

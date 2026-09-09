@@ -508,13 +508,6 @@ public sealed class ClientOptions
     public string? Subsystem { get; set; }
 
     /// <summary>
-    /// Delay between staging a provisional keyed-state cell and the recovery sweep. Every registered
-    /// TTL must strictly exceed this. Falls back to <c>PROSODY_STATE_RECOVERY_DELAY</c>, then to
-    /// 30 seconds. Must be a whole number of seconds of at least one when set.
-    /// </summary>
-    public TimeSpan? StateRecoveryDelay { get; set; }
-
-    /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when the configuration is invalid.</exception>
@@ -581,7 +574,6 @@ public sealed class ClientOptions
             StateReadCacheTtl = StateReadCache?.Ttl,
             StateReadCacheDisabled = StateReadCache?.IsDisabled,
             Subsystem = Subsystem,
-            StateRecoveryDelay = StateRecoveryDelay,
         };
 
     private Native.ClientOptions ToNativeBase() =>
