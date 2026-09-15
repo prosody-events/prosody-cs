@@ -60,8 +60,14 @@ public static class ProsodyServiceCollectionExtensions
     /// Invalid configuration throws <see cref="OptionsValidationException"/>.
     /// </para>
     /// <para>
-    /// The service registers one <see cref="ProsodyClientProvider"/>. The provider constructs one
-    /// shared client when a caller first calls <see cref="ProsodyClientProvider.GetAsync"/>.
+    /// The service registers one <see cref="ProsodyClient"/>. Construction does no I/O. The first operation connects, or set
+    /// <see cref="ClientOptions.ConnectOnStart"/> to connect when the host starts. A hosted
+    /// lifecycle service disposes the client inside the host's shutdown timeout.
+    /// </para>
+    /// <para>
+    /// Repeated calls are safe. The first call binds and registers; later calls with the same
+    /// section only add their <paramref name="configure"/> action. A later call with a different
+    /// section throws.
     /// </para>
     /// <para>
     /// Keyed-state collections are programmatic (not configuration-bindable): set
@@ -88,12 +94,8 @@ public static class ProsodyServiceCollectionExtensions
     /// builder.Services.AddProsodyClient(options =&gt; options.Mock = true);
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode(
-        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
-    )]
+    [RequiresUnreferencedCode(Trimming.OptionsBinding)]
+    [RequiresDynamicCode(Trimming.OptionsBinding)]
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
         Action<ClientOptions>? configure = null
@@ -120,7 +122,8 @@ public static class ProsodyServiceCollectionExtensions
     /// </para>
     /// <para>
     /// The client is registered as a singleton because it manages Kafka connections and internal state
-    /// that should be shared across the application.
+    /// that should be shared across the application. See the parameterless overload for the
+    /// connect and repeated-call behavior.
     /// </para>
     /// </remarks>
     /// <example>
@@ -129,12 +132,8 @@ public static class ProsodyServiceCollectionExtensions
     /// builder.Services.AddProsodyClient("MyApp:Kafka", options =&gt; options.Mock = true);
     /// </code>
     /// </example>
-    [RequiresUnreferencedCode(
-        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Binds ClientOptions from IConfiguration (BindConfiguration) and auto-installs DefaultJsonTypeInfoResolver. Configure a source-generated JsonSerializerContext via ClientOptions.ConfigureJsonOptions for trim-safe serialization."
-    )]
+    [RequiresUnreferencedCode(Trimming.OptionsBinding)]
+    [RequiresDynamicCode(Trimming.OptionsBinding)]
     public static IServiceCollection AddProsodyClient(
         this IServiceCollection services,
         string configSectionPath,
@@ -144,26 +143,43 @@ public static class ProsodyServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configSectionPath);
 
-        var builder = services.AddOptions<ClientOptions>().BindConfiguration(configSectionPath);
-
+        // PostConfigure is additive, so every call may contribute one. Binding is additive too,
+        // so only the first call may bind: a second BindConfiguration doubles every bound array.
         if (configure is not null)
         {
-            builder.PostConfigure(configure);
+            services.PostConfigure(configure);
         }
 
-        builder.ValidateOnStart();
+        if (services.FirstOrDefault(d => d.ServiceType == typeof(Registration)) is { } existing)
+        {
+            var registered = ((Registration)existing.ImplementationInstance!).ConfigSectionPath;
+            return string.Equals(registered, configSectionPath, StringComparison.Ordinal)
+                ? services
+                : throw new InvalidOperationException(
+                    $"AddProsodyClient was already called with configuration section '{registered}'. One application registers one Prosody client."
+                );
+        }
 
+        services.AddSingleton(new Registration(configSectionPath));
+        services.AddOptions<ClientOptions>().BindConfiguration(configSectionPath).ValidateOnStart();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<ClientOptions>, ClientOptionsValidator>()
         );
-        services.TryAddSingleton(sp =>
-        {
-            var options = sp.GetRequiredService<IOptions<ClientOptions>>().Value.Clone();
-            return new ProsodyClientProvider(() => ProsodyClient.FromValidatedOptionsAsync(options));
-        });
+
+        services.TryAddSingleton(sp => new ProsodyClient(
+            sp.GetRequiredService<IOptions<ClientOptions>>().Value,
+            sp.GetService<ILogger<ProsodyClient>>()
+        ));
+#pragma warning disable CS0618 // The adapter keeps existing GetRequiredService<ProsodyClientProvider>() calls resolving.
+        services.TryAddSingleton(sp => new ProsodyClientProvider(sp.GetRequiredService<ProsodyClient>()));
+#pragma warning restore CS0618
+        services.AddHostedService<ProsodyClientLifecycle>();
 
         return services;
     }
+
+    /// <summary>Marks that <see cref="AddProsodyClient(IServiceCollection, string, Action{ClientOptions}?)"/> already ran, and with which section.</summary>
+    private sealed record Registration(string ConfigSectionPath);
 
     private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory) : IHostedService
     {

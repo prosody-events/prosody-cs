@@ -22,4 +22,18 @@ internal static partial class LogHelper
         Message = "Failed to shut down the Prosody client during disposal."
     )]
     internal static partial void LogShutdownFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(
+        EventId = 6,
+        Level = LogLevel.Warning,
+        Message = "The host shutdown timeout fired before the Prosody client finished disposal. Disposal continues in the background."
+    )]
+    internal static partial void LogDisposalAbandoned(ILogger logger);
+
+    [LoggerMessage(
+        EventId = 7,
+        Level = LogLevel.Warning,
+        Message = "Native shutdown did not finish within the shutdown budget of {Budget}. The native client is released anyway."
+    )]
+    internal static partial void LogNativeShutdownAbandoned(ILogger logger, TimeSpan budget);
 }

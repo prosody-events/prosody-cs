@@ -28,8 +28,8 @@ internal static class PermanentErrorResolver
     /// <param name="interfaceType">The implemented handler interface type.</param>
     /// <param name="methodName">The method name to inspect.</param>
     /// <returns>The attribute if found; otherwise, <see langword="null"/>.</returns>
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
     internal static PermanentErrorAttribute? GetAttribute(
         [DynamicallyAccessedMembers(
             DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
@@ -66,8 +66,8 @@ internal static class PermanentErrorResolver
         // Default: transient (will retry)
     }
 
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
     private static PermanentErrorAttribute? ResolveAttribute(
         [DynamicallyAccessedMembers(
             DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods

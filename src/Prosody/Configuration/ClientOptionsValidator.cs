@@ -13,8 +13,19 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         CheckTimeSpans(options, failures);
         CheckStateCollections(options, failures);
+        CheckSourceSystem(options, failures);
 
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private static void CheckSourceSystem(ClientOptions options, List<string> failures)
+    {
+        if (options.ResolveSourceSystem() is null)
+        {
+            failures.Add(
+                "SourceSystem or GroupId must be set, or PROSODY_SOURCE_SYSTEM or PROSODY_GROUP_ID must be present in the environment."
+            );
+        }
     }
 
     private static void CheckStateCollections(ClientOptions options, List<string> failures)

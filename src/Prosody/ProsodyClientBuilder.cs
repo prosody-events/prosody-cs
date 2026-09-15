@@ -10,7 +10,8 @@ namespace Prosody;
 /// <remarks>
 /// <para>
 /// Use <see cref="Prosody.CreateClient"/> (or <see cref="Create"/>) to get a builder instance,
-/// then chain configuration methods. Call <see cref="BuildAsync"/> when ready to create the client.
+/// then chain configuration methods. Call <see cref="BuildAsync"/> to create a connected client,
+/// or <see cref="Build"/> to create one that connects on first use.
 /// </para>
 /// <para>
 /// The builder exposes <c>With*</c> methods for commonly used options. For advanced tuning
@@ -343,12 +344,13 @@ public sealed class ProsodyClientBuilder
     }
 
     /// <summary>
-    /// Creates a new <see cref="ProsodyClient"/> with the configured options.
+    /// Creates a <see cref="ProsodyClient"/> with the configured options and connects it.
     /// </summary>
-    /// <returns>A new <see cref="ProsodyClient"/> instance.</returns>
+    /// <returns>A connected <see cref="ProsodyClient"/>.</returns>
     /// <remarks>
     /// <para>
-    /// This method validates configuration, connects to Kafka, and allocates resources.
+    /// This method validates configuration, then performs the native connect. Use
+    /// <see cref="Build"/> to get an unconnected client whose first operation connects.
     /// The returned client should be disposed when no longer needed.
     /// </para>
     /// <para>
@@ -358,15 +360,28 @@ public sealed class ProsodyClientBuilder
     /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>BuildAsync()</c>.
     /// </para>
     /// </remarks>
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
-    public Task<ProsodyClient> BuildAsync()
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
+    public async Task<ProsodyClient> BuildAsync()
+    {
+        var client = Build();
+        await client.ConnectAsync().ConfigureAwait(false);
+        return client;
+    }
+
+    /// <summary>
+    /// Creates an unconnected <see cref="ProsodyClient"/> with the configured options.
+    /// </summary>
+    /// <returns>A <see cref="ProsodyClient"/> that connects on its first operation or on <see cref="ProsodyClient.ConnectAsync"/>.</returns>
+    /// <remarks>
+    /// This method validates configuration and does no I/O. See <see cref="BuildAsync"/> for
+    /// the JSON resolver behavior; it applies here as well.
+    /// </remarks>
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
+    public ProsodyClient Build()
     {
         _options.Validate();
-        return ProsodyClient.FromValidatedOptionsAsync(_options.Clone());
+        return new ProsodyClient(_options.Clone());
     }
 }

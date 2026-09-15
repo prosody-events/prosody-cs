@@ -2,92 +2,205 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Microsoft.Extensions.Logging;
 using Prosody.Configuration;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Logging;
 using Prosody.Messaging;
 using Prosody.State;
+#if NET9_0_OR_GREATER
+using ClientLock = System.Threading.Lock;
+#else
+using ClientLock = System.Object;
+#endif
 
 namespace Prosody;
 
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
 /// </summary>
-public sealed class ProsodyClient : IDisposable, IAsyncDisposable
+/// <remarks>
+/// <para>
+/// Construction is synchronous and does no I/O. The first operation, or
+/// <see cref="ConnectAsync"/>, starts the native build. A caller's cancellation abandons that
+/// caller's wait only: the build continues, stays cached, and serves later callers or is torn
+/// down by <see cref="DisposeAsync"/>. The native build never starts a second time because a
+/// caller cancelled. A failed build is not retained; the next operation retries.
+/// </para>
+/// <para>
+/// <see cref="DisposeAsync"/> never waits on a pending build. It disposes whatever the build
+/// produces once the build settles.
+/// </para>
+/// </remarks>
+public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 {
-    private readonly Native.ProsodyClient _native;
+    /// <summary>The crate's default handler-drain budget, used when <see cref="ClientOptions.ShutdownTimeout"/> is unset.</summary>
+    private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Added to the shutdown budget so the crate's own terminate fires before disposal gives up.</summary>
+    private static readonly TimeSpan ShutdownMargin = TimeSpan.FromSeconds(5);
+
+    private readonly ClientLock _gate = new();
+    private readonly Func<Task<Native.ProsodyClient>> _connect;
+    private readonly Func<Native.ProsodyClient, Task> _shutdownNative;
+    private readonly TimeSpan _shutdownBudget;
+    private readonly ILogger _logger;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
     private readonly Lazy<Task> _shutdown;
 
+    // Invariant: _native is null or the one build every caller shares. NativeAsync creates it.
+    // Only completed unsuccessful builds leave the cache. _closed and _claimed change only
+    // from false to true. A closed client starts no build. _claimed gives one disposer the
+    // build for release. _gate protects these fields.
+    private Task<Native.ProsodyClient>? _native;
+    private bool _closed;
+    private bool _claimed;
+
     internal JsonSerializerOptions JsonOptions { get; }
 
-    private ProsodyClient(
-        Native.ProsodyClient native,
-        JsonSerializerOptions jsonOptions,
-        IReadOnlySet<StateDefinition> stateDefinitions
+    /// <summary>Creates an unconnected client from validated options.</summary>
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
+    internal ProsodyClient(ClientOptions validated, ILogger? logger = null)
+        : this(validated, connect: null, shutdownNative: null, logger) { }
+
+    /// <summary>
+    /// Creates an unconnected client. Tests pass <paramref name="connect"/> to drive the native
+    /// build and <paramref name="shutdownNative"/> to drive the native shutdown.
+    /// </summary>
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
+    internal ProsodyClient(
+        ClientOptions validated,
+        Func<Task<Native.ProsodyClient>>? connect,
+        Func<Native.ProsodyClient, Task>? shutdownNative = null,
+        ILogger? logger = null
     )
     {
-        _native = native;
-        JsonOptions = jsonOptions;
-        _stateDefinitions = stateDefinitions;
+        var options = validated.Clone();
+        JsonOptions = BuildJsonOptions(options);
+        _stateDefinitions = RegisteredStateDefinitions(options);
+        SourceSystem =
+            options.ResolveSourceSystem()
+            ?? throw new InvalidOperationException("No source system or consumer group id is configured.");
+        _connect = connect ?? (() => Native.ProsodyClient.ProsodyClientAsync(options.ToNative()));
+        _shutdownNative = shutdownNative ?? (native => native.Shutdown());
+        _shutdownBudget = (options.ResolveShutdownTimeout() ?? DefaultShutdownTimeout) + ShutdownMargin;
+        // Keep the logger after the logging service clears its factory during host stop.
+        _logger = logger ?? ProsodyLogging.CreateLogger(nameof(ProsodyClient));
         _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
-        SourceSystem = native.SourceSystem();
     }
 
     /// <summary>
-    /// Creates a new Prosody client with the given options.
+    /// Creates a Prosody client with the given options and connects it.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
     /// <remarks>
     /// When no <c>TypeInfoResolver</c> is set via <see cref="ClientOptions.ConfigureJsonOptions"/>,
-    /// this constructor auto-installs <c>DefaultJsonTypeInfoResolver</c>, which uses reflection metadata.
+    /// this method auto-installs <c>DefaultJsonTypeInfoResolver</c>, which uses reflection metadata.
     /// To avoid this, set <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c>
     /// in the <see cref="ClientOptions.ConfigureJsonOptions"/> callback.
     /// </remarks>
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
     public static async Task<ProsodyClient> CreateAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return await FromValidatedOptionsAsync(options).ConfigureAwait(false);
+        var client = new ProsodyClient(options);
+        await client.ConnectAsync().ConfigureAwait(false);
+        return client;
     }
 
-    /// <summary>
-    /// Creates a new ProsodyClient from pre-validated options, skipping redundant validation.
-    /// </summary>
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
-    internal static async Task<ProsodyClient> FromValidatedOptionsAsync(ClientOptions options)
+    private async Task<Native.ProsodyClient> BuildAsync()
     {
-        ArgumentNullException.ThrowIfNull(options);
-        return new ProsodyClient(
-            await Native.ProsodyClient.ProsodyClientAsync(options.ToNative()).ConfigureAwait(false),
-            BuildJsonOptions(options),
-            RegisteredStateDefinitions(options)
-        );
+        var native = await _connect().ConfigureAwait(false);
+
+        // SourceSystem was resolved before connect with the crate's precedence. Prove it matched.
+        var actual = native.SourceSystem();
+        if (!string.Equals(actual, SourceSystem, StringComparison.Ordinal))
+        {
+            native.Dispose();
+            throw new InvalidOperationException(
+                $"Native source system '{actual}' differs from the resolved '{SourceSystem}'."
+            );
+        }
+        return native;
+    }
+
+    /// <summary>Connects now instead of on first use. Safe to call more than once.</summary>
+    /// <exception cref="OperationCanceledException">The caller's token was cancelled. The build continues.</exception>
+    /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
+    public async Task ConnectAsync(CancellationToken cancellationToken = default) =>
+        await NativeAsync(cancellationToken).ConfigureAwait(false);
+
+    private async ValueTask<Native.ProsodyClient> NativeAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        Task<Native.ProsodyClient> pending;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            // A build that failed after every waiter had cancelled is still cached here.
+            // Evict it so this call retries instead of replaying the old failure.
+            // IsFaulted alone is not enough: a build that ended Canceled would stay forever.
+            if (_native is { IsCompleted: true, IsCompletedSuccessfully: false } failed)
+            {
+                // Reading Exception marks the fault observed. A cancelled WaitAsync waiter removes
+                // its continuation from the build, so nothing else observes it once evicted.
+                _ = failed.Exception;
+                _native = null;
+            }
+            pending = _native ??= BuildAsync();
+        }
+
+        return await AwaitNativeAsync(pending, pending.WaitAsync(cancellationToken)).ConfigureAwait(false);
+    }
+
+    /// <summary>Checks the build after its caller's wait completes. A cancelled wait can precede a build fault.</summary>
+    internal async ValueTask<Native.ProsodyClient> AwaitNativeAsync(
+        Task<Native.ProsodyClient> pending,
+        Task<Native.ProsodyClient> wait
+    )
+    {
+        try
+        {
+            var native = await wait.ConfigureAwait(false);
+            // A waiter that outlived ShutdownAsync or DisposeAsync must not start work on a
+            // handle that is shut down or about to be released.
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_closed, this);
+            }
+            return native;
+        }
+        catch when (pending.IsCompleted && !pending.IsCompletedSuccessfully)
+        {
+            // Observe a build fault even when the caller's wait completed through cancellation.
+            _ = pending.Exception;
+
+            // Only a failed build resets the cache. A caller cancelling must not
+            // trigger a second native build while the first is still connecting.
+            lock (_gate)
+            {
+                if (ReferenceEquals(_native, pending))
+                {
+                    _native = null;
+                }
+            }
+            throw;
+        }
     }
 
     private static HashSet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
         new HashSet<StateDefinition>(options.StateCollections ?? [], ReferenceEqualityComparer.Instance);
 
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
+    [RequiresUnreferencedCode(Trimming.JsonResolver)]
+    [RequiresDynamicCode(Trimming.JsonResolver)]
     private static JsonSerializerOptions BuildJsonOptions(ClientOptions options)
     {
         var opts = new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -106,90 +219,20 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// </summary>
     public string SourceSystem { get; }
 
-    /// <summary>Opens a read-only published value collection from the same descriptor used by its owner.</summary>
-    public async Task<PublishedValue<T>> StateAsync<T>(
-        string subsystem,
-        ValueStateDefinition<T> definition,
-        CancellationToken cancellationToken = default
-    )
-        where T : notnull
-    {
-        ArgumentNullException.ThrowIfNull(subsystem);
-        ArgumentNullException.ThrowIfNull(definition);
-        var handle = await StateInterop
-            .RunAsync(
-                () =>
-                    _native.PublishedValue(
-                        subsystem,
-                        definition.Name,
-                        definition.ReadCacheTtl,
-                        definition.ReadCacheDisabled
-                    ),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
-        return new PublishedValue<T>(handle, StateInterop.ResolveTypeInfo<T>(JsonOptions));
-    }
-
-    /// <summary>Opens a read-only published map collection from the same descriptor used by its owner.</summary>
-    public async Task<PublishedMap<TValue>> StateAsync<TValue>(
-        string subsystem,
-        MapStateDefinition<TValue> definition,
-        CancellationToken cancellationToken = default
-    )
-        where TValue : notnull
-    {
-        ArgumentNullException.ThrowIfNull(subsystem);
-        ArgumentNullException.ThrowIfNull(definition);
-        var handle = await StateInterop
-            .RunAsync(
-                () =>
-                    _native.PublishedMap(
-                        subsystem,
-                        definition.Name,
-                        definition.ReadCacheTtl,
-                        definition.ReadCacheDisabled
-                    ),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
-        return new PublishedMap<TValue>(handle, StateInterop.ResolveTypeInfo<TValue>(JsonOptions));
-    }
-
-    /// <summary>Opens a read-only published deque collection from the same descriptor used by its owner.</summary>
-    public async Task<PublishedDeque<T>> StateAsync<T>(
-        string subsystem,
-        DequeStateDefinition<T> definition,
-        CancellationToken cancellationToken = default
-    )
-        where T : notnull
-    {
-        ArgumentNullException.ThrowIfNull(subsystem);
-        ArgumentNullException.ThrowIfNull(definition);
-        var handle = await StateInterop
-            .RunAsync(
-                () =>
-                    _native.PublishedDeque(
-                        subsystem,
-                        definition.Name,
-                        definition.ReadCacheTtl,
-                        definition.ReadCacheDisabled
-                    ),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
-        return new PublishedDeque<T>(handle, StateInterop.ResolveTypeInfo<T>(JsonOptions));
-    }
-
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     /// Thrown when the consumer configuration failed during build, with the full error message.
     /// </exception>
-    public async Task<ConsumerState> GetConsumerStateAsync()
+    public Task<ConsumerState> GetConsumerStateAsync() => GetConsumerStateAsync(CancellationToken.None);
+
+    /// <inheritdoc cref="GetConsumerStateAsync()"/>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
+    public async Task<ConsumerState> GetConsumerStateAsync(CancellationToken cancellationToken)
     {
-        Native.ConsumerState state = await _native.ConsumerState();
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        Native.ConsumerState state = await native.ConsumerState().ConfigureAwait(false);
         return state switch
         {
             Native.ConsumerState.Shutdown => ConsumerState.Shutdown,
@@ -206,509 +249,140 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the number of partitions currently assigned to this consumer.
     /// </summary>
-    public Task<uint> AssignedPartitionCountAsync() => _native.AssignedPartitionCount();
+    public Task<uint> AssignedPartitionCountAsync() => AssignedPartitionCountAsync(CancellationToken.None);
+
+    /// <inheritdoc cref="AssignedPartitionCountAsync()"/>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
+    public async Task<uint> AssignedPartitionCountAsync(CancellationToken cancellationToken)
+    {
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        return await native.AssignedPartitionCount().ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Gets a value indicating whether the consumer is currently stalled.
     /// </summary>
-    public Task<bool> IsStalledAsync() => _native.IsStalled();
+    public Task<bool> IsStalledAsync() => IsStalledAsync(CancellationToken.None);
 
-    /// <summary>
-    /// Sends a message to a topic, serializing <paramref name="payload"/> with the client's
-    /// configured <see cref="JsonSerializerOptions"/>.
-    /// </summary>
-    /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
-    /// <param name="topic">The topic to send to.</param>
-    /// <param name="key">The message key.</param>
-    /// <param name="payload">The message payload (will be serialized to JSON).</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <remarks>
-    /// <para>
-    /// Resolves <see cref="JsonTypeInfo{T}"/> from the client's configured options. If those
-    /// options use <c>DefaultJsonTypeInfoResolver</c> (the default when no resolver is set via
-    /// <see cref="ClientOptions.ConfigureJsonOptions"/>), this call uses reflection metadata.
-    /// For trim-safe publishing, use the <c>SendAsync&lt;T&gt;(string, string, T, JsonTypeInfo&lt;T&gt;, CancellationToken)</c>
-    /// overload and pass a source-generated <see cref="JsonTypeInfo{T}"/> directly.
-    /// </para>
-    /// <para>
-    /// If <typeparamref name="T"/> exposes lowercase <c>id</c> or <c>type</c> string
-    /// properties (matched by <see cref="JsonPropertyNameAttribute"/> or by exact CLR
-    /// name), their values are forwarded as event metadata so the producer's idempotence
-    /// dedup and downstream <c>allowed_events</c> filtering see them without re-parsing
-    /// the JSON. PascalCase properties (<c>Id</c>, <c>Type</c>) must use
-    /// <c>[JsonPropertyName("id")]</c> to participate, matching the lowercase wire
-    /// contract the rest of the system requires.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    [RequiresUnreferencedCode(
-        "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver (reflection-based). Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
-    )]
-    [RequiresDynamicCode(
-        "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver. Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
-    )]
-    public Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)
+    /// <inheritdoc cref="IsStalledAsync()"/>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
+    public async Task<bool> IsStalledAsync(CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var typeInfo = (JsonTypeInfo<T>)JsonOptions.GetTypeInfo(typeof(T));
-        return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
-    }
-
-    /// <summary>Sends an excise record for a key.</summary>
-    public async Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        cancellationToken.ThrowIfCancellationRequested();
-        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        try
-        {
-            await _native.Excise(topic, key, carrier, linked?.Signal).ConfigureAwait(false);
-        }
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The excise was cancelled.", ex, cancellationToken);
-        }
-        finally
-        {
-            if (linked is { } value)
-            {
-                await value.Registration.DisposeAsync().ConfigureAwait(false);
-                value.Signal.Dispose();
-            }
-        }
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        return await native.IsStalled().ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Sends a message to a topic, serializing <paramref name="payload"/> using the supplied
-    /// <paramref name="typeInfo"/> (trim-safe; no reflection resolver is consulted).
-    /// </summary>
-    /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
-    /// <param name="topic">The topic to send to.</param>
-    /// <param name="key">The message key.</param>
-    /// <param name="payload">The message payload (will be serialized to JSON).</param>
-    /// <param name="typeInfo">
-    /// Source-generated <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/>.
-    /// Use a source-generated <c>JsonSerializerContext</c> to obtain one:
-    /// <c>AppJsonContext.Default.MyType</c>.
-    /// </param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <remarks>
-    /// <para>
-    /// Event metadata (<c>id</c> and <c>type</c>) is extracted by walking the
-    /// <paramref name="typeInfo"/>'s property list. If your source-generated context
-    /// uses a naming policy that does not produce lowercase <c>"id"</c>/<c>"type"</c>
-    /// property names, extraction will silently yield <c>null</c>. In that scenario,
-    /// use the overload that accepts <see cref="SendOptions"/> to provide explicit
-    /// <see cref="SendOptions.EventId"/> and <see cref="SendOptions.EventType"/> values.
-    /// </para>
-    /// </remarks>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    public Task SendAsync<T>(
-        string topic,
-        string key,
-        T payload,
-        JsonTypeInfo<T> typeInfo,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(typeInfo);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return SendCoreAsync(topic, key, payload, typeInfo, null, cancellationToken);
-    }
-
-    /// <summary>
-    /// Sends a message to a topic, serializing <paramref name="payload"/> using the supplied
-    /// <paramref name="typeInfo"/> with explicit metadata overrides (trim-safe).
-    /// </summary>
-    /// <typeparam name="T">The type of the payload to serialize as JSON.</typeparam>
-    /// <param name="topic">The topic to send to.</param>
-    /// <param name="key">The message key.</param>
-    /// <param name="payload">The message payload (will be serialized to JSON).</param>
-    /// <param name="typeInfo">
-    /// Source-generated <see cref="JsonTypeInfo{T}"/> for <typeparamref name="T"/>.
-    /// </param>
-    /// <param name="options">
-    /// Per-message overrides. When <see cref="SendOptions.EventId"/> or
-    /// <see cref="SendOptions.EventType"/> is set, that value is used instead of
-    /// extracting from the payload.
-    /// </param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    public Task SendAsync<T>(
-        string topic,
-        string key,
-        T payload,
-        JsonTypeInfo<T> typeInfo,
-        SendOptions options,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(typeInfo);
-        ArgumentNullException.ThrowIfNull(options);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return SendCoreAsync(topic, key, payload, typeInfo, options, cancellationToken);
-    }
-
-    private async Task SendCoreAsync<T>(
-        string topic,
-        string key,
-        T payload,
-        JsonTypeInfo<T> typeInfo,
-        SendOptions? options,
-        CancellationToken cancellationToken
-    )
-    {
-        var (extractedId, extractedType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
-        var eventId = options?.EventId ?? extractedId;
-        var eventType = options?.EventType ?? extractedType;
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
-
-        // W3C propagation injects at most 2 headers (traceparent, tracestate); pre-size to avoid rehash.
-        var carrier = new Dictionary<string, string>(capacity: 2, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-
-        var metadata = new Native.EventMetadata(EventId: eventId, EventType: eventType);
-
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        try
-        {
-            await _native.Send(topic, key, metadata, jsonBytes, carrier, linked?.Signal).ConfigureAwait(false);
-        }
-        // Invariant: the signal is triggered only by cancellationToken's registration
-        // (CancellationHelper.CreateSignal), so a native Cancelled from the send path always
-        // means the caller's token fired — surface it as the standard .NET cancellation type.
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The send was cancelled.", ex, cancellationToken);
-        }
-        finally
-        {
-            if (linked is { } l)
-            {
-                await l.Registration.DisposeAsync().ConfigureAwait(false);
-                l.Signal.Dispose();
-            }
-        }
-    }
-
-    /// <summary>Sends one request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
-    [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
-    [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
-    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
-        string topic,
-        string key,
-        TPayload payload,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(subsystems);
-        cancellationToken.ThrowIfCancellationRequested();
-        var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
-        var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
-        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
-    }
-
-    /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
-    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
-        string topic,
-        string key,
-        TPayload payload,
-        JsonTypeInfo<TPayload> payloadType,
-        JsonTypeInfo<TResponse> responseType,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(payloadType);
-        ArgumentNullException.ThrowIfNull(responseType);
-        ArgumentNullException.ThrowIfNull(subsystems);
-        cancellationToken.ThrowIfCancellationRequested();
-        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
-    }
-
-    private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
-        string topic,
-        string key,
-        TPayload payload,
-        JsonTypeInfo<TPayload> payloadType,
-        JsonTypeInfo<TResponse> responseType,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken
-    )
-    {
-        if (timeout < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
-        }
-        var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
-        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
-        // Standard propagation can add traceparent, tracestate, and baggage.
-        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        var request = new Native.NativeRequest(
-            topic,
-            key,
-            encoded,
-            new Native.EventMetadata(EventId: eventId, EventType: eventType),
-            [.. subsystems],
-            timeout,
-            carrier
-        );
-        return await CompleteRequestAsync(
-                responseType,
-                signal => _native.Request(request, signal),
-                nameof(subsystems),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
-    }
-
-    /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
-    [RequiresUnreferencedCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
-    [RequiresDynamicCode("Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.")]
-    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
-        string topic,
-        string key,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    ) =>
-        RequestExciseAsync(
-            topic,
-            key,
-            (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse)),
-            subsystems,
-            timeout,
-            cancellationToken
-        );
-
-    /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
-    public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
-        string topic,
-        string key,
-        JsonTypeInfo<TResponse> responseType,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(responseType);
-        ArgumentNullException.ThrowIfNull(subsystems);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (timeout < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
-        }
-        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        var request = new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier);
-        return await CompleteRequestAsync(
-                responseType,
-                signal => _native.RequestExcise(request, signal),
-                nameof(subsystems),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
-    }
-
-    private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
-        JsonTypeInfo<TResponse> responseType,
-        Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
-        string subsystemParameterName,
-        CancellationToken cancellationToken
-    )
-    {
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        Dictionary<string, Native.NativeRequestResult> nativeResults;
-        try
-        {
-            nativeResults = await send(linked?.Signal).ConfigureAwait(false);
-        }
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
-        }
-        catch (Native.FfiException.PermanentState ex)
-        {
-            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
-        }
-        finally
-        {
-            if (linked is { } value)
-            {
-                await value.Registration.DisposeAsync().ConfigureAwait(false);
-                value.Signal.Dispose();
-            }
-        }
-        var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
-        foreach (var (subsystem, result) in nativeResults)
-        {
-            outcomes.Add(subsystem, MapOutcome(result, responseType));
-        }
-        return outcomes;
-    }
-
-    internal static Outcome<T> MapOutcome<T>(Native.NativeRequestResult result, JsonTypeInfo<T> responseType) =>
-        result switch
-        {
-            Native.NativeRequestResult.Ok ok => DecodeResult(ok.Value, responseType),
-            Native.NativeRequestResult.HandlerError error => new Failure<T>(new HandlerError(error.Message)),
-            Native.NativeRequestResult.Timeout error => new Failure<T>(new TimeoutError(error.Message)),
-            Native.NativeRequestResult.FormatMismatch error => new Failure<T>(new FormatMismatchError(error.Message)),
-            Native.NativeRequestResult.Malformed error => new Failure<T>(new MalformedResponseError(error.Message)),
-            _ => throw new InvalidOperationException("Unknown response result"),
-        };
-
-    private static Outcome<T> DecodeResult<T>(byte[] value, JsonTypeInfo<T> responseType)
-    {
-        try
-        {
-            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType)!);
-        }
-        catch (Exception exception) when (exception is JsonException or NotSupportedException)
-        {
-            return new Failure<T>(new MalformedResponseError(exception.Message));
-        }
-    }
-
-    /// <summary>
-    /// Subscribes to receive messages using the provided strongly typed event handler.
-    /// </summary>
-    /// <typeparam name="TPayload">The message payload type.</typeparam>
-    /// <param name="handler">The event handler to process messages and timers.</param>
-    /// <remarks>
-    /// <para>
-    /// The payload is deserialized once into <see cref="Message{T}.Payload"/> before the
-    /// handler is invoked. For topics with dynamic or mixed schemas, use
-    /// <c>TPayload = <see cref="System.Text.Json.JsonElement"/></c>.
-    /// </para>
-    /// <para>
-    /// This overload reads <c>PermanentErrorAttribute</c> from handler methods via
-    /// <c>Type.GetInterfaceMap</c> (BCL-annotated and AOT-compatible at the BCL level).
-    /// It is annotated with <c>[RequiresUnreferencedCode]</c>/<c>[RequiresDynamicCode]</c>
-    /// because the trimmer cannot propagate DAM requirements through an interface-typed
-    /// parameter to satisfy call-site annotation requirements. Use the
-    /// <c>SubscribeAsync&lt;TPayload&gt;(IProsodyHandler&lt;TPayload&gt;, IPermanentErrorClassifier)</c>
-    /// overload for explicit, zero-reflection error classification.
-    /// </para>
-    /// </remarks>
-    [RequiresUnreferencedCode(
-        "Reads PermanentErrorAttribute from handler methods via reflection. Use SubscribeAsync(handler, classifier) to avoid the reflection path."
-    )]
-    [RequiresDynamicCode(
-        "GetInterfaceMap requires handler type methods to be preserved. Use SubscribeAsync(handler, classifier) to avoid this requirement."
-    )]
-    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler)
-    {
-        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions);
-        return _native.Subscribe(bridge);
-    }
-
-    /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
-    [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
-    public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)
-    {
-        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions);
-        return _native.Subscribe(bridge);
-    }
-
-    /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
-    /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
-    public Task SubscribeAsync<TPayload, TResponse>(
-        IProsodyRequestHandler<TPayload, TResponse> handler,
-        IPermanentErrorClassifier classifier
-    )
-    {
-        var bridge = EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier);
-        return _native.Subscribe(bridge);
-    }
-
-    /// <summary>
-    /// Subscribes to receive messages using the provided strongly typed event handler and
-    /// an explicit error classifier (zero reflection; no attribute lookup is performed).
-    /// </summary>
-    /// <typeparam name="TPayload">The message payload type.</typeparam>
-    /// <param name="handler">The event handler to process messages and timers.</param>
-    /// <param name="classifier">
-    /// Classifies exceptions thrown by <paramref name="handler"/> as permanent or transient.
-    /// Bypasses the reflection-based <c>PermanentErrorAttribute</c> lookup entirely.
-    /// </param>
-    /// <remarks>
-    /// Use this overload when you want full control over error classification or want to avoid
-    /// the reflection path entirely. Pair with a source-generated <c>JsonSerializerContext</c>
-    /// (via <see cref="ClientOptions.ConfigureJsonOptions"/>) when building for a fully
-    /// zero-reflection payload deserialization path as well.
-    /// </remarks>
-    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier)
-    {
-        var bridge = new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions);
-        return _native.Subscribe(bridge);
-    }
-
-    /// <summary>
-    /// Stops the consumer. You can subscribe again later.
-    /// </summary>
-    public Task UnsubscribeAsync() => _native.Unsubscribe();
-
-    /// <summary>
-    /// Shuts down all client services.
+    /// Shuts down all client services and rejects new operations.
     /// Concurrent and repeated calls await the same shutdown operation.
     /// </summary>
+    /// <remarks>
+    /// The client is closed first, so no later operation starts a build or reaches the native
+    /// client; each throws <see cref="ObjectDisposedException"/>. A pending build is awaited,
+    /// then shut down. <see cref="DisposeAsync"/> still releases the native handle.
+    /// </remarks>
     public Task ShutdownAsync() => _shutdown.Value;
 
-    private Task ShutdownCoreAsync() => _native.Shutdown();
+    private async Task ShutdownCoreAsync()
+    {
+        Task<Native.ProsodyClient>? pending;
+        lock (_gate)
+        {
+            _closed = true;
+            pending = _native;
+        }
+
+        if (pending is not null && await SettleAsync(pending).ConfigureAwait(false) is { } native)
+        {
+            await _shutdownNative(native).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Awaits a build without throwing. Returns the client on success, otherwise <c>null</c>.</summary>
+    private static async Task<Native.ProsodyClient?> SettleAsync(Task<Native.ProsodyClient> pending)
+    {
+        await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        return pending.IsCompletedSuccessfully ? await pending.ConfigureAwait(false) : null;
+    }
 
     /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    /// <remarks>
+    /// Closes the client before this call returns, then releases the native handle on the
+    /// thread pool, so the caller is never blocked by the shutdown, the telemetry flush, or the
+    /// release. Never waits on a pending build. The returned task completes when a settled build
+    /// is released. A pending build is released once it settles, and a late fault is logged.
+    /// The native shutdown is bounded by <see cref="ClientOptions.ShutdownTimeout"/> plus a
+    /// margin. Container disposal after a failed host start has no other deadline, so this one
+    /// keeps process exit bounded. On timeout the handle is released anyway; the native shutdown
+    /// future holds its own reference.
+    /// </remarks>
+    public ValueTask DisposeAsync()
     {
+        if (!TryClose(out var pending))
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var release = Task.Run(() => DisposeNativeAsync(pending));
+        if (pending.IsCompleted)
+        {
+            return new ValueTask(release);
+        }
+
+        LogWhenFaulted(release);
+        return ValueTask.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Starts shutdown and release without blocking. Prefer <see cref="DisposeAsync"/>.</remarks>
+    public void Dispose()
+    {
+        if (TryClose(out var pending))
+        {
+            LogWhenFaulted(Task.Run(() => DisposeNativeAsync(pending)));
+        }
+    }
+
+    /// <summary>Closes the client and claims the shared build for release. Returns it on the first claim only.</summary>
+    private bool TryClose([NotNullWhen(true)] out Task<Native.ProsodyClient>? pending)
+    {
+        lock (_gate)
+        {
+            _closed = true;
+            pending = _claimed ? null : _native;
+            _claimed = true;
+            return pending is not null;
+        }
+    }
+
+    private void LogWhenFaulted(Task release) =>
+        _ = release.ContinueWith(
+            static (disposal, logger) =>
+                LogHelper.LogShutdownFailed((ILogger)logger!, disposal.Exception!.GetBaseException()),
+            _logger,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+
+    private async Task DisposeNativeAsync(Task<Native.ProsodyClient> pending)
+    {
+        if (await SettleAsync(pending).ConfigureAwait(false) is not { } native)
+        {
+            return;
+        }
+
         try
         {
-            await ShutdownAsync().ConfigureAwait(false);
+            await ShutdownAsync().WaitAsync(_shutdownBudget).ConfigureAwait(false);
         }
         catch (Native.FfiException error)
         {
-            LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
+            LogHelper.LogShutdownFailed(_logger, error);
         }
-        catch (ObjectDisposedException)
+        catch (TimeoutException)
         {
-            // A prior synchronous disposal already released the native client.
+            LogHelper.LogNativeShutdownAbandoned(_logger, _shutdownBudget);
         }
         finally
         {
@@ -723,10 +397,7 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
                 // Telemetry flush is best-effort during disposal.
             }
 
-            _native.Dispose();
+            native.Dispose();
         }
     }
-
-    /// <inheritdoc/>
-    public void Dispose() => _native.Dispose();
 }
