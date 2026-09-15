@@ -158,7 +158,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
         }
         finally
         {
-            if (await run2.GetConsumerStateAsync() == ConsumerState.Running)
+            if (await run2.GetConsumerStateAsync(TestContext.Current.CancellationToken) == ConsumerState.Running)
             {
                 await run2.UnsubscribeAsync();
             }

@@ -254,7 +254,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         await processingAborted.WaitAsync(TestContext.Current.CancellationToken);
         await unsubscribeTask;
 
-        var state = await ctx.Client.GetConsumerStateAsync();
+        var state = await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken);
         Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
