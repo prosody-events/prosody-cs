@@ -171,7 +171,7 @@ public sealed class ProsodyClientLifecycleTests
     }
 
     [Fact]
-    public async Task WorkerUnsubscribingDuringAPendingBuildDoesNotHangHostStop()
+    public async Task WorkerUnsubscribingDuringAPendingBuildDoesNotHangHostRun()
     {
         var neverSettles = new TaskCompletionSource<Native.ProsodyClient>();
         var options = new ClientOptions
@@ -180,18 +180,35 @@ public sealed class ProsodyClientLifecycleTests
             BootstrapServers = [TestDefaults.BootstrapServers],
             GroupId = "test-group",
         };
-        await using var client = new ProsodyClient(options, () => neverSettles.Task);
         var builder = Host.CreateEmptyApplicationBuilder(null);
         // A factory-created singleton is owned and disposed by the container; a bare instance is not.
-        builder.Services.AddSingleton(_ => client);
+        builder.Services.AddSingleton(_ => new ProsodyClient(options, () => neverSettles.Task));
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddHostedService<ProsodyClientLifecycle>();
-        builder.Services.AddSingleton<IHostedService>(new UnsubscribingWorker(client));
-        using var host = builder.Build();
+        builder.Services.AddHostedService(sp => new UnsubscribingWorker(sp.GetRequiredService<ProsodyClient>()));
+        var shutdownTimeout = TimeSpan.FromSeconds(2);
+        builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = shutdownTimeout);
+        var host = builder.Build();
+        var client = host.Services.GetRequiredService<ProsodyClient>();
+        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = lifetime.ApplicationStarted.Register(() => started.SetResult());
 
-        await host.StartAsync(Ct);
-        _ = client.ConnectAsync(Ct);
-        await host.StopAsync(Ct).WaitAsync(Deadline, Ct);
+        try
+        {
+            var run = host.RunAsync(Ct);
+            await started.Task.WaitAsync(Deadline, Ct);
+            var connect = client.ConnectAsync(Ct);
+            lifetime.StopApplication();
+            await run.WaitAsync(shutdownTimeout, Ct);
+
+            Assert.False(connect.IsCompleted);
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct));
+        }
+        finally
+        {
+            await registration.DisposeAsync();
+        }
     }
 
     private sealed class UnsubscribingWorker(ProsodyClient client) : IHostedService

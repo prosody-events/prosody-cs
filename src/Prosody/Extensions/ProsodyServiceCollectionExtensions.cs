@@ -143,21 +143,27 @@ public static class ProsodyServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configSectionPath);
 
-        // PostConfigure is additive, so every call may contribute one. Binding is additive too,
-        // so only the first call may bind: a second BindConfiguration doubles every bound array.
+        // Reject a different section before this call adds any services.
+        var existing = services.FirstOrDefault(d => d.ServiceType == typeof(Registration));
+        if (
+            existing?.ImplementationInstance is Registration registration
+            && !string.Equals(registration.ConfigSectionPath, configSectionPath, StringComparison.Ordinal)
+        )
+        {
+            throw new InvalidOperationException(
+                $"AddProsodyClient was already called with configuration section '{registration.ConfigSectionPath}'. One application registers one Prosody client."
+            );
+        }
+
         if (configure is not null)
         {
             services.PostConfigure(configure);
         }
 
-        if (services.FirstOrDefault(d => d.ServiceType == typeof(Registration)) is { } existing)
+        // Bind only once. A second binding duplicates array entries.
+        if (existing is not null)
         {
-            var registered = ((Registration)existing.ImplementationInstance!).ConfigSectionPath;
-            return string.Equals(registered, configSectionPath, StringComparison.Ordinal)
-                ? services
-                : throw new InvalidOperationException(
-                    $"AddProsodyClient was already called with configuration section '{registered}'. One application registers one Prosody client."
-                );
+            return services;
         }
 
         services.AddSingleton(new Registration(configSectionPath));

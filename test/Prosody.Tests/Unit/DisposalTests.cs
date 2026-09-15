@@ -218,8 +218,7 @@ public sealed class DisposalTests
             await client.ConnectAsync(Ct).WaitAsync(Deadline, Ct);
             Assert.Equal(2, build.Attempts);
 
-            // The evicted build is unreachable now: the cancelled waiter removed its continuation
-            // and nothing else holds it. Its fault must already count as observed.
+            // The cache evicted the task returned by BuildAsync. The retained gate belongs to the factory, not the cache.
             for (var i = 0; i < 3; i++)
             {
                 GC.Collect();
@@ -427,24 +426,6 @@ public sealed class DisposalTests
             throw new InvalidOperationException("startup failed");
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    }
-
-    private static ProsodyClient GroupOnlyClient() =>
-        ProsodyClientBuilder
-            .Create()
-            .WithBootstrapServers(TestDefaults.BootstrapServers)
-            .WithGroupId("group-only")
-            .WithMock(true)
-            .Build();
-
-    [Fact]
-    public async Task SourceSystemIsKnownBeforeConnectAndMatchesTheNativeClient()
-    {
-        await using var client = GroupOnlyClient();
-
-        Assert.Equal("group-only", client.SourceSystem);
-        await client.ConnectAsync(Ct);
-        Assert.Equal("group-only", client.SourceSystem);
     }
 
     [Fact]

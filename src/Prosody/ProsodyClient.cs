@@ -44,6 +44,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     private readonly ClientLock _gate = new();
     private readonly Func<Task<Native.ProsodyClient>> _connect;
     private readonly Func<Native.ProsodyClient, Task> _shutdownNative;
+
+    // Container disposal has no host deadline after startup fails. This budget bounds native shutdown.
     private readonly TimeSpan _shutdownBudget;
     private readonly ILogger _logger;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
@@ -307,14 +309,10 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Closes the client before this call returns, then releases the native handle on the
-    /// thread pool, so the caller is never blocked by the shutdown, the telemetry flush, or the
-    /// release. Never waits on a pending build. The returned task completes when a settled build
-    /// is released. A pending build is released once it settles, and a late fault is logged.
-    /// The native shutdown is bounded by <see cref="ClientOptions.ShutdownTimeout"/> plus a
-    /// margin. Container disposal after a failed host start has no other deadline, so this one
-    /// keeps process exit bounded. On timeout the handle is released anyway; the native shutdown
-    /// future holds its own reference.
+    /// Closes the client before this call returns. Releases the native handle on the thread pool.
+    /// The returned task waits for release only if the build has already completed.
+    /// Native shutdown uses the resolved <see cref="ClientOptions.ShutdownTimeout"/> plus a five-second margin.
+    /// A late release fault is logged.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
