@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Prosody.Native;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -9,6 +10,17 @@ namespace Prosody.Logging;
 /// <summary>
 /// Bridges the native Rust logging callback interface to <see cref="ILogger"/>.
 /// </summary>
+/// <remarks>
+/// Invariant: a logger exception never reaches native code. The native <see cref="LogSink"/>
+/// methods return <see cref="bool"/> and <see langword="void"/>, so the callback has no error
+/// channel and UniFFI panics on an unexpected error. A failed <see cref="IsEnabled"/> reports
+/// <see langword="false"/>. A failed <see cref="Log"/> drops the record.
+/// </remarks>
+[SuppressMessage(
+    "Design",
+    "CA1031:Do not catch general exception types",
+    Justification = "The callback has no error channel"
+)]
 internal sealed class LogSinkBridge : LogSink
 {
     private static readonly EventId NativeLogEvent = new(99, "ProsodyNative");
@@ -20,22 +32,44 @@ internal sealed class LogSinkBridge : LogSink
         _logger = loggerFactory.CreateLogger("Prosody.Native");
     }
 
-    // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
     /// <inheritdoc />
-    public bool IsEnabled(NativeLogLevel level) => _logger.IsEnabled((MsLogLevel)level);
+    public bool IsEnabled(NativeLogLevel level)
+    {
+        try
+        {
+            // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
+            return _logger.IsEnabled((MsLogLevel)level);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <inheritdoc />
     public void Log(NativeLogLevel level, string target, string message, string? file, uint? line, LogFields fields)
     {
         var logLevel = (MsLogLevel)level;
-
-        if (!_logger.IsEnabled(logLevel))
+        try
         {
-            return;
-        }
+            if (!_logger.IsEnabled(logLevel))
+            {
+                return;
+            }
 
-        var state = new NativeLogState(target, message, file, line, fields);
-        _logger.Log(logLevel, NativeLogEvent, state: state, exception: null, formatter: static (s, _) => s.Formatted);
+            var state = new NativeLogState(target, message, file, line, fields);
+            _logger.Log(
+                logLevel,
+                NativeLogEvent,
+                state: state,
+                exception: null,
+                formatter: static (s, _) => s.Formatted
+            );
+        }
+        catch
+        {
+            // The bridge drops the record. Logging must not change client control flow.
+        }
     }
 
     /// <summary>

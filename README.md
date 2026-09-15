@@ -25,6 +25,21 @@ Add the NuGet package to your project:
 dotnet add package ProsodyEvents.Prosody
 ```
 
+## Supported hosts
+
+Prosody targets service hosts: ASP.NET Core, generic host worker services,
+console apps, and Azure Functions isolated workers. These hosts install no
+`SynchronizationContext`.
+
+Do not call the client from a thread that has a `SynchronizationContext`. That
+includes the UI thread of WPF, WinForms, WinUI, MAUI, and Avalonia apps, and a
+Blazor Server component. The generated native bindings capture that context on
+every await. A blocked UI thread then deadlocks the call.
+
+A desktop app can still use Prosody. Host the client in a `BackgroundService`
+or a separate worker service. Pass results to the UI through a channel or an
+event. If a call must start on a UI thread, wrap it in `Task.Run`.
+
 ## Quick Start
 
 ```csharp

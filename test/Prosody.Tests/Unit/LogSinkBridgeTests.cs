@@ -259,6 +259,29 @@ public sealed class LogSinkBridgeTests
         Assert.Equal("{OriginalFormat}", state![^1].Key);
     }
 
+    [Fact]
+    public void IsEnabledReturnsFalseWhenLoggerThrows()
+    {
+        using var provider = new ThrowingLoggerProvider(ThrowFrom.IsEnabled);
+        using var factory = new LoggerFactory([provider]);
+        var bridge = new LogSinkBridge(factory);
+
+        Assert.False(bridge.IsEnabled(NativeLogLevel.Error));
+        Assert.Equal(1, provider.ThrownCallCount);
+    }
+
+    [Fact]
+    public void LogDropsRecordWhenLoggerThrows()
+    {
+        using var provider = new ThrowingLoggerProvider(ThrowFrom.Log);
+        using var factory = new LoggerFactory([provider]);
+        var bridge = new LogSinkBridge(factory);
+
+        bridge.Log(NativeLogLevel.Error, "my.target", "hello", null, null, EmptyLogFields());
+
+        Assert.Equal(1, provider.ThrownCallCount);
+    }
+
     /// <summary>
     /// An <see cref="ILoggerFactory"/> that creates <see cref="FakeLogger"/> instances
     /// with levels below the specified minimum disabled via <see cref="FakeLogger.ControlLevel"/>.
