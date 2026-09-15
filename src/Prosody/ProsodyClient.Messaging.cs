@@ -205,6 +205,7 @@ public sealed partial class ProsodyClient
     /// </summary>
     /// <typeparam name="TPayload">The message payload type.</typeparam>
     /// <param name="handler">The event handler to process messages and timers.</param>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
     /// <remarks>
     /// <para>
     /// The payload is deserialized once into <see cref="Message{T}.Payload"/> before the
@@ -223,23 +224,39 @@ public sealed partial class ProsodyClient
     /// </remarks>
     [RequiresUnreferencedCode(Trimming.HandlerReflection)]
     [RequiresDynamicCode(Trimming.HandlerReflection)]
-    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler) =>
-        SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions));
+    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, CancellationToken cancellationToken) =>
+        SubscribeCoreAsync(
+            new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions),
+            cancellationToken
+        );
 
     /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
+    /// <param name="handler">The handler to process messages, timers, and requests.</param>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
     [RequiresUnreferencedCode(Trimming.HandlerReflection)]
     [RequiresDynamicCode(Trimming.HandlerReflection)]
-    public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler) =>
-        SubscribeCoreAsync(EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions));
+    public Task SubscribeAsync<TPayload, TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        CancellationToken cancellationToken
+    ) =>
+        SubscribeCoreAsync(
+            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions),
+            cancellationToken
+        );
 
     /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
+    /// <param name="handler">The handler to process messages, timers, and requests.</param>
+    /// <param name="classifier">Classifies exceptions thrown by <paramref name="handler"/> as permanent or transient.</param>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
     /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
     public Task SubscribeAsync<TPayload, TResponse>(
         IProsodyRequestHandler<TPayload, TResponse> handler,
-        IPermanentErrorClassifier classifier
+        IPermanentErrorClassifier classifier,
+        CancellationToken cancellationToken
     ) =>
         SubscribeCoreAsync(
-            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier)
+            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier),
+            cancellationToken
         );
 
     /// <summary>
@@ -252,18 +269,48 @@ public sealed partial class ProsodyClient
     /// Classifies exceptions thrown by <paramref name="handler"/> as permanent or transient.
     /// Bypasses the reflection-based <c>PermanentErrorAttribute</c> lookup entirely.
     /// </param>
+    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
     /// <remarks>
     /// Use this overload when you want full control over error classification or want to avoid
     /// the reflection path entirely. Pair with a source-generated <c>JsonSerializerContext</c>
     /// (via <see cref="ClientOptions.ConfigureJsonOptions"/>) when building for a fully
     /// zero-reflection payload deserialization path as well.
     /// </remarks>
-    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier) =>
-        SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions));
+    public Task SubscribeAsync<TPayload>(
+        IProsodyHandler<TPayload> handler,
+        IPermanentErrorClassifier classifier,
+        CancellationToken cancellationToken
+    ) =>
+        SubscribeCoreAsync(
+            new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions),
+            cancellationToken
+        );
 
-    private async Task SubscribeCoreAsync(Native.EventHandler bridge)
+    /// <summary>Subscribes without a cancellation token. Preserves the signature used by compiled callers.</summary>
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
+    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler) =>
+        SubscribeAsync(handler, CancellationToken.None);
+
+    /// <summary>Subscribes without a cancellation token. Preserves the signature used by compiled callers.</summary>
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
+    public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler) =>
+        SubscribeAsync(handler, CancellationToken.None);
+
+    /// <summary>Subscribes with an error classifier. Preserves the signature used by compiled callers.</summary>
+    public Task SubscribeAsync<TPayload, TResponse>(
+        IProsodyRequestHandler<TPayload, TResponse> handler,
+        IPermanentErrorClassifier classifier
+    ) => SubscribeAsync(handler, classifier, CancellationToken.None);
+
+    /// <summary>Subscribes with an error classifier. Preserves the signature used by compiled callers.</summary>
+    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier) =>
+        SubscribeAsync(handler, classifier, CancellationToken.None);
+
+    private async Task SubscribeCoreAsync(Native.EventHandler bridge, CancellationToken cancellationToken)
     {
-        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
         await native.Subscribe(bridge).ConfigureAwait(false);
     }
 

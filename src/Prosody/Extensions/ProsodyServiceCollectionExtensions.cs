@@ -21,8 +21,8 @@ public static class ProsodyServiceCollectionExtensions
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// <para>
-    /// This method registers a hosted service that automatically configures Prosody logging
-    /// when the host starts and cleans up when the host stops.
+    /// This method registers a hosted service that configures Prosody logging in the host's
+    /// starting phase, before any hosted service starts, and cleans up when the host stops.
     /// </para>
     /// <para>
     /// The logging configuration uses the <see cref="ILoggerFactory"/> registered in the
@@ -62,7 +62,7 @@ public static class ProsodyServiceCollectionExtensions
     /// <para>
     /// The service registers one <see cref="ProsodyClient"/>. Construction does no I/O. The first operation connects, or set
     /// <see cref="ClientOptions.ConnectOnStart"/> to connect when the host starts. A hosted
-    /// lifecycle service disposes the client inside the host's shutdown timeout.
+    /// lifecycle service disposes the client inside the host's stop deadline.
     /// </para>
     /// <para>
     /// Repeated calls are safe. The first call binds and registers; later calls with the same
@@ -187,20 +187,42 @@ public static class ProsodyServiceCollectionExtensions
     /// <summary>Marks that <see cref="AddProsodyClient(IServiceCollection, string, Action{ClientOptions}?)"/> already ran, and with which section.</summary>
     private sealed record Registration(string ConfigSectionPath);
 
-    private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory) : IHostedService
+    /// <summary>Configures logging in the starting phase, so an eager client connect in the start phase logs.</summary>
+    private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory)
+        : IHostedLifecycleService,
+            IDisposable
     {
-        private readonly ILoggerFactory _loggerFactory = loggerFactory;
+        // Only this service can clear the configuration it acquired. Stop and disposal share the release.
+        private bool _configured;
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        public Task StartingAsync(CancellationToken cancellationToken)
         {
-            ProsodyLogging.Configure(_loggerFactory);
+            ProsodyLogging.Configure(loggerFactory);
+            _configured = true;
             return Task.CompletedTask;
         }
 
+        public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task StoppingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            ProsodyLogging.Clear();
+            Dispose();
             return Task.CompletedTask;
+        }
+
+        public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public void Dispose()
+        {
+            if (_configured)
+            {
+                _configured = false;
+                ProsodyLogging.Clear();
+            }
         }
     }
 }

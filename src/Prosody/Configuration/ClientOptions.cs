@@ -178,8 +178,8 @@ public sealed class ClientOptions
     public TimeSpan? StallThreshold { get; set; }
 
     /// <summary>
-    /// Shutdown budget; handlers complete freely before cancellation fires near the deadline.
-    /// Default: 30 seconds.
+    /// Time the native client gives handlers to finish during shutdown. Cancellation fires near
+    /// the end of it. Default: 30 seconds. Maximum: one day.
     /// </summary>
     public TimeSpan? ShutdownTimeout { get; set; }
 

@@ -26,7 +26,7 @@ internal static partial class LogHelper
     [LoggerMessage(
         EventId = 6,
         Level = LogLevel.Warning,
-        Message = "The host shutdown timeout fired before the Prosody client finished disposal. Disposal continues in the background."
+        Message = "The host's stop deadline fired before the Prosody client finished disposal. Disposal continues in the background."
     )]
     internal static partial void LogDisposalAbandoned(ILogger logger);
 

@@ -11,13 +11,15 @@ namespace Prosody.Extensions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="StartingAsync"/> connects the client before any hosted service starts when
-/// <see cref="ClientOptions.ConnectOnStart"/> is <c>true</c>. A cancelled or failed connect
-/// aborts host startup.
+/// <see cref="StartAsync"/> connects the client when <see cref="ClientOptions.ConnectOnStart"/>
+/// is <c>true</c>. Hosted services registered after the client start after the connect. A
+/// cancelled or failed connect aborts host startup. The connect runs in the start phase so the
+/// logging hosted service, which configures <see cref="ProsodyLogging"/> in the starting phase,
+/// is ready first whatever the registration order.
 /// </para>
 /// <para>
 /// <see cref="StoppedAsync"/> disposes the client after every hosted service has stopped, inside
-/// the host's shutdown timeout. If the timeout fires first, the wait is abandoned and logged.
+/// the host's stop deadline. If the deadline fires first, the wait is abandoned and logged.
 /// The disposal still completes in the background.
 /// </para>
 /// <para>
@@ -40,10 +42,10 @@ internal sealed class ProsodyClientLifecycle(
     )
         : this(client.ConnectAsync, client.DisposeAsync, options.Value.ConnectOnStart == true, logger) { }
 
-    public Task StartingAsync(CancellationToken cancellationToken) =>
-        connectOnStart ? connect(cancellationToken) : Task.CompletedTask;
+    public Task StartingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartAsync(CancellationToken cancellationToken) =>
+        connectOnStart ? connect(cancellationToken) : Task.CompletedTask;
 
     public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 

@@ -35,17 +35,19 @@ namespace Prosody;
 /// </remarks>
 public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 {
-    /// <summary>The crate's default handler-drain budget, used when <see cref="ClientOptions.ShutdownTimeout"/> is unset.</summary>
+    /// <summary>The crate's default handler-drain timeout, used when <see cref="ClientOptions.ShutdownTimeout"/> is unset.</summary>
     private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>Added to the shutdown budget so the crate's own terminate fires before disposal gives up.</summary>
+    /// <summary>Added to the shutdown timeout so the crate's own terminate fires before disposal gives up.</summary>
     private static readonly TimeSpan ShutdownMargin = TimeSpan.FromSeconds(5);
 
     private readonly ClientLock _gate = new();
     private readonly Func<Task<Native.ProsodyClient>> _connect;
     private readonly Func<Native.ProsodyClient, Task> _shutdownNative;
 
-    // Container disposal has no host deadline after startup fails. This budget bounds native shutdown.
+    // The budget is the resolved ShutdownTimeout plus ShutdownMargin. Container disposal has no
+    // host deadline after startup fails, so this bounds native shutdown. Validation caps the
+    // timeout, so the sum cannot overflow.
     private readonly TimeSpan _shutdownBudget;
     private readonly ILogger _logger;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
@@ -54,7 +56,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     // Invariant: _native is null or the one build every caller shares. NativeAsync creates it.
     // Only completed unsuccessful builds leave the cache. _closed and _claimed change only
     // from false to true. A closed client starts no build. _claimed gives one disposer the
-    // build for release. _gate protects these fields.
+    // build for release. _gate protects every write. NativeAsync reads _closed and _native
+    // without the lock on its fast path; a stale read there falls through to the locked path.
     private Task<Native.ProsodyClient>? _native;
     private bool _closed;
     private bool _claimed;
@@ -143,6 +146,12 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Steady state: a connected, open client takes no lock.
+        if (!Volatile.Read(ref _closed) && Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } ready)
+        {
+            return await ready.ConfigureAwait(false);
+        }
+
         Task<Native.ProsodyClient> pending;
         lock (_gate)
         {
@@ -219,6 +228,11 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the source system identifier configured for this client.
     /// </summary>
+    /// <remarks>
+    /// Resolved once at construction. Each connect proves the native client resolved the same
+    /// value, so <c>PROSODY_SOURCE_SYSTEM</c> and <c>PROSODY_GROUP_ID</c> must not change while
+    /// the client lives.
+    /// </remarks>
     public string SourceSystem { get; }
 
     /// <summary>
@@ -312,7 +326,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// Closes the client before this call returns. Releases the native handle on the thread pool.
     /// The returned task waits for release only if the build has already completed.
     /// Native shutdown uses the resolved <see cref="ClientOptions.ShutdownTimeout"/> plus a five-second margin.
-    /// A late release fault is logged.
+    /// A native shutdown error is logged, not thrown. A late release fault is logged.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
@@ -374,8 +388,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         {
             await ShutdownAsync().WaitAsync(_shutdownBudget).ConfigureAwait(false);
         }
-        catch (Native.FfiException error)
+        catch (Native.UniffiException error)
         {
+            // Covers FfiException and the panic, allocation, and internal errors beside it.
             LogHelper.LogShutdownFailed(_logger, error);
         }
         catch (TimeoutException)

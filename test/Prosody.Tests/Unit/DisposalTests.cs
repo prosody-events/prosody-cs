@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Prosody.Configuration;
 using Prosody.Extensions;
@@ -121,7 +122,7 @@ public sealed class DisposalTests
     public async Task DisposeAsyncIsIdempotent()
     {
         var client = await ProsodyClient.CreateAsync(MockOptions);
-        await client.SubscribeAsync(new NoOpHandler());
+        await client.SubscribeAsync(new NoOpHandler(), TestContext.Current.CancellationToken);
         await client.DisposeAsync();
 
         await client.DisposeAsync();
@@ -146,6 +147,23 @@ public sealed class DisposalTests
 
         await client.DisposeAsync();
         Assert.True(IsReleased(native));
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstCallersShareOneBuild()
+    {
+        var build = new Build();
+        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        var connects = new Task[Environment.ProcessorCount * 4];
+
+        // Each ConnectAsync runs through the lock to its first await before its lambda returns.
+        Parallel.For(0, connects.Length, i => connects[i] = client.ConnectAsync(Ct));
+        Assert.Equal(1, build.Attempts);
+        Assert.All(connects, connect => Assert.False(connect.IsCompleted));
+
+        build.Gate.SetResult(await MockNativeAsync());
+        await Task.WhenAll(connects).WaitAsync(Deadline, Ct);
+        Assert.Equal(1, build.Attempts);
     }
 
     [Fact]
@@ -311,6 +329,22 @@ public sealed class DisposalTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct).WaitAsync(Deadline, Ct));
         block.Set();
         await disposal.AsTask().WaitAsync(Deadline, Ct);
+        Assert.True(IsReleased(await ready));
+    }
+
+    [Fact]
+    public async Task NativeShutdownPanicDuringDisposalIsLoggedAndTheHandleIsReleased()
+    {
+        var ready = MockNativeAsync();
+        var panic = new Native.PanicException("shutdown panicked");
+        var logger = new FakeLogger();
+        var client = new ProsodyClient(MockOptions, () => ready, _ => Task.FromException(panic), logger);
+        await client.ConnectAsync(Ct);
+
+        await client.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
+
+        var record = Assert.Single(logger.Collector.GetSnapshot());
+        Assert.Same(panic, record.Exception);
         Assert.True(IsReleased(await ready));
     }
 

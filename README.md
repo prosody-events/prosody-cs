@@ -949,7 +949,7 @@ public class ProsodyWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _client.SubscribeAsync(new MyHandler());
+        await _client.SubscribeAsync(new MyHandler(), stoppingToken);
 
         try
         {
@@ -1182,9 +1182,9 @@ var host = builder.Build();
 
 Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects under that operation's cancellation token. A caller that cancels abandons only its own wait; the connect continues for later callers. A failed connect is not retained; the next operation retries.
 
-Set `ConnectOnStart` to `true` to connect before any hosted service starts. A failed connect then aborts host startup.
+Set `ConnectOnStart` to `true` to connect when the host starts, before hosted services registered after the client. A failed connect then aborts host startup.
 
-The library disposes the client after every hosted service has stopped, inside the host's shutdown timeout. If the timeout fires first, the wait is abandoned and logged. Disposal never waits on a connect that has not finished.
+The library disposes the client after every hosted service has stopped, inside the host's stop deadline. If the deadline fires first, the wait is abandoned and logged. Disposal never waits on a connect that has not finished.
 
 `AddProsodyClient` is safe to call more than once with the same section. Every call may add a configure action; only the first binds configuration. A call with a different section throws.
 
@@ -1373,10 +1373,10 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Classify errors without reflection. Use this overload in trimmed applications.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, CancellationToken cancellationToken)`: Start event processing with a typed payload handler. The token bounds the connect wait only.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Classify errors without reflection. Use this overload in trimmed applications.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, CancellationToken cancellationToken)`: Subscribe with typed request responses.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Release resources immediately. It does not wait for shutdown. Use `ShutdownAsync` or `DisposeAsync` to stop client services.

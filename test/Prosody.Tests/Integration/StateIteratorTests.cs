@@ -63,7 +63,7 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -139,7 +139,7 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -188,7 +188,7 @@ public sealed class StateIteratorTests(IntegrationTestFixture fixture) : Integra
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         // Same key: per-key serialization guarantees step 1 fully tears down before step 2 begins.
         var key = TopicGenerator.GenerateKey();
         await ctx.Client.SendAsync(

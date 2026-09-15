@@ -39,6 +39,43 @@ public sealed class ClientOptionsValidatorTests
     }
 
     [Fact]
+    public void ShutdownTimeoutAboveTheMaximumFails()
+    {
+        var options = new ClientOptions
+        {
+            ShutdownTimeout = ClientOptionsValidator.MaxShutdownTimeout + TimeSpan.FromTicks(1),
+        };
+
+        var result = _validator.Validate(name: null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            "ShutdownTimeout, or PROSODY_SHUTDOWN_TIMEOUT, must not exceed",
+            result.FailureMessage,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void ShutdownTimeoutFromTheEnvironmentIsValidated()
+    {
+        var previous = Environment.GetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT");
+        try
+        {
+            Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", "2d");
+
+            var result = _validator.Validate(name: null, new ClientOptions());
+
+            Assert.True(result.Failed);
+            Assert.Contains("must not exceed", result.FailureMessage, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", previous);
+        }
+    }
+
+    [Fact]
     public void MissingSourceSystemAndGroupIdFails()
     {
         var sourceSystem = Environment.GetEnvironmentVariable("PROSODY_SOURCE_SYSTEM");

@@ -29,7 +29,7 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
         var handler = new TestProsodyHandler<TestPayload>();
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         Assert.Equal(
             ConsumerState.Running,
             await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken)

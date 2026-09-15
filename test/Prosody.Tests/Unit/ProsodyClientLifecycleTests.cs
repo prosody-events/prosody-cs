@@ -11,7 +11,7 @@ namespace Prosody.Tests.Unit;
 
 /// <summary>
 /// Invariant under test: the lifecycle service connects only when asked, and its disposal wait
-/// never outlives the host deadline.
+/// never outlives the host's stop deadline.
 /// </summary>
 public sealed class ProsodyClientLifecycleTests
 {
@@ -74,13 +74,13 @@ public sealed class ProsodyClientLifecycleTests
         new(fake.ConnectAsync, fake.DisposeAsync, connectOnStart, _logger);
 
     [Fact]
-    public async Task WarmUpConnectsOnlyWhenOptedIn()
+    public async Task ConnectOnStartConnectsOnlyWhenOptedIn()
     {
         var eager = new Fake();
         var lazy = new Fake();
 
-        await Lifecycle(eager, connectOnStart: true).StartingAsync(Ct);
-        await Lifecycle(lazy).StartingAsync(Ct);
+        await Lifecycle(eager, connectOnStart: true).StartAsync(Ct);
+        await Lifecycle(lazy).StartAsync(Ct);
 
         Assert.Equal(1, eager.Connects);
         Assert.Equal(0, lazy.Connects);
@@ -110,7 +110,7 @@ public sealed class ProsodyClientLifecycleTests
 
         var warning = Assert.Single(_logger.Collector.GetSnapshot());
         Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.Contains("shutdown timeout", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("stop deadline", warning.Message, StringComparison.Ordinal);
         Assert.False(fake.Disposed);
 
         fake.Release.SetResult();
@@ -157,7 +157,7 @@ public sealed class ProsodyClientLifecycleTests
 
         var records = _logger.Collector.GetSnapshot();
         var warning = Assert.Single(records, record => record.Level == LogLevel.Warning);
-        Assert.Contains("shutdown timeout", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("stop deadline", warning.Message, StringComparison.Ordinal);
         if (faulted)
         {
             var error = Assert.Single(records, record => record.Level == LogLevel.Error);
