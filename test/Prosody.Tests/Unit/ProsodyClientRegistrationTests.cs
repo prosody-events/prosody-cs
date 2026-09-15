@@ -33,7 +33,7 @@ public sealed class ProsodyClientRegistrationTests : AsyncDisposalTestBase
 
         Assert.Single(services, d => d.ServiceType == typeof(ProsodyClient));
         Assert.Single(services, d => d.ImplementationType == typeof(ProsodyClientLifecycle));
-        var provider = Track(services.BuildServiceProvider());
+        await using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
         Assert.Equal(7u, options.MaxConcurrency);
         Assert.Equal([TestDefaults.BootstrapServers], options.BootstrapServers!);

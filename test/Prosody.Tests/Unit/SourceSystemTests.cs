@@ -53,6 +53,16 @@ public sealed class SourceSystemTests
             start.Environment[_scenarioVariable] = i.ToString(CultureInfo.InvariantCulture);
             start.Environment["PROSODY_SOURCE_SYSTEM"] = Scenarios[i].EnvironmentSource;
             start.Environment["PROSODY_GROUP_ID"] = Scenarios[i].EnvironmentGroup;
+            // .NET 8 passes null values as empty strings. Remove absent variables explicitly.
+            if (Scenarios[i].EnvironmentSource is null)
+            {
+                start.Environment.Remove("PROSODY_SOURCE_SYSTEM");
+            }
+            if (Scenarios[i].EnvironmentGroup is null)
+            {
+                start.Environment.Remove("PROSODY_GROUP_ID");
+            }
+
             using var process = Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
             var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
