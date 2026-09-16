@@ -30,7 +30,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "test-key",
@@ -60,7 +60,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "test-key",
@@ -90,7 +90,7 @@ public sealed class ErrorHandlingTests(IntegrationTestFixture fixture) : Integra
             throw new FormatException("Bad format");
         });
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "test-key",

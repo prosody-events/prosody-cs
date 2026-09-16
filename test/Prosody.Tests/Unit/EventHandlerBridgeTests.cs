@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Prosody.Errors;
 using Prosody.Infrastructure;
@@ -986,16 +985,6 @@ public sealed class EventHandlerBridgeTests
             return Task.CompletedTask;
         }
     }
-
-    /// <summary>
-    /// Custom exception implementing <see cref="IPermanentError"/> for testing.
-    /// </summary>
-    [SuppressMessage(
-        "Design",
-        "CA1032:Implement standard exception constructors",
-        Justification = "Test-only exception; minimal constructors sufficient"
-    )]
-    private sealed class CustomPermanentException(string message) : Exception(message), IPermanentError;
 
     /// <summary>
     /// <see cref="IPermanentErrorClassifier"/> that delegates to lambdas.

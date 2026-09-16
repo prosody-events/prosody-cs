@@ -142,13 +142,13 @@ public sealed class LoggingTests : IDisposable
     }
 
     [Fact]
-    public async Task HostedServiceConfiguresLoggingOnStart()
+    public async Task HostedServiceConfiguresLoggingInTheStartingPhase()
     {
         (ServiceProvider provider, FakeLoggerFactory factory) = BuildServiceProvider();
         using FakeLoggerFactory _ = factory;
-        IHostedService hostedService = GetLoggingHostedService(provider);
+        IHostedLifecycleService hostedService = GetLoggingHostedService(provider);
 
-        await hostedService.StartAsync(CancellationToken.None);
+        await hostedService.StartingAsync(CancellationToken.None);
         await CreateProducerOnlyClientAsync();
 
         AssertContainsDisabledConsumerLog(factory.Collector);
@@ -160,8 +160,8 @@ public sealed class LoggingTests : IDisposable
     {
         var (provider, factory) = BuildServiceProvider();
         using FakeLoggerFactory _ = factory;
-        IHostedService hostedService = GetLoggingHostedService(provider);
-        await hostedService.StartAsync(CancellationToken.None);
+        IHostedLifecycleService hostedService = GetLoggingHostedService(provider);
+        await hostedService.StartingAsync(CancellationToken.None);
 
         await hostedService.StopAsync(CancellationToken.None);
         factory.Collector.Clear();
@@ -221,9 +221,12 @@ public sealed class LoggingTests : IDisposable
         return (services.BuildServiceProvider(), factory);
     }
 
-    private static IHostedService GetLoggingHostedService(ServiceProvider provider)
+    private static IHostedLifecycleService GetLoggingHostedService(ServiceProvider provider)
     {
-        return provider.GetServices<IHostedService>().First(s => s.GetType().Name == "ProsodyLoggingHostedService");
+        return provider
+            .GetServices<IHostedService>()
+            .OfType<IHostedLifecycleService>()
+            .First(s => s.GetType().Name == "ProsodyLoggingHostedService");
     }
 
     private static void AssertContainsDisabledConsumerLog(FakeLogCollector collector)

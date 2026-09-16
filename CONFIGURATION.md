@@ -25,6 +25,8 @@ builder.Services.AddProsodyClient(options => options.Mock = true);
 
 The client is validated at startup via `ValidateOnStart()`. Invalid configuration throws `OptionsValidationException`.
 
+Inject `ProsodyClient`. The client connects on its first operation. Set `ConnectOnStart` to connect when the host starts.
+
 ## JSON Serialization
 
 Prosody serializes and deserializes payloads with these defaults:
@@ -83,6 +85,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `AllowedEvents` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes | (all) |
 | `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
 | `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |
+| `ConnectOnStart` | Connect when the host starts instead of on first use (dependency injection only) | false |
 | `Mode` / - | Processing mode: `Pipeline`, `LowLatency`, or `BestEffort` | `Pipeline` |
 | - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info` |
 

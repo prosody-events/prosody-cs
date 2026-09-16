@@ -31,7 +31,7 @@ public sealed class StateAsyncBridgingTests(IntegrationTestFixture fixture) : In
                 return Task.CompletedTask;
             }
         );
-        await ctx.Client.SubscribeAsync(probeHandler);
+        await ctx.Client.SubscribeAsync(probeHandler, TestContext.Current.CancellationToken);
         var probeKeys = Enumerable.Range(0, 5).Select(i => $"probe-{Guid.NewGuid():N}-{i}").ToArray();
         foreach (var probeKey in probeKeys)
         {
@@ -99,7 +99,7 @@ public sealed class StateAsyncBridgingTests(IntegrationTestFixture fixture) : In
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         try
         {
             await ctx.Client.SendAsync(

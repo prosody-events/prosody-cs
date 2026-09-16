@@ -266,7 +266,7 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -348,7 +348,7 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),

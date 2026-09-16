@@ -278,12 +278,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
 
-    [RequiresUnreferencedCode(
-        "Reads PermanentErrorAttribute from handler methods via reflection. Use the constructor that accepts IPermanentErrorClassifier to avoid the reflection path."
-    )]
-    [RequiresDynamicCode(
-        "GetInterfaceMap requires the handler type's methods to be preserved. Use the constructor that accepts IPermanentErrorClassifier to avoid this requirement."
-    )]
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
     public EventHandlerBridge(
         IProsodyHandler<TPayload> userHandler,
         JsonSerializerOptions jsonOptions,
@@ -393,8 +389,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             return EventHandlerBridge.JsonNull;
         };
 
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap requires handler methods at run time.")]
+    [RequiresUnreferencedCode(Trimming.HandlerReflection)]
+    [RequiresDynamicCode(Trimming.HandlerReflection)]
     internal static EventHandlerBridge<TPayload> Responding<TResponse>(
         IProsodyRequestHandler<TPayload, TResponse> handler,
         JsonSerializerOptions jsonOptions,

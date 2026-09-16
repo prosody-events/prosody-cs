@@ -1,5 +1,6 @@
 using Prosody.Errors;
 using Prosody.Messaging;
+using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
@@ -167,21 +168,10 @@ public sealed class ProsodyHandlerTests
 
     #region Custom Permanent Exception Tests
 
-    private sealed class OrderValidationException : Exception, IPermanentError
-    {
-        public OrderValidationException() { }
-
-        public OrderValidationException(string message)
-            : base(message) { }
-
-        public OrderValidationException(string message, Exception innerException)
-            : base(message, innerException) { }
-    }
-
     [Fact]
     public void CustomExceptionCanImplementIPermanentError()
     {
-        var ex = new OrderValidationException("Invalid order");
+        var ex = new CustomPermanentException("Invalid order");
 
         Assert.Multiple(
             () => Assert.IsAssignableFrom<IPermanentError>(ex),
@@ -198,7 +188,7 @@ public sealed class ProsodyHandlerTests
             CancellationToken cancellationToken
         )
         {
-            throw new OrderValidationException("Order is invalid");
+            throw new CustomPermanentException("Order is invalid");
         }
 
         public Task OnExciseAsync(
@@ -219,7 +209,7 @@ public sealed class ProsodyHandlerTests
     {
         var handler = new CustomExceptionHandler();
 
-        var ex = await Assert.ThrowsAsync<OrderValidationException>(() =>
+        var ex = await Assert.ThrowsAsync<CustomPermanentException>(() =>
             handler.OnMessageAsync(null!, null!, CancellationToken.None)
         );
 

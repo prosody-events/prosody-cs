@@ -198,7 +198,7 @@ For the complete configuration reference, see [CONFIGURATION.md](CONFIGURATION.m
 
 `ClientOptions` properties take precedence. Unset properties use environment variables, then library defaults.
 
-Client construction is asynchronous. Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync`.
+Client construction does no I/O. The first operation connects, or call `ConnectAsync` to connect early. `ProsodyClient.CreateAsync` and `ProsodyClientBuilder.BuildAsync` construct and connect in one step. `ProsodyClientBuilder.Build` returns an unconnected client.
 
 ## Liveness and Readiness Probes
 
@@ -943,14 +943,13 @@ using Prosody;
 
 public class ProsodyWorker : BackgroundService
 {
-    private readonly ProsodyClientProvider _clients;
+    private readonly ProsodyClient _client;
 
-    public ProsodyWorker(ProsodyClientProvider clients) => _clients = clients;
+    public ProsodyWorker(ProsodyClient client) => _client = client;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var client = await _clients.GetAsync();
-        await client.SubscribeAsync(new MyHandler());
+        await _client.SubscribeAsync(new MyHandler(), stoppingToken);
 
         try
         {
@@ -962,7 +961,7 @@ public class ProsodyWorker : BackgroundService
             // The host requested shutdown.
         }
 
-        await client.ShutdownAsync();
+        await _client.ShutdownAsync();
     }
 
 }
@@ -1181,10 +1180,15 @@ builder.Services.AddProsodyClient();
 var host = builder.Build();
 ```
 
-Inject `ProsodyClientProvider` into hosted services. Call `GetAsync` to get the shared client.
-The provider disposes the client when the host stops.
-A failed `GetAsync` call does not poison the provider. A later call retries client construction.
-Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
+Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects under that operation's cancellation token. A caller that cancels abandons only its own wait; the connect continues for later callers. A failed connect is not retained; the next operation retries.
+
+Set `ConnectOnStart` to `true` to connect when the host starts, before hosted services registered after the client. A failed connect then aborts host startup.
+
+The library disposes the client after every hosted service has stopped, inside the host's stop deadline. If the deadline fires first, the wait is abandoned and logged. Disposal never waits on a connect that has not finished.
+
+`AddProsodyClient` is safe to call more than once with the same section. Every call may add a configure action; only the first binds configuration. A call with a different section throws.
+
+`ProsodyClientProvider` is obsolete. It still resolves and its `GetAsync` returns the same shared client.
 
 Log messages are emitted under the `Prosody.Native` category.
 
@@ -1347,15 +1351,17 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithStateCollections(params StateDefinition[] definitions)`: Register keyed-state collections before subscribe
 
 **Build:**
-- `Task<ProsodyClient> BuildAsync()`: Validates configuration and creates a client asynchronously.
+- `Task<ProsodyClient> BuildAsync()`: Validates configuration, creates a client, and connects it.
+- `ProsodyClient Build()`: Validates configuration and creates an unconnected client.
 
 ### ProsodyClient
 
-- `Task<ProsodyClient> ProsodyClient.CreateAsync(ClientOptions options)`: Create a client asynchronously.
+- `Task<ProsodyClient> ProsodyClient.CreateAsync(ClientOptions options)`: Create a client and connect it.
+- `Task ConnectAsync(CancellationToken cancellationToken = default)`: Connect now instead of on first use.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
-- `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
-- `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
-- `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
+- `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer. An overload takes a `CancellationToken` that bounds the connect wait only.
+- `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer. An overload takes a `CancellationToken`.
+- `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions. An overload takes a `CancellationToken`.
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
@@ -1367,13 +1373,13 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Classify errors without reflection. Use this overload in trimmed applications.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, CancellationToken cancellationToken)`: Start event processing with a typed payload handler. The token bounds the connect wait only.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Classify errors without reflection. Use this overload in trimmed applications.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, CancellationToken cancellationToken)`: Subscribe with typed request responses.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
-- `void Dispose()`: Release resources immediately. It does not wait for shutdown. Use `ShutdownAsync` or `DisposeAsync` to stop client services.
+- `void Dispose()`: Close the client and schedule shutdown and resource release on the thread pool. Return without waiting. Prefer `DisposeAsync`.
 - `ValueTask DisposeAsync()`: Shut down and dispose of client resources. Enables `await using`.
 
 ### AdminClient
@@ -1555,10 +1561,9 @@ Handler error classification:
 
 - `ClientOptions`: Contains the client settings in [Configuration](CONFIGURATION.md).
 - `Prosody.CreateClient()`: Create a `ProsodyClientBuilder`.
-- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register `ProsodyClientProvider` with dependency injection.
+- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register one shared `ProsodyClient` and its host lifecycle.
 - `ProsodyServiceCollectionExtensions.AddProsodyLogging()`: Register Prosody logging.
-- `ProsodyClientProvider.GetAsync()`: Get the shared client.
-- `ProsodyClientProvider.Dispose()` and `DisposeAsync()`: Dispose the shared client.
+- `ClientOptions.ConnectOnStart`: Connect when the host starts instead of on first use.
 
 ### Logging and telemetry
 

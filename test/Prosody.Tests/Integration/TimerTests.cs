@@ -31,7 +31,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "timer-test-key",
@@ -86,7 +86,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "clear-schedule-key",
@@ -134,7 +134,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "unschedule-key",
@@ -183,7 +183,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "clear-all-key",
@@ -226,7 +226,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "scheduled-retrieval-key",
@@ -278,7 +278,7 @@ public sealed class TimerTests(IntegrationTestFixture fixture) : IntegrationTest
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "upsert-key",
