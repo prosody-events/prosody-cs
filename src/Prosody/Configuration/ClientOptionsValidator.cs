@@ -29,14 +29,24 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
     private static void CheckShutdownTimeout(ClientOptions options, List<string> failures)
     {
         const string name = nameof(ClientOptions.ShutdownTimeout);
-        switch (options.ResolveShutdownTimeout())
+        TimeSpan? timeout;
+        try
         {
-            case { Ticks: < 0 }:
-                failures.Add($"{name} must not be negative.");
-                break;
-            case { } timeout when timeout > MaxShutdownTimeout:
-                failures.Add($"{name}, or PROSODY_SHUTDOWN_TIMEOUT, must not exceed {MaxShutdownTimeout}.");
-                break;
+            timeout = options.ResolveShutdownTimeout();
+        }
+        catch (OverflowException)
+        {
+            failures.Add($"{name}, or PROSODY_SHUTDOWN_TIMEOUT, must not exceed {MaxShutdownTimeout}.");
+            return;
+        }
+
+        if (timeout < TimeSpan.Zero)
+        {
+            failures.Add($"{name} must not be negative.");
+        }
+        else if (timeout > MaxShutdownTimeout)
+        {
+            failures.Add($"{name}, or PROSODY_SHUTDOWN_TIMEOUT, must not exceed {MaxShutdownTimeout}.");
         }
     }
 

@@ -6,8 +6,8 @@ namespace Prosody.Configuration;
 /// <remarks>
 /// The native client parses durations with the <c>humantime</c> crate. The format is one or more
 /// number-and-unit pairs, such as <c>90s</c>, <c>1.5m</c>, or <c>1m 30s</c>. Units range from
-/// <c>ns</c> to <c>y</c>, with their long forms. The caller falls back to its default for a value
-/// this parser rejects; the native build validates the variable itself and reports a bad value.
+/// <c>ns</c> to <c>y</c>, with their long forms. Invalid syntax returns <c>null</c>.
+/// The native build validates the variable and reports syntax errors.
 /// </remarks>
 internal static class Duration
 {
@@ -15,6 +15,7 @@ internal static class Duration
         Environment.GetEnvironmentVariable(variable) is { } value ? Parse(value) : null;
 
     /// <summary>Parses a duration. Returns <c>null</c> when the text is not a valid duration.</summary>
+    /// <exception cref="OverflowException">The duration exceeds <see cref="TimeSpan.MaxValue"/>.</exception>
     internal static TimeSpan? Parse(string text)
     {
         if (string.Equals(text, "0", StringComparison.Ordinal))
@@ -45,7 +46,10 @@ internal static class Duration
 
             ticks += count * unit;
         }
-        return ticks < long.MaxValue ? TimeSpan.FromTicks((long)Math.Round(ticks)) : null;
+        // Overflow must not become an unset value that bypasses timeout validation.
+        return ticks < long.MaxValue
+            ? TimeSpan.FromTicks((long)Math.Round(ticks))
+            : throw new OverflowException("The duration exceeds TimeSpan.MaxValue.");
     }
 
     /// <summary>

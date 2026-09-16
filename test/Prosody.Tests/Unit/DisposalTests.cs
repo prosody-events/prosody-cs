@@ -19,7 +19,7 @@ namespace Prosody.Tests.Unit;
 /// Invariant under test: one build serves every caller. A caller's cancellation abandons only that
 /// caller's wait. A failed build is evicted and retried. Disposal never waits on a pending build.
 /// </remarks>
-public sealed class DisposalTests
+public sealed partial class DisposalTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
@@ -289,21 +289,6 @@ public sealed class DisposalTests
         build.Gate.SetResult(native);
         await Assert.ThrowsAsync<ObjectDisposedException>(() => connect.WaitAsync(Deadline, Ct));
         await WaitUntilReleasedAsync(native);
-    }
-
-    [Fact]
-    public async Task DisposeDuringAPendingBuildThatFaultsObservesTheFault()
-    {
-        var build = new Build();
-        var client = new ProsodyClient(MockOptions, build.Pending);
-        var connect = client.ConnectAsync(Ct);
-        var disposal = client.DisposeAsync();
-        Assert.True(disposal.IsCompletedSuccessfully);
-
-        build.Gate.SetException(new InvalidOperationException("unavailable"));
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => connect);
-        Assert.True(build.Gate.Task.Exception is { } error && error.InnerException is InvalidOperationException);
     }
 
     [Fact]

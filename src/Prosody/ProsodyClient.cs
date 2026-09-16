@@ -395,6 +395,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         }
         catch (TimeoutException)
         {
+            // Disposal must observe shutdown faults after its bounded wait ends.
+            LogWhenFaulted(ShutdownAsync());
             LogHelper.LogNativeShutdownAbandoned(_logger, _shutdownBudget);
         }
         finally

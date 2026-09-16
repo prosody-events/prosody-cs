@@ -56,18 +56,32 @@ public sealed class ClientOptionsValidatorTests
         );
     }
 
-    [Fact]
-    public void ShutdownTimeoutFromTheEnvironmentIsValidated()
+    [Theory]
+    [InlineData("2d", false)]
+    [InlineData("30000y", false)]
+    [InlineData("20000y 20000y", false)]
+    [InlineData("1d 1ms", false)]
+    [InlineData("1d", true)]
+    [InlineData("0", true)]
+    public void ShutdownTimeoutFromTheEnvironmentIsValidated(string text, bool valid)
     {
         var previous = Environment.GetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT");
         try
         {
-            Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", "2d");
+            Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", text);
 
-            var result = _validator.Validate(name: null, new ClientOptions());
+            var options = new ClientOptions { GroupId = "group" };
+            var result = _validator.Validate(name: null, options);
 
-            Assert.True(result.Failed);
-            Assert.Contains("must not exceed", result.FailureMessage, StringComparison.Ordinal);
+            Assert.Equal(valid, result.Succeeded);
+            if (!valid)
+            {
+                Assert.Contains("PROSODY_SHUTDOWN_TIMEOUT", result.FailureMessage, StringComparison.Ordinal);
+                Assert.Contains("must not exceed", result.FailureMessage, StringComparison.Ordinal);
+            }
+
+            options.ShutdownTimeout = TimeSpan.FromSeconds(1);
+            Assert.True(_validator.Validate(name: null, options).Succeeded);
         }
         finally
         {
