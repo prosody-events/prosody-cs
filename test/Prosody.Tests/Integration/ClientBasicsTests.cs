@@ -12,7 +12,7 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
     public async Task InitializesCorrectly()
     {
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
-        ConsumerState state = await ctx.Client.GetConsumerStateAsync();
+        ConsumerState state = await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken);
         Assert.Multiple(() => Assert.NotNull(ctx.Client), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
@@ -29,10 +29,16 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
         await using IntegrationTestContext ctx = await CreateTestContextAsync();
         var handler = new TestProsodyHandler<TestPayload>();
 
-        await ctx.Client.SubscribeAsync(handler);
-        Assert.Equal(ConsumerState.Running, await ctx.Client.GetConsumerStateAsync());
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        Assert.Equal(
+            ConsumerState.Running,
+            await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken)
+        );
 
         await ctx.Client.UnsubscribeAsync();
-        Assert.Equal(ConsumerState.Configured, await ctx.Client.GetConsumerStateAsync());
+        Assert.Equal(
+            ConsumerState.Configured,
+            await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken)
+        );
     }
 }

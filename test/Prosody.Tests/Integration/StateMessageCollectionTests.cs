@@ -121,7 +121,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await SendWarmupRecordReadbackAsync(ctx, "one");
 
         var original = await originals.ReceiveAsync(
@@ -166,7 +166,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await SendWarmupRecordReadbackAsync(ctx, "indexed");
 
         var original = await originals.ReceiveAsync(
@@ -218,7 +218,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
         await SendWarmupRecordReadbackAsync(ctx, "logged");
 
         var original = await originals.ReceiveAsync(

@@ -9,6 +9,13 @@ namespace Prosody.Tests.Unit;
 
 public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestBase
 {
+    private static async Task<ProsodyClient> ConnectedClientAsync(ServiceProvider provider)
+    {
+        var client = provider.GetRequiredService<ProsodyClient>();
+        await client.ConnectAsync();
+        return client;
+    }
+
     [Fact]
     public async Task AddProsodyClientBindsFromDefaultSection()
     {
@@ -33,7 +40,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -57,7 +64,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient("MyApp:Kafka");
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -81,7 +88,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient(options => options.Mock = true);
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -104,8 +111,8 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client1 = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
-        var client2 = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client1 = await ConnectedClientAsync(provider);
+        var client2 = await ConnectedClientAsync(provider);
         Assert.Same(client1, client2);
     }
 
@@ -133,7 +140,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -161,7 +168,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -225,9 +232,9 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         var lowLatencyProvider = Track(lowLatencyServices.BuildServiceProvider());
         var bestEffortProvider = Track(bestEffortServices.BuildServiceProvider());
 
-        var pipelineClient = (await pipelineProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
-        var lowLatencyClient = (await lowLatencyProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
-        var bestEffortClient = (await bestEffortProvider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var pipelineClient = await ConnectedClientAsync(pipelineProvider);
+        var lowLatencyClient = await ConnectedClientAsync(lowLatencyProvider);
+        var bestEffortClient = await ConnectedClientAsync(bestEffortProvider);
 
         Assert.NotNull(pipelineClient);
         Assert.NotNull(lowLatencyClient);
@@ -250,7 +257,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         });
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -275,7 +282,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient(options => options.MaxConcurrency = 128);
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -294,7 +301,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         });
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -325,7 +332,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -356,7 +363,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 
@@ -380,7 +387,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         // cached IOptions<ClientOptions>.Value. The client factory should have
         // cloned the options, so the client is isolated from these mutations.
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
 
         var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
         resolvedOptions.SourceSystem = "mutated";
@@ -416,7 +423,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         var provider = Track(services.BuildServiceProvider());
 
         // Trigger client creation (factory runs, should clone)
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
 
         // Mutate arrays on the cached options
         var resolvedOptions = provider.GetRequiredService<IOptions<ClientOptions>>().Value;
@@ -451,7 +458,7 @@ public sealed class ProsodyServiceCollectionExtensionsTests : AsyncDisposalTestB
         services.AddProsodyClient();
 
         var provider = Track(services.BuildServiceProvider());
-        var client = (await provider.GetRequiredService<ProsodyClientProvider>().GetAsync());
+        var client = await ConnectedClientAsync(provider);
         Assert.NotNull(client);
     }
 

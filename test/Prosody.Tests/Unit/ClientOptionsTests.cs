@@ -8,6 +8,7 @@ namespace Prosody.Tests.Unit;
 /// <summary>
 /// Tests for ClientOptions configuration class.
 /// </summary>
+[Collection("Sequential")]
 public sealed class ClientOptionsTests
 {
     [Fact]
@@ -323,5 +324,84 @@ public sealed class ClientOptionsTests
             () => Assert.Null(uncached.StateReadCacheTtl),
             () => Assert.True(uncached.StateReadCacheDisabled)
         );
+    }
+
+    /// <summary>Invariant: the parser accepts what the native client accepts and rejects the rest.</summary>
+    [Theory]
+    [InlineData("0", 0)]
+    [InlineData("30s", 30_000)]
+    [InlineData("500ms", 500)]
+    [InlineData("1m 30s", 90_000)]
+    [InlineData("1h30m", 5_400_000)]
+    [InlineData(" 2 hours ", 7_200_000)]
+    [InlineData("1d", 86_400_000)]
+    [InlineData("1.5m", 90_000)]
+    [InlineData("1 .5m", 90_000)]
+    [InlineData("1. 5 m", 90_000)]
+    [InlineData("1 5s", 15_000)]
+    [InlineData("2w", 1_209_600_000)]
+    [InlineData("250us", 0.25)]
+    public void DurationParsesNativeFormat(string text, double milliseconds) =>
+        Assert.Equal(TimeSpan.FromMilliseconds(milliseconds), Duration.Parse(text));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" 0")]
+    [InlineData("0 ")]
+    [InlineData("00")]
+    [InlineData("30")]
+    [InlineData("s")]
+    [InlineData("30x")]
+    [InlineData("-5s")]
+    [InlineData(".5s")]
+    [InlineData("1.5.5s")]
+    [InlineData("1.s")]
+    [InlineData("1m .5s")]
+    public void DurationRejectsUnsupportedText(string text) => Assert.Null(Duration.Parse(text));
+
+    /// <summary>
+    /// Invariant: the result equals the native client's duration after truncation to ticks.
+    /// A fraction that <c>humantime</c> rejects as inexact is accepted and truncated the same way.
+    /// </summary>
+    [Theory]
+    [InlineData("99ns", 0)]
+    [InlineData("150ns", 1)]
+    [InlineData("50ns 50ns", 1)]
+    [InlineData("0.5ns", 0)]
+    [InlineData("0.0001h", 3_600_000)]
+    [InlineData("0.36h", 1296 * TimeSpan.TicksPerSecond)]
+    [InlineData("922337203685s 477580700ns", long.MaxValue)]
+    public void DurationTruncatesTheExactSumToTicks(string text, long ticks) =>
+        Assert.Equal(TimeSpan.FromTicks(ticks), Duration.Parse(text));
+
+    [Theory]
+    [InlineData("922337203685s 477580701ns")]
+    [InlineData("30000y")]
+    [InlineData("18446744073709551616s")]
+    [InlineData("100000000000000000000000000000ns")]
+    public void DurationBeyondTimeSpanThrows(string text) =>
+        Assert.Throws<OverflowException>(() => Duration.Parse(text));
+
+    [Theory]
+    [InlineData("2m", 120)]
+    [InlineData("0", 0)]
+    public void ShutdownTimeoutResolvesTheEnvironmentVariableWhenUnset(string text, int seconds)
+    {
+        var previous = Environment.GetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT");
+        Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", text);
+        try
+        {
+            var fromEnvironment = new ClientOptions().ResolveShutdownTimeout();
+            var explicitWins = new ClientOptions { ShutdownTimeout = TimeSpan.FromSeconds(1) }.ResolveShutdownTimeout();
+
+            Assert.Multiple(
+                () => Assert.Equal(TimeSpan.FromSeconds(seconds), fromEnvironment),
+                () => Assert.Equal(TimeSpan.FromSeconds(1), explicitWins)
+            );
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PROSODY_SHUTDOWN_TIMEOUT", previous);
+        }
     }
 }

@@ -94,6 +94,15 @@ public sealed class ClientOptions
     /// </summary>
     public bool? Mock { get; set; }
 
+    /// <summary>
+    /// Connect when the host starts instead of on first use. Default: <c>false</c>.
+    /// </summary>
+    /// <remarks>
+    /// Read only by <c>AddProsodyClient</c>. A failed or cancelled connect aborts host startup.
+    /// The native client does not see this value.
+    /// </remarks>
+    public bool? ConnectOnStart { get; set; }
+
     /// <summary>Address for the peer listener.</summary>
     /// <remarks>
     /// Prosody reads <c>PROSODY_PEER_BIND_ADDRESS</c> when this value is null.
@@ -169,8 +178,8 @@ public sealed class ClientOptions
     public TimeSpan? StallThreshold { get; set; }
 
     /// <summary>
-    /// Shutdown budget; handlers complete freely before cancellation fires near the deadline.
-    /// Default: 30 seconds.
+    /// Time the native client gives handlers to finish during shutdown. Cancellation fires near
+    /// the end of it. Default: 30 seconds. Maximum: one day.
     /// </summary>
     public TimeSpan? ShutdownTimeout { get; set; }
 
@@ -529,6 +538,25 @@ public sealed class ClientOptions
     }
 
     private static ClientOptionsValidator Validator { get; } = new();
+
+    /// <summary>
+    /// Resolves the source system with the same precedence as the native client: explicit
+    /// <see cref="SourceSystem"/>, then <c>PROSODY_SOURCE_SYSTEM</c>, then <see cref="GroupId"/>,
+    /// then <c>PROSODY_GROUP_ID</c>. Returns <c>null</c> when none is set.
+    /// </summary>
+    internal string? ResolveSourceSystem() =>
+        SourceSystem
+        ?? Environment.GetEnvironmentVariable("PROSODY_SOURCE_SYSTEM")
+        ?? GroupId
+        ?? Environment.GetEnvironmentVariable("PROSODY_GROUP_ID");
+
+    /// <summary>
+    /// Resolves the shutdown timeout with the same precedence as the native client: explicit
+    /// <see cref="ShutdownTimeout"/>, then <c>PROSODY_SHUTDOWN_TIMEOUT</c>. Returns <c>null</c>
+    /// when neither is set.
+    /// </summary>
+    internal TimeSpan? ResolveShutdownTimeout() =>
+        ShutdownTimeout ?? Duration.FromEnvironment("PROSODY_SHUTDOWN_TIMEOUT");
 
     /// <summary>
     /// Creates an independent copy of this <see cref="ClientOptions"/> instance,
