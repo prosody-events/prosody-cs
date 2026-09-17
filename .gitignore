@@ -12,6 +12,7 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 .vs/
+.vscode/
 .claude/*.local.*
 
 # Rust (workspace with ffi/ crate)
