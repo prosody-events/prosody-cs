@@ -12,10 +12,14 @@ namespace Prosody.Extensions;
 /// <remarks>
 /// <para>
 /// <see cref="StartAsync"/> connects the client when <see cref="ClientOptions.ConnectOnStart"/>
-/// is <c>true</c>. Hosted services registered after the client start after the connect. A
-/// cancelled or failed connect aborts host startup. The connect runs in the start phase so the
-/// logging hosted service, which configures <see cref="ProsodyLogging"/> in the starting phase,
-/// is ready first whatever the registration order.
+/// is <c>true</c>. A cancelled or failed connection aborts host startup.
+/// With sequential startup, hosted services registered after the client start after the connection completes.
+/// With <c>HostOptions.ServicesStartConcurrently = true</c>, those services can start while the connection is pending.
+/// Client operations still await the shared connection.
+/// </para>
+/// <para>
+/// The connection runs in the start phase. The logging hosted service configures
+/// <see cref="ProsodyLogging"/> in the starting phase, before the connection, regardless of registration order.
 /// </para>
 /// <para>
 /// <see cref="StoppedAsync"/> disposes the client after every hosted service has stopped, inside

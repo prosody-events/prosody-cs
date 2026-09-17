@@ -1182,7 +1182,9 @@ var host = builder.Build();
 
 Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects under that operation's cancellation token. A caller that cancels abandons only its own wait; the connect continues for later callers. A failed connect is not retained; the next operation retries.
 
-Set `ConnectOnStart` to `true` to connect when the host starts, before hosted services registered after the client. A failed connect then aborts host startup.
+Set `ConnectOnStart` to `true` to connect when the host starts. Host startup waits for the connection. A failed or cancelled connection aborts startup.
+
+With sequential startup, hosted services registered after the client start after the connection completes. With `HostOptions.ServicesStartConcurrently = true`, those services can start while the connection is pending. Client operations still await the shared connection.
 
 The library disposes the client after every hosted service has stopped, inside the host's stop deadline. If the deadline fires first, the wait is abandoned and logged. Disposal never waits on a connect that has not finished.
 

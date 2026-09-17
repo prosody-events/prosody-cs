@@ -6,39 +6,35 @@ using Prosody.Configuration;
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Property tests for <see cref="Duration.Parse"/> against an exact model of <c>humantime</c>.
+/// Property tests for <see cref="Duration.Parse"/> against a model of <c>humantime</c> text.
 /// </summary>
 /// <remarks>
 /// The model is a list of terms. Each term is a count, a unit, and an optional decimal fraction.
-/// The model sums the terms in nanoseconds with <see cref="UInt128"/> arithmetic, so it does not
-/// repeat the parser's carry logic or its 64-bit overflow checks.
+/// The model renders the terms with random whitespace and unit aliases, and sums them in
+/// nanoseconds as an exact <see cref="decimal"/>.
 /// </remarks>
 public sealed class DurationPropertyTests
 {
-    private static readonly UInt128 MaxNanos = (UInt128)TimeSpan.MaxValue.Ticks * 100;
+    private static readonly decimal MaxNanos = TimeSpan.MaxValue.Ticks * 100m;
 
-    /// <summary>
-    /// A unit's names, its length in nanoseconds, and the granularity of its fraction in nanoseconds.
-    /// <c>humantime</c> resolves a fraction of a minute or less in nanoseconds, a fraction of an
-    /// hour or more in whole seconds, and no fraction of a nanosecond.
-    /// </summary>
-    private static readonly (string[] Names, ulong Nanos, ulong? Grain)[] Units =
+    /// <summary>A unit's names and its length in nanoseconds.</summary>
+    private static readonly (string[] Names, decimal Nanos)[] Units =
     [
-        (["ns", "nsec", "nanos"], 1, null),
-        (["us", "µs", "usec"], 1_000, 1),
-        (["ms", "msec", "millis"], 1_000_000, 1),
-        (["s", "sec", "secs", "second", "seconds"], 1_000_000_000, 1),
-        (["m", "min", "mins", "minute", "minutes"], 60_000_000_000, 1),
-        (["h", "hr", "hrs", "hour", "hours"], 3_600_000_000_000, 1_000_000_000),
-        (["d", "day", "days"], 86_400_000_000_000, 1_000_000_000),
-        (["w", "wk", "wks", "week", "weeks"], 604_800_000_000_000, 1_000_000_000),
-        (["M", "month", "months"], 2_630_016_000_000_000, 1_000_000_000),
-        (["y", "yr", "yrs", "year", "years"], 31_557_600_000_000_000, 1_000_000_000),
+        (["ns", "nsec", "nanos"], 1),
+        (["us", "µs", "usec"], 1_000),
+        (["ms", "msec", "millis"], 1_000_000),
+        (["s", "sec", "secs", "second", "seconds"], 1_000_000_000),
+        (["m", "min", "mins", "minute", "minutes"], 60_000_000_000),
+        (["h", "hr", "hrs", "hour", "hours"], 3_600_000_000_000),
+        (["d", "day", "days"], 86_400_000_000_000),
+        (["w", "wk", "wks", "week", "weeks"], 604_800_000_000_000),
+        (["M", "month", "months"], 2_630_016_000_000_000),
+        (["y", "yr", "yrs", "year", "years"], 31_557_600_000_000_000),
     ];
 
     private static readonly string[] Spaces = ["", "", " ", "  ", "\t"];
 
-    /// <summary>Counts stay below 10^10 so that six terms of any unit fit the 64-bit seconds <c>humantime</c> sums.</summary>
+    /// <summary>Counts stay below 10^10 so that the sum of six terms fits a <see cref="decimal"/> with room to spare.</summary>
     private static readonly Gen<Term> TermGen = Gen.Int[0, Units.Length - 1]
         .Select(
             Gen.Int[0, 100],
@@ -56,8 +52,8 @@ public sealed class DurationPropertyTests
     private static readonly Gen<(List<Term>, int[], int[])> ModelGen = TermGen.List[1, 6].Select(SpacesGen, SpacesGen);
 
     /// <summary>
-    /// Invariant: the parser returns the model's exact sum truncated to ticks. It returns
-    /// <c>null</c> for an inexact fraction and throws when the sum exceeds <see cref="TimeSpan.MaxValue"/>.
+    /// Invariant: the parser returns the model's exact sum truncated to ticks, and throws when
+    /// the sum exceeds <see cref="TimeSpan.MaxValue"/>.
     /// </summary>
     [Fact]
     public void ParseAgreesWithTheExactModel() =>
@@ -65,17 +61,14 @@ public sealed class DurationPropertyTests
             (terms, spaces, _) =>
             {
                 var text = Render(terms, spaces);
-                switch (Model(terms))
+                var total = Model(terms);
+                if (total > MaxNanos)
                 {
-                    case null:
-                        Assert.Null(Duration.Parse(text));
-                        break;
-                    case var total when total > MaxNanos:
-                        Assert.Throws<OverflowException>(() => Duration.Parse(text));
-                        break;
-                    case var total:
-                        Assert.Equal(TimeSpan.FromTicks((long)(total / 100)), Duration.Parse(text));
-                        break;
+                    Assert.Throws<OverflowException>(() => Duration.Parse(text));
+                }
+                else
+                {
+                    Assert.Equal(TimeSpan.FromTicks((long)(total / 100)), Duration.Parse(text));
                 }
             },
             iter: 20_000
@@ -89,25 +82,13 @@ public sealed class DurationPropertyTests
             iter: 20_000
         );
 
-    private static UInt128? Model(List<Term> terms)
+    private static decimal Model(List<Term> terms)
     {
-        var total = UInt128.Zero;
+        var total = 0m;
         foreach (var term in terms)
         {
-            var (_, nanos, grain) = Units[term.Unit];
-            total += (UInt128)term.Count * nanos;
-            if (term.Digits == 0)
-            {
-                continue;
-            }
-
-            var scaled = (UInt128)term.Numerator * nanos;
-            var denominator = Pow10(term.Digits);
-            if (grain is not { } g || scaled % ((UInt128)denominator * g) != 0)
-            {
-                return null;
-            }
-            total += scaled / denominator;
+            var nanos = Units[term.Unit].Nanos;
+            total += (term.Count * nanos) + (term.Numerator * nanos / Pow10(term.Digits));
         }
         return total;
     }
@@ -118,7 +99,7 @@ public sealed class DurationPropertyTests
         var slot = 0;
         foreach (var term in terms)
         {
-            var (names, _, _) = Units[term.Unit];
+            var names = Units[term.Unit].Names;
             Spaced(term.Count.ToString(CultureInfo.InvariantCulture));
             if (term.Digits > 0)
             {
