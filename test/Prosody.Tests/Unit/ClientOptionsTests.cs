@@ -357,7 +357,27 @@ public sealed class ClientOptionsTests
     [InlineData("1.5.5s")]
     [InlineData("1.s")]
     [InlineData("1m .5s")]
+    [InlineData("0.0001h")]
+    [InlineData("0.5ns")]
+    [InlineData("1.0ns")]
+    [InlineData("18446744073709551616s")]
     public void DurationRejectsUnsupportedText(string text) => Assert.Null(Duration.Parse(text));
+
+    /// <summary>Invariant: the result equals the native client's duration after truncation to ticks.</summary>
+    [Theory]
+    [InlineData("99ns", 0)]
+    [InlineData("150ns", 1)]
+    [InlineData("50ns 50ns", 1)]
+    [InlineData("0.36h", 1296 * TimeSpan.TicksPerSecond)]
+    [InlineData("922337203685s 477580700ns", long.MaxValue)]
+    public void DurationTruncatesTheExactSumToTicks(string text, long ticks) =>
+        Assert.Equal(TimeSpan.FromTicks(ticks), Duration.Parse(text));
+
+    [Theory]
+    [InlineData("922337203685s 477580701ns")]
+    [InlineData("30000y")]
+    public void DurationBeyondTimeSpanThrows(string text) =>
+        Assert.Throws<OverflowException>(() => Duration.Parse(text));
 
     [Theory]
     [InlineData("2m", 120)]
