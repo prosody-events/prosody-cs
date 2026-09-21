@@ -37,7 +37,7 @@ jobs:
         with:
           fetch-depth: 0
       - id: rail
-        uses: loadingalias/cargo-rail-action@ebc8ef2740efefe2cd5c42826344a8f1213113ae # v6
+        uses: loadingalias/cargo-rail-action@e706767c343acb6a2ab1917f243b1616ae9eb05b # v10.0.0
         with:
           since: ${{ github.event_name == 'push' && github.event.before || '' }}
 
@@ -101,7 +101,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
@@ -167,7 +167,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
@@ -220,7 +220,7 @@ jobs:
           components: rustfmt
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
@@ -263,7 +263,7 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
@@ -298,7 +298,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
@@ -330,7 +330,7 @@ jobs:
           components: clippy
 
       - name: Setup mold
-        uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
+        uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
         with:
           make-default: false
 
