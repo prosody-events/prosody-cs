@@ -5,7 +5,7 @@ namespace Prosody.State;
 /// </summary>
 /// <remarks>
 /// The handle is directly enumerable: <c>await foreach (var element in deque)</c> iterates the live
-/// elements front-to-back — equivalent to <see cref="EnumerateAsync"/> with
+/// elements front-to-back — equivalent to <see cref="EnumerateAsync(ScanDirection, CancellationToken)"/> with
 /// <see cref="ScanDirection.Forward"/>. Each enumeration opens a fresh cursor.
 /// </remarks>
 /// <typeparam name="T">
@@ -101,12 +101,22 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     );
 
     /// <summary>
-    /// Durably commits the buffered operations mid-handler. Returns no value — the erased seam
-    /// drops the applied/no-op outcome.
+    /// Enumerates the live elements that <paramref name="query"/> selects. Valid only within the
+    /// handler invocation that opened it. Early exit closes the underlying cursor.
     /// </summary>
+    /// <param name="query">The positions to select and their order.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of the selected elements.</returns>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    IAsyncEnumerable<T> EnumerateAsync(PositionQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>Durably commits the buffered operations mid-handler.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the commit is durable.</returns>
-    Task CommitAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were written, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

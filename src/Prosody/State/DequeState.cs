@@ -102,11 +102,15 @@ internal sealed class DequeState<T> : IDequeState<T>
     public IAsyncEnumerable<T> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    )
+    ) => EnumerateAsync(new PositionQuery { Direction = direction }, cancellationToken);
+
+    public IAsyncEnumerable<T> EnumerateAsync(PositionQuery query, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
+        var native = PositionQuery.ToNative(query);
         return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
-            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
+            () => StateInterop.RunSync(() => _handle.Values(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             bytes => StateInterop.DeserializeJson(bytes, _typeInfo),

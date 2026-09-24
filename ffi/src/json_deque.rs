@@ -10,7 +10,8 @@ use prosody::consumer::event_context::BoxDequeState;
 
 use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
-use crate::state::{ScanDirection, into_bytes, platform_index, reject_null, traced};
+use crate::query::PositionQuery;
+use crate::state::{StoreOutcome, into_bytes, platform_index, reject_null, traced};
 
 /// A JSON deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -156,16 +157,20 @@ impl JsonDequeStateHandle {
         traced(&self.propagator, carrier, self.state.clear()).await
     }
 
-    /// Opens a cursor over live elements.
-    #[must_use]
-    pub fn scan(&self, direction: ScanDirection) -> Arc<JsonDequeCursor> {
-        Arc::new(JsonDequeCursor {
-            cursor: self.state.values().direction(direction.into()).stream(),
+    /// Opens a cursor over the live elements that `query` selects.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if a position exceeds the platform range or the
+    /// query limit is zero.
+    pub fn values(&self, query: PositionQuery) -> Result<Arc<JsonDequeCursor>, FfiError> {
+        Ok(Arc::new(JsonDequeCursor {
+            cursor: self.state.values().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 
-    /// Commits the buffered operations.
+    /// Commits the buffered operations and reports whether any existed.
     ///
     /// # Errors
     ///

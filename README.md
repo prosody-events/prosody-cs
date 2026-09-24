@@ -724,10 +724,43 @@ Do not reuse a durable name for a different collection kind or payload type. Cre
 | Collection | JSON payload | Kafka message | Main operations |
 | --- | --- | --- | --- |
 | Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `SetAsync`, `ClearAsync` |
-| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
+| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `EnumerateKeysAsync`, `EnumerateValuesAsync`, `ClearAsync` |
 | Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
+| Ordered string set | `StateDefinition.Set` | - | `AddAsync`, `RemoveAsync`, `ContainsAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, `ClearAsync` |
 
-Map and deque scans use `await foreach`. Map keys are strings.
+Map, set, and deque scans use `await foreach`. Map keys and set members are strings. A set stores presence only.
+
+### Query a collection
+
+Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque enumeration. A query selects a direction, bounds, and a limit. A `KeyQuery` can also select a key prefix. Prosody applies each option in storage, so a query reads only the selected cells.
+
+- `From` and `To` are inclusive. `After` and `Before` are exclusive. Set at most one start and one end.
+- Bounds are in iteration order. A `ScanDirection.Backward` query starts at the high end.
+- `PositionQuery.Range` accepts an ascending `System.Range` of positions, such as `2..5` or `3..`. It applies in either direction. Use positions that count from the front; only `^0` is allowed, as the end.
+- Every option narrows the selection. `Limit` must be positive.
+
+To page through a map, pass the last key of the previous page as `After`:
+
+```csharp
+var orders = StateDefinition.Map<Order>("orders");
+
+// In a handler: read the order keys 100 at a time.
+var map = context.State(orders);
+var page = new KeyQuery { Prefix = "order:", Limit = 100 };
+string? last = null;
+do
+{
+    var keys = new List<string>();
+    await foreach (var key in map.EnumerateKeysAsync(page with { After = last }, cancellationToken))
+        keys.Add(key);
+
+    await Process(keys);
+    last = keys.Count == page.Limit ? keys[^1] : null;
+}
+while (last is not null);
+```
+
+The same query works on published readers and in either direction.
 
 Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Do not store `null`. Use `ClearAsync` or `RemoveAsync`.
 
@@ -778,7 +811,7 @@ StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellatio
 
 The reader cannot see pending changes that exist only in a handler. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
 
-Map and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order.
+Map, set, and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order, or pass a `KeyQuery` or `PositionQuery` to select a page.
 
 The default cache window is five seconds. Set `readCache: StateReadCache.For(ttl)` to select a different window. Use `StateReadCache.Disabled` to bypass the cache.
 
@@ -1485,15 +1518,15 @@ Each definition exposes its validated `Name`.
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
-Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
+Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
 
 `IValueState<T> where T : notnull`:
 
 - `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
 - `Task SetAsync(T value, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
 
 `IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValue>>` (keys are `string`, `TValue : notnull`):
 
@@ -1504,9 +1537,13 @@ Published JSON collections use the same definition for owned and read-only acces
 - `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<string> EnumerateKeysAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<TValue> EnumerateValuesAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<TValue> EnumerateValuesAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
 
 `IDequeState<T> : IAsyncEnumerable<T>` (`T : notnull`):
 
@@ -1520,8 +1557,28 @@ Published JSON collections use the same definition for owned and read-only acces
 - `Task<int> CountAsync(CancellationToken cancellationToken = default)`
 - `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<T> EnumerateAsync(PositionQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
+
+`ISetState : IAsyncEnumerable<string>`:
+
+- `Task AddAsync(string member, CancellationToken cancellationToken = default)`
+- `Task RemoveAsync(string member, CancellationToken cancellationToken = default)`: An absent member is a no-op.
+- `Task<bool> ContainsAsync(string member, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<bool>> ContainsManyAsync(IEnumerable<string> members, CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
+
+`KeyQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `string? Prefix`, `string? From`, `string? After`, `string? To`, `string? Before`, `int? Limit`. A non-positive `Limit` throws `ArgumentOutOfRangeException`. Both `From` and `After`, or both `To` and `Before`, throw `ArgumentException` when the query is used.
+
+`PositionQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `int? From`, `int? After`, `int? To`, `int? Before`, `Range? Range`, `int? Limit`. A negative position, a descending range, or a from-end index other than an end of `^0` throws `ArgumentOutOfRangeException`. The pairs follow the `KeyQuery` rules.
+
+`StoreOutcome`: `Applied` (buffered changes were written or discarded) or `NoOp` (nothing was buffered).
 
 `StateValue<T>` (a `readonly struct` optional read result, `T : notnull`):
 

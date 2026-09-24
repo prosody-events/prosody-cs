@@ -76,14 +76,34 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateKeysAsync(
-        ScanDirection direction = ScanDirection.Forward,
+    public Task<IReadOnlyList<bool>> ContainsManyAsync(
+        IEnumerable<string> keys,
         CancellationToken cancellationToken = default
     )
     {
+        ArgumentNullException.ThrowIfNull(keys);
+        var keyArray = keys as string[] ?? [.. keys];
+        return StateInterop.RunAsync<IReadOnlyList<bool>>(
+            async () => await _handle.ContainsMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            cancellationToken
+        );
+    }
+
+    public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
+
+    public IAsyncEnumerable<string> EnumerateKeysAsync(
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
+
+    public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () => StateInterop.RunSync(() => _handle.ScanKeys(StateInterop.ToNative(direction))),
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IKeyCursor, string, string>(
+            () => StateInterop.RunSync(() => _handle.Keys(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static key => key,
@@ -94,25 +114,48 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    )
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
-            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
-            item => StateInterop.JsonMapEntry(item, _typeInfo),
-            cancellationToken
-        );
-    }
+    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
+
+    public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
+        KeyQuery query,
+        CancellationToken cancellationToken = default
+    ) => Entries(query, item => StateInterop.JsonMapEntry(item, _typeInfo), cancellationToken);
+
+    public IAsyncEnumerable<TValue> EnumerateValuesAsync(
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    ) => EnumerateValuesAsync(new KeyQuery { Direction = direction }, cancellationToken);
+
+    public IAsyncEnumerable<TValue> EnumerateValuesAsync(
+        KeyQuery query,
+        CancellationToken cancellationToken = default
+    ) => Entries(query, item => StateInterop.DeserializeJson(item.Bytes, _typeInfo), cancellationToken);
 
     public IAsyncEnumerator<KeyValuePair<string, TValue>> GetAsyncEnumerator(
         CancellationToken cancellationToken = default
     ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
+
+    private StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, TItem> Entries<TItem>(
+        KeyQuery query,
+        Func<Native.JsonMapEntry, TItem> transform,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, TItem>(
+            () => StateInterop.RunSync(() => _handle.Entries(native)),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            transform,
+            cancellationToken
+        );
+    }
 }

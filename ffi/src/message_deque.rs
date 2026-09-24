@@ -12,7 +12,8 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::MessageDequeCursor;
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{ScanDirection, into_message, platform_index, traced};
+use crate::query::PositionQuery;
+use crate::state::{StoreOutcome, into_message, platform_index, traced};
 
 /// A Kafka-message deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -163,16 +164,20 @@ impl MessageDequeStateHandle {
         traced(&self.propagator, carrier, self.state.clear()).await
     }
 
-    /// Opens a cursor over live elements.
-    #[must_use]
-    pub fn scan(&self, direction: ScanDirection) -> Arc<MessageDequeCursor> {
-        Arc::new(MessageDequeCursor {
-            cursor: self.state.values().direction(direction.into()).stream(),
+    /// Opens a cursor over the live elements that `query` selects.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if a position exceeds the platform range or the
+    /// query limit is zero.
+    pub fn values(&self, query: PositionQuery) -> Result<Arc<MessageDequeCursor>, FfiError> {
+        Ok(Arc::new(MessageDequeCursor {
+            cursor: self.state.values().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 
-    /// Commits the buffered operations.
+    /// Commits the buffered operations and reports whether any existed.
     ///
     /// # Errors
     ///

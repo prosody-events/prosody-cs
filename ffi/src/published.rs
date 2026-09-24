@@ -5,12 +5,15 @@ use std::sync::Arc;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
-use prosody::high_level::erased::{SharedDequeReader, SharedMapReader, SharedValueReader};
+use prosody::high_level::erased::{
+    SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
+};
 
-use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
+use crate::cursor::{JsonDequeCursor, JsonMapCursor, KeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
-use crate::state::{ScanDirection, into_bytes, platform_index, traced};
+use crate::query::{KeyQuery, PositionQuery};
+use crate::state::{into_bytes, platform_index, traced};
 
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
@@ -108,34 +111,138 @@ impl PublishedMapHandle {
         .await
     }
 
-    /// Opens an ordered map cursor.
+    /// Reports whether each committed map entry exists, in request order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the batch fails.
+    pub async fn contains_many(
+        &self,
+        key: String,
+        map_keys: Vec<String>,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<bool>, FfiError> {
+        traced(
+            &self.propagator,
+            carrier,
+            self.reader.contains_many(key, map_keys),
+        )
+        .await
+    }
+
+    /// Reports whether the committed map has no entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn is_empty(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+    }
+
+    /// Opens a cursor over the entries that `query` selects.
     ///
     /// The cursor reads nothing until its first pull.
-    #[must_use]
-    pub fn scan(&self, key: String, direction_value: ScanDirection) -> Arc<JsonMapCursor> {
-        Arc::new(JsonMapCursor {
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn entries(&self, key: String, query: KeyQuery) -> Result<Arc<JsonMapCursor>, FfiError> {
+        Ok(Arc::new(JsonMapCursor {
             cursor: self
                 .reader
                 .entries(key)
-                .direction(direction_value.into())
+                .with_query(query.try_into()?)
                 .stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 
-    /// Opens an ordered key-only map cursor.
+    /// Opens a key-only cursor over the entries that `query` selects.
     ///
     /// The cursor reads nothing until its first pull.
-    #[must_use]
-    pub fn keys(&self, key: String, direction_value: ScanDirection) -> Arc<MapKeyCursor> {
-        Arc::new(MapKeyCursor {
-            cursor: self
-                .reader
-                .keys(key)
-                .direction(direction_value.into())
-                .stream(),
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, key: String, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.reader.keys(key).with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
+    }
+}
+
+#[derive(uniffi::Object)]
+/// Reads a published set collection.
+pub struct PublishedSetHandle {
+    pub(crate) reader: SharedSetReader,
+    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl PublishedSetHandle {
+    /// Reports whether a committed member exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn contains(
+        &self,
+        key: String,
+        member: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        traced(&self.propagator, carrier, self.reader.contains(key, member)).await
+    }
+
+    /// Reports whether each committed member exists, in request order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the batch fails.
+    pub async fn contains_many(
+        &self,
+        key: String,
+        members: Vec<String>,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<bool>, FfiError> {
+        traced(
+            &self.propagator,
+            carrier,
+            self.reader.contains_many(key, members),
+        )
+        .await
+    }
+
+    /// Reports whether the committed set has no members.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn is_empty(
+        &self,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+    }
+
+    /// Opens a cursor over the members that `query` selects.
+    ///
+    /// The cursor reads nothing until its first pull.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, key: String, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.reader.keys(key).with_query(query.try_into()?).stream(),
+            propagator: Arc::clone(&self.propagator),
+        }))
     }
 }
 
@@ -223,18 +330,26 @@ impl PublishedDequeHandle {
             .map(into_bytes)
     }
 
-    /// Opens an ordered deque cursor.
+    /// Opens a cursor over the elements that `query` selects.
     ///
     /// The cursor reads nothing until its first pull.
-    #[must_use]
-    pub fn scan(&self, key: String, direction_value: ScanDirection) -> Arc<JsonDequeCursor> {
-        Arc::new(JsonDequeCursor {
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if a position exceeds the platform range or the
+    /// query limit is zero.
+    pub fn values(
+        &self,
+        key: String,
+        query: PositionQuery,
+    ) -> Result<Arc<JsonDequeCursor>, FfiError> {
+        Ok(Arc::new(JsonDequeCursor {
             cursor: self
                 .reader
                 .values(key)
-                .direction(direction_value.into())
+                .with_query(query.try_into()?)
                 .stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 }

@@ -203,15 +203,15 @@ impl MessageMapCursor {
     }
 }
 
-/// Scans map keys without reading values.
+/// Scans map keys or set members without reading values.
 #[derive(uniffi::Object)]
-pub struct MapKeyCursor {
+pub struct KeyCursor {
     pub(crate) cursor: StateCursor<String>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl MapKeyCursor {
+impl KeyCursor {
     /// Pulls the next immediately-ready chunk.
     ///
     /// Returns `None` after the scan ends.

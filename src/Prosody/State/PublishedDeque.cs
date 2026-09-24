@@ -75,17 +75,27 @@ public sealed class PublishedDeque<T>
         );
     }
 
-    /// <summary>Enumerates elements with a typed JSON deque cursor.</summary>
+    /// <summary>Enumerates elements in position order.</summary>
     public IAsyncEnumerable<T> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
+    ) => EnumerateAsync(key, new PositionQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>Enumerates the elements that <paramref name="query"/> selects.</summary>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    public IAsyncEnumerable<T> EnumerateAsync(
+        string key,
+        PositionQuery query,
+        CancellationToken cancellationToken = default
     )
     {
         ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
+        var native = PositionQuery.ToNative(query);
         return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
-            () => StateInterop.RunSync(() => _handle.Scan(key, StateInterop.ToNative(direction))),
+            () => StateInterop.RunSync(() => _handle.Values(key, native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             bytes => StateInterop.DeserializeJson(bytes, _typeInfo),

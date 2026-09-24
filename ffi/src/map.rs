@@ -9,10 +9,11 @@ use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxMapState;
 use prosody::consumer::message::ConsumerMessage;
 
-use crate::cursor::{JsonMapCursor, MapKeyCursor, MessageMapCursor};
+use crate::cursor::{JsonMapCursor, KeyCursor, MessageMapCursor};
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{ScanDirection, into_bytes, into_message, reject_null, traced};
+use crate::query::KeyQuery;
+use crate::state::{StoreOutcome, into_bytes, into_message, reject_null, traced};
 
 /// One optional JSON value from an ordered batch read.
 ///
@@ -85,13 +86,39 @@ impl JsonMapStateHandle {
         traced(&self.propagator, carrier, self.state.contains_key(key)).await
     }
 
-    /// Opens a cursor over live keys without reading values.
-    #[must_use]
-    pub fn scan_keys(&self, direction: ScanDirection) -> Arc<MapKeyCursor> {
-        Arc::new(MapKeyCursor {
-            cursor: self.state.keys().direction(direction.into()).stream(),
+    /// Opens a cursor over the live keys that `query` selects without reading
+    /// values.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.state.keys().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
+    }
+
+    /// Reports whether the map has no live entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
+        traced(&self.propagator, carrier, self.state.is_empty()).await
+    }
+
+    /// Reports whether each key exists, in request order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn contains_many(
+        &self,
+        keys: Vec<String>,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<bool>, FfiError> {
+        traced(&self.propagator, carrier, self.state.contains_many(keys)).await
     }
 
     /// Inserts or replaces one JSON document.
@@ -136,16 +163,19 @@ impl JsonMapStateHandle {
         traced(&self.propagator, carrier, self.state.clear()).await
     }
 
-    /// Opens a cursor over live entries.
-    #[must_use]
-    pub fn scan(&self, direction: ScanDirection) -> Arc<JsonMapCursor> {
-        Arc::new(JsonMapCursor {
-            cursor: self.state.entries().direction(direction.into()).stream(),
+    /// Opens a cursor over the live entries that `query` selects.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn entries(&self, query: KeyQuery) -> Result<Arc<JsonMapCursor>, FfiError> {
+        Ok(Arc::new(JsonMapCursor {
+            cursor: self.state.entries().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 
-    /// Commits the buffered operations.
+    /// Commits the buffered operations and reports whether any existed.
     ///
     /// # Errors
     ///
@@ -220,13 +250,39 @@ impl MessageMapStateHandle {
         traced(&self.propagator, carrier, self.state.contains_key(key)).await
     }
 
-    /// Opens a cursor over live keys without resolving messages.
-    #[must_use]
-    pub fn scan_keys(&self, direction: ScanDirection) -> Arc<MapKeyCursor> {
-        Arc::new(MapKeyCursor {
-            cursor: self.state.keys().direction(direction.into()).stream(),
+    /// Opens a cursor over the live keys that `query` selects without resolving
+    /// messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.state.keys().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
+    }
+
+    /// Reports whether the map has no live entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
+        traced(&self.propagator, carrier, self.state.is_empty()).await
+    }
+
+    /// Reports whether each key exists, in request order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn contains_many(
+        &self,
+        keys: Vec<String>,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<bool>, FfiError> {
+        traced(&self.propagator, carrier, self.state.contains_many(keys)).await
     }
 
     /// Inserts or replaces one Kafka message.
@@ -270,16 +326,19 @@ impl MessageMapStateHandle {
         traced(&self.propagator, carrier, self.state.clear()).await
     }
 
-    /// Opens a cursor over live entries.
-    #[must_use]
-    pub fn scan(&self, direction: ScanDirection) -> Arc<MessageMapCursor> {
-        Arc::new(MessageMapCursor {
-            cursor: self.state.entries().direction(direction.into()).stream(),
+    /// Opens a cursor over the live entries that `query` selects.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn entries(&self, query: KeyQuery) -> Result<Arc<MessageMapCursor>, FfiError> {
+        Ok(Arc::new(MessageMapCursor {
+            cursor: self.state.entries().with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
-        })
+        }))
     }
 
-    /// Commits the buffered operations.
+    /// Commits the buffered operations and reports whether any existed.
     ///
     /// # Errors
     ///
