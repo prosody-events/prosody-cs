@@ -1,5 +1,4 @@
 using System.Net;
-using System.Reflection;
 using Prosody.Configuration;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
@@ -323,20 +322,6 @@ public sealed class ClientOptionsTests
             () => Assert.False(cached.StateReadCacheDisabled),
             () => Assert.Null(uncached.StateReadCacheTtl),
             () => Assert.True(uncached.StateReadCacheDisabled)
-        );
-    }
-
-    [Fact]
-    public void RecoveryDelayIsObsoleteAndDoesNotReachNativeOptions()
-    {
-        var property = typeof(ClientOptions).GetProperty("StateRecoveryDelay");
-        var withDelay = new ClientOptions { GroupId = "g" };
-        property?.SetValue(withDelay, TimeSpan.FromSeconds(30));
-
-        Assert.Multiple(
-            () => Assert.NotNull(property?.GetCustomAttribute<ObsoleteAttribute>()),
-            () => Assert.Equal(TimeSpan.FromSeconds(30), property?.GetValue(withDelay)),
-            () => Assert.Equal(new ClientOptions { GroupId = "g" }.ToNative(), withDelay.ToNative())
         );
     }
 }

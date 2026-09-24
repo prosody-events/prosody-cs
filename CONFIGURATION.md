@@ -219,7 +219,6 @@ variable applies, then the default.
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy. Use `StateReadCache.For(ttl)`, `StateReadCache.Disabled`, or the environment value `none`. | 5s |
 | `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON collections whose definitions set `published: true`. | (none) |
-| `StateRecoveryDelay` / - | Deprecated and ignored. Keyed-state recovery needs no delay. Remove this setting. | (none) |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` / `Set` and the `Message*` variants).
 The [API reference](README.md#api-reference) documents these factories. Their parameters map to these fields:

@@ -508,13 +508,6 @@ public sealed class ClientOptions
     public string? Subsystem { get; set; }
 
     /// <summary>
-    /// Has no effect. Keyed-state recovery now uses the commit evidence that each collection stores,
-    /// so it needs no delay. Remove this setting.
-    /// </summary>
-    [Obsolete("StateRecoveryDelay has no effect. Keyed-state recovery needs no delay. Remove this setting.")]
-    public TimeSpan? StateRecoveryDelay { get; set; }
-
-    /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when the configuration is invalid.</exception>
