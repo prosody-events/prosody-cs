@@ -79,7 +79,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 |---|---|---|
 | `BootstrapServers` / `PROSODY_BOOTSTRAP_SERVERS` | Kafka servers to connect to | - |
 | `GroupId` / `PROSODY_GROUP_ID` | Consumer group name | - |
-| `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from | - |
+| `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from. A client that only reads published state needs no topics. | - |
 | `AllowedEvents` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes | (all) |
 | `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
 | `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |

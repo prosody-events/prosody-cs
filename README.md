@@ -801,7 +801,7 @@ var ownedOrder = context.State(currentOrder);
 await ownedOrder.SetAsync(updatedOrder, cancellationToken);
 ```
 
-Read published state from a handler or other application code. The Prosody client does not need an active subscription.
+Read published state from a handler or other application code. The Prosody client does not need an active subscription. A client that only reads published state needs no `SubscribedTopics`.
 
 Use the subsystem and the same definition to open a reader:
 
