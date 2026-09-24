@@ -38,6 +38,23 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Tests several keys for presence in one batch. <c>result[i]</c> answers <c>keys[i]</c>, and
+    /// each answer matches <see cref="ContainsKeyAsync"/>.
+    /// </summary>
+    /// <param name="keys">The keys to test. Enumerated once, before the batch dispatches.</param>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>One result per requested key, in the requested order.</returns>
+    Task<IReadOnlyList<bool>> ContainsManyAsync(
+        IEnumerable<string> keys,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>Determines whether the map has no live entries.</summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns><see langword="true"/> when the map is empty.</returns>
+    Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reads several keys in a single isolated batch. The result is positional:
     /// <c>result[i]</c> answers <c>keys[i]</c>, an absent key reads as an absent
     /// <see cref="StateValue{T}"/>, and a repeated key is answered at each position.

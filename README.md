@@ -1535,6 +1535,8 @@ Published JSON collections use the same definition for owned and read-only acces
 - `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
 - `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
 - `Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<bool>> ContainsManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
 - `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
