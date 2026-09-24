@@ -86,12 +86,8 @@ public sealed class PublishedDeque<T>
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
             () =>
-                StateInterop.RunAsync<Native.IJsonDequeCursor>(
-                    async () =>
-                        await _handle
-                            .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                            .ConfigureAwait(false),
-                    cancellationToken
+                StateInterop.RunSync(() =>
+                    _handle.Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
                 ),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),

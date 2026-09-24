@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
-use prosody::consumer::event_context::BoxStateCursor;
+use prosody::consumer::event_context::StateCursor;
 use prosody::consumer::message::ConsumerMessage;
 
 use crate::error::FfiError;
@@ -46,7 +46,7 @@ pub struct MessageMapEntry {
 /// Scans JSON deque elements.
 #[derive(uniffi::Object)]
 pub struct JsonDequeCursor {
-    pub(crate) cursor: BoxStateCursor<BinaryPayload>,
+    pub(crate) cursor: StateCursor<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -81,7 +81,7 @@ impl JsonDequeCursor {
 /// Scans JSON map entries.
 #[derive(uniffi::Object)]
 pub struct JsonMapCursor {
-    pub(crate) cursor: BoxStateCursor<(String, BinaryPayload)>,
+    pub(crate) cursor: StateCursor<(String, BinaryPayload)>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -126,7 +126,7 @@ impl JsonMapCursor {
 /// Scans Kafka-message deque elements.
 #[derive(uniffi::Object)]
 pub struct MessageDequeCursor {
-    pub(crate) cursor: BoxStateCursor<ConsumerMessage<BinaryPayload>>,
+    pub(crate) cursor: StateCursor<ConsumerMessage<BinaryPayload>>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -161,7 +161,7 @@ impl MessageDequeCursor {
 /// Scans Kafka-message map entries.
 #[derive(uniffi::Object)]
 pub struct MessageMapCursor {
-    pub(crate) cursor: BoxStateCursor<(String, ConsumerMessage<BinaryPayload>)>,
+    pub(crate) cursor: StateCursor<(String, ConsumerMessage<BinaryPayload>)>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -206,7 +206,7 @@ impl MessageMapCursor {
 /// Scans map keys without reading values.
 #[derive(uniffi::Object)]
 pub struct MapKeyCursor {
-    pub(crate) cursor: BoxStateCursor<String>,
+    pub(crate) cursor: StateCursor<String>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 

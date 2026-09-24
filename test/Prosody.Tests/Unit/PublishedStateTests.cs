@@ -51,13 +51,13 @@ public sealed class PublishedStateTests
         public Task<Native.JsonMapValue[]> GetMany(string key, string[] mapKeys, Dictionary<string, string> carrier) =>
             Task.FromResult(Array.Empty<Native.JsonMapValue>());
 
-        public Task<Native.MapKeyCursor> Keys(
+        public Native.MapKeyCursor Keys(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier
         ) => throw new NotSupportedException();
 
-        public Task<Native.JsonMapCursor> Scan(
+        public Native.JsonMapCursor Scan(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier
@@ -79,7 +79,7 @@ public sealed class PublishedStateTests
         public Task<byte[]?> PeekFront(string key, Dictionary<string, string> carrier) =>
             Task.FromResult<byte[]?>("\"front\""u8.ToArray());
 
-        public Task<Native.JsonDequeCursor> Scan(
+        public Native.JsonDequeCursor Scan(
             string key,
             Native.ScanDirection directionValue,
             Dictionary<string, string> carrier

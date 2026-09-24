@@ -112,7 +112,13 @@ impl ProsodyClient {
         let cassandra = build_cassandra_config(&options);
         let mode = get_mode(&options);
 
-        let client = new_erased(mode, &mut producer_config, &consumer_builders, &cassandra).await?;
+        let client = Box::pin(new_erased(
+            mode,
+            &mut producer_config,
+            &consumer_builders,
+            &cassandra,
+        ))
+        .await?;
 
         Ok(Self {
             client,

@@ -95,7 +95,7 @@ impl JsonMapStateHandle {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
         Arc::new(MapKeyCursor {
-            cursor: self.state.keys(direction.into()),
+            cursor: self.state.keys().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
         })
     }
@@ -152,7 +152,7 @@ impl JsonMapStateHandle {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
         Arc::new(JsonMapCursor {
-            cursor: self.state.scan(direction.into()),
+            cursor: self.state.entries().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
         })
     }
@@ -163,7 +163,9 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.commit()).await
+        traced(&self.propagator, carrier, self.state.commit())
+            .await
+            .map(|_| ())
     }
 
     /// Discards the buffered operations.
@@ -240,7 +242,7 @@ impl MessageMapStateHandle {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
         Arc::new(MapKeyCursor {
-            cursor: self.state.keys(direction.into()),
+            cursor: self.state.keys().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
         })
     }
@@ -296,7 +298,7 @@ impl MessageMapStateHandle {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
         Arc::new(MessageMapCursor {
-            cursor: self.state.scan(direction.into()),
+            cursor: self.state.entries().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
         })
     }
@@ -307,7 +309,9 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.commit()).await
+        traced(&self.propagator, carrier, self.state.commit())
+            .await
+            .map(|_| ())
     }
 
     /// Discards the buffered operations.

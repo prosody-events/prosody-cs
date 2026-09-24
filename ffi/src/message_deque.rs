@@ -173,7 +173,7 @@ impl MessageDequeStateHandle {
         let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
         let _guard = context.attach();
         Arc::new(MessageDequeCursor {
-            cursor: self.state.scan(direction.into()),
+            cursor: self.state.values().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
         })
     }
@@ -184,7 +184,9 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.commit()).await
+        traced(&self.propagator, carrier, self.state.commit())
+            .await
+            .map(|_| ())
     }
 
     /// Discards the buffered operations.

@@ -64,7 +64,9 @@ impl JsonValueStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.commit()).await
+        traced(&self.propagator, carrier, self.state.commit())
+            .await
+            .map(|_| ())
     }
 
     /// Discards the buffered operations.
@@ -130,7 +132,9 @@ impl MessageValueStateHandle {
     ///
     /// Returns a state error if the commit fails.
     pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.commit()).await
+        traced(&self.propagator, carrier, self.state.commit())
+            .await
+            .map(|_| ())
     }
 
     /// Discards the buffered operations.

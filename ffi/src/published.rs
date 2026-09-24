@@ -4,27 +4,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
-use prosody::codec::JsonBinaryCodec;
-use prosody::high_level::erased::{
-    ErasedDequeReader, ErasedDirection, ErasedMapReader, ErasedValueReader,
-};
+use prosody::codec::BinaryPayload;
+use prosody::high_level::erased::{SharedDequeReader, SharedMapReader, SharedValueReader};
 
 use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
-use crate::state::{ScanDirection, into_bytes, platform_index, traced};
-
-fn direction(direction: ScanDirection) -> ErasedDirection {
-    match direction {
-        ScanDirection::Forward => ErasedDirection::Forward,
-        ScanDirection::Backward => ErasedDirection::Backward,
-    }
-}
+use crate::state::{OwnedCarrier, ScanDirection, into_bytes, platform_index, traced};
 
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
 pub struct PublishedValueHandle {
-    pub(crate) reader: Arc<dyn ErasedValueReader<JsonBinaryCodec>>,
+    pub(crate) reader: SharedValueReader<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -49,7 +40,7 @@ impl PublishedValueHandle {
 #[derive(uniffi::Object)]
 /// Reads a published map collection.
 pub struct PublishedMapHandle {
-    pub(crate) reader: Arc<dyn ErasedMapReader<JsonBinaryCodec>>,
+    pub(crate) reader: SharedMapReader<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -119,55 +110,53 @@ impl PublishedMapHandle {
 
     /// Opens an ordered map cursor.
     ///
-    /// # Errors
-    ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn scan(
+    /// The cursor reads nothing until its first pull.
+    #[must_use]
+    pub fn scan(
         &self,
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<JsonMapCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.stream(key, direction(direction_value)),
-        )
-        .await?;
-        Ok(Arc::new(JsonMapCursor {
-            cursor,
+    ) -> Arc<JsonMapCursor> {
+        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
+        let _guard = context.attach();
+        Arc::new(JsonMapCursor {
+            cursor: self
+                .reader
+                .entries(key)
+                .direction(direction_value.into())
+                .stream(),
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 
     /// Opens an ordered key-only map cursor.
     ///
-    /// # Errors
-    ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn keys(
+    /// The cursor reads nothing until its first pull.
+    #[must_use]
+    pub fn keys(
         &self,
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<MapKeyCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.keys(key, direction(direction_value)),
-        )
-        .await?;
-        Ok(Arc::new(MapKeyCursor {
-            cursor,
+    ) -> Arc<MapKeyCursor> {
+        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
+        let _guard = context.attach();
+        Arc::new(MapKeyCursor {
+            cursor: self
+                .reader
+                .keys(key)
+                .direction(direction_value.into())
+                .stream(),
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 }
 
 #[derive(uniffi::Object)]
 /// Reads a published deque collection.
 pub struct PublishedDequeHandle {
-    pub(crate) reader: Arc<dyn ErasedDequeReader<JsonBinaryCodec>>,
+    pub(crate) reader: SharedDequeReader<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
@@ -250,24 +239,23 @@ impl PublishedDequeHandle {
 
     /// Opens an ordered deque cursor.
     ///
-    /// # Errors
-    ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn scan(
+    /// The cursor reads nothing until its first pull.
+    #[must_use]
+    pub fn scan(
         &self,
         key: String,
         direction_value: ScanDirection,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<JsonDequeCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.stream(key, direction(direction_value)),
-        )
-        .await?;
-        Ok(Arc::new(JsonDequeCursor {
-            cursor,
+    ) -> Arc<JsonDequeCursor> {
+        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
+        let _guard = context.attach();
+        Arc::new(JsonDequeCursor {
+            cursor: self
+                .reader
+                .values(key)
+                .direction(direction_value.into())
+                .stream(),
             propagator: Arc::clone(&self.propagator),
-        }))
+        })
     }
 }
