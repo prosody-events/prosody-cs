@@ -175,15 +175,15 @@ impl JsonDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
         traced(&self.propagator, carrier, self.state.commit())
             .await
-            .map(|_| ())
+            .map(StoreOutcome::from)
     }
 
-    /// Discards the buffered operations.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) {
+    /// Discards the buffered operations and reports whether any existed.
+    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
         let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await;
+        self.state.rollback().with_context(context).await.into()
     }
 }

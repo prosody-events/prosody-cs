@@ -121,9 +121,9 @@ internal sealed class DequeState<T> : IDequeState<T>
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
         EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
 }

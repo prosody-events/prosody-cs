@@ -140,9 +140,27 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         CancellationToken cancellationToken = default
     ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
+
+    private StateScanSequence<Native.IMessageMapCursor, Native.MessageMapEntry, TItem> Entries<TItem>(
+        KeyQuery query,
+        Func<Native.MessageMapEntry, TItem> transform,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IMessageMapCursor, Native.MessageMapEntry, TItem>(
+            () => StateInterop.RunSync(() => _handle.Entries(native)),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            transform,
+            cancellationToken
+        );
+    }
 }

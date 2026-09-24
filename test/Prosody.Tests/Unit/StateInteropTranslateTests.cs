@@ -33,8 +33,10 @@ public sealed class StateInteropTranslateTests
 
         public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
 
-        public Task Commit(Dictionary<string, string> carrier) => throw new Native.FfiException.PermanentState("boom");
+        public Task<Native.StoreOutcome> Commit(Dictionary<string, string> carrier) =>
+            throw new Native.FfiException.PermanentState("boom");
 
-        public Task Rollback(Dictionary<string, string> carrier) => Task.CompletedTask;
+        public Task<Native.StoreOutcome> Rollback(Dictionary<string, string> carrier) =>
+            Task.FromResult(Native.StoreOutcome.NoOp);
     }
 }

@@ -62,6 +62,23 @@ internal static class StateInterop
     }
 
     /// <summary>
+    /// Runs one native commit or rollback with a fresh carrier and converts its outcome.
+    /// </summary>
+    internal static Task<StoreOutcome> RunOutcomeAsync(
+        Func<Dictionary<string, string>, Task<Native.StoreOutcome>> operation,
+        CancellationToken cancellationToken
+    ) => RunAsync(async () => ToPublic(await operation(CreateCarrier()).ConfigureAwait(false)), cancellationToken);
+
+    /// <summary>Maps a native store outcome to the public enum.</summary>
+    internal static StoreOutcome ToPublic(Native.StoreOutcome outcome) =>
+        outcome switch
+        {
+            Native.StoreOutcome.Applied => StoreOutcome.Applied,
+            Native.StoreOutcome.NoOp => StoreOutcome.NoOp,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown native store outcome."),
+        };
+
+    /// <summary>
     /// Runs one synchronous native call (a handle vend or a scan open), translating a categorized
     /// failure into the matching public state exception.
     /// </summary>

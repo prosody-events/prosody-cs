@@ -8,7 +8,7 @@ use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use opentelemetry::trace::FutureExt;
 use prosody::codec::{BinaryPayload, ErasedStateCodec};
 use prosody::consumer::message::ConsumerMessage;
-use prosody::state::Direction;
+use prosody::state::{Direction, StoreOutcome as CoreStoreOutcome};
 
 use crate::error::FfiError;
 use crate::message::Message;
@@ -27,6 +27,24 @@ impl From<ScanDirection> for Direction {
         match direction {
             ScanDirection::Forward => Direction::Forward,
             ScanDirection::Backward => Direction::Backward,
+        }
+    }
+}
+
+/// The effect of a commit or a rollback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum StoreOutcome {
+    /// The call wrote or discarded buffered operations.
+    Applied,
+    /// Nothing was buffered.
+    NoOp,
+}
+
+impl From<CoreStoreOutcome> for StoreOutcome {
+    fn from(outcome: CoreStoreOutcome) -> Self {
+        match outcome {
+            CoreStoreOutcome::Applied => Self::Applied,
+            CoreStoreOutcome::NoOp => Self::NoOp,
         }
     }
 }

@@ -29,7 +29,9 @@ internal sealed class FakeJsonValueStateHandle : Native.IJsonValueStateHandle
 
     public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
 
-    public Task Commit(Dictionary<string, string> carrier) => Task.CompletedTask;
+    public Task<Native.StoreOutcome> Commit(Dictionary<string, string> carrier) =>
+        Task.FromResult(Native.StoreOutcome.Applied);
 
-    public Task Rollback(Dictionary<string, string> carrier) => Task.CompletedTask;
+    public Task<Native.StoreOutcome> Rollback(Dictionary<string, string> carrier) =>
+        Task.FromResult(Native.StoreOutcome.NoOp);
 }

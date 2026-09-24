@@ -775,6 +775,7 @@ This transaction applies only to keyed state. Some workflows need state changes 
 - `readUncommitted: true` persists keyed-state changes before Prosody records the event as complete. If the process stops between these steps, Prosody can process the same event again. The retry sees state changes from the earlier attempt. You must make these keyed-state changes idempotent. Each retry must produce the same state.
 - `await state.CommitAsync()` commits the collection's pending changes before the handler ends. A later handler failure does not remove them.
 - `await state.RollbackAsync()` discards pending changes since the last `CommitAsync()`. It cannot undo committed changes.
+- Both return a `StoreOutcome`: `Applied` when they wrote or discarded buffered changes, or `NoOp` when nothing was buffered.
 
 Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
 

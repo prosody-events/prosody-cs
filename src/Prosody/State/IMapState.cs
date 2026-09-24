@@ -180,6 +180,9 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the rollback is applied.</returns>
-    Task RollbackAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were discarded, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default);
 }
