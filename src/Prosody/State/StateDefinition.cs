@@ -8,7 +8,7 @@ namespace Prosody.State;
 /// A definition is the single source of typing: the same object is registered via
 /// <see cref="ProsodyClientBuilder.WithStateCollections"/> and passed to a <c>State</c> overload on
 /// <c>ProsodyContext</c> to bind a typed handle. Construct definitions through the static factories
-/// (<see cref="Value{T}"/>, <see cref="Map{TValue}"/>, <see cref="Deque{T}"/>,
+/// (<see cref="Value{T}"/>, <see cref="Map{TValue}"/>, <see cref="Deque{T}"/>, <see cref="Set"/>,
 /// <see cref="MessageValue{TPayload}"/>, <see cref="MessageMap{TPayload}"/>,
 /// <see cref="MessageDeque{TPayload}"/>).
 /// </para>
@@ -149,6 +149,25 @@ public abstract record StateDefinition
         StateReadCache? readCache = null
     )
         where T : notnull => new(name, ttl, readUncommitted, capacity, published, readCache);
+
+    /// <summary>
+    /// Declares an ordered set of <see cref="string"/> members. A set stores presence only.
+    /// </summary>
+    /// <param name="name">The collection name.</param>
+    /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
+    /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
+    /// <param name="keysetLimit">Optional ordered-scan keyset bound (<c>0..=4096</c>).</param>
+    /// <param name="published">Whether owners advertise the collection for cross-group reads.</param>
+    /// <param name="readCache">Optional cache policy used by read-only clients.</param>
+    /// <returns>A validated definition.</returns>
+    public static SetStateDefinition Set(
+        string name,
+        TimeSpan? ttl = null,
+        bool? readUncommitted = null,
+        int? keysetLimit = null,
+        bool published = false,
+        StateReadCache? readCache = null
+    ) => new(name, ttl, readUncommitted, keysetLimit, published, readCache);
 
     /// <summary>
     /// Declares a single-value message collection storing the full Kafka message.

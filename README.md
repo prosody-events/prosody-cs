@@ -1392,6 +1392,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
+- `Task<PublishedSet> StateAsync(string subsystem, SetStateDefinition definition, CancellationToken cancellationToken = default)`: Open a read-only published set.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send with the configured `JsonSerializerOptions`.
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Send with supplied JSON metadata. This overload supports trimming.
@@ -1509,6 +1510,7 @@ Definition factories (each returns an immutable, validated record used both in `
 - `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
 - `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
 - `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Set(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `SetStateDefinition`
 - `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
 - `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
 - `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`

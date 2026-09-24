@@ -130,4 +130,35 @@ public sealed class StateDefinitionTests
             () => Assert.Null(unbounded.Capacity)
         );
     }
+
+    [Fact]
+    public void SetDefinitionMapsToANativeSetCollection()
+    {
+        var native = StateDefinition
+            .Set(
+                "tags",
+                ttl: TimeSpan.FromSeconds(5),
+                readUncommitted: true,
+                keysetLimit: 64,
+                published: true,
+                readCache: StateReadCache.Disabled
+            )
+            .ToNative();
+
+        Assert.Equal(
+            new Native.StateCollectionConfig(
+                "tags",
+                Native.StateKind.Set,
+                Native.StatePayload.Json,
+                TimeSpan.FromSeconds(5),
+                true,
+                64,
+                null,
+                true,
+                null,
+                true
+            ),
+            native
+        );
+    }
 }

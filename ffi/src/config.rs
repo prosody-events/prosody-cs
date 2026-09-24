@@ -38,7 +38,8 @@ use prosody::loader::KafkaLoader;
 use prosody::loader::KafkaLoaderConfiguration;
 use prosody::producer::ProducerConfigurationBuilder;
 use prosody::state::descriptor::{
-    DequeDescriptor, MapDescriptor, StateDescriptor, deque_state, map_state, value_state,
+    DequeDescriptor, MapDescriptor, SetDescriptor, StateDescriptor, deque_state, map_state,
+    set_state, value_state,
 };
 use prosody::state::order_codec::Utf8KeyCodec;
 use prosody::subsystem::SubsystemName;
@@ -458,11 +459,22 @@ fn with_def<D: StateDescriptor>(
     descriptor
 }
 
-/// Applies the map-only keyset bound when configured.
+/// Applies the map keyset bound when configured.
 fn with_keyset<KC, V>(
     descriptor: MapDescriptor<KC, V>,
     keyset_limit: Option<u32>,
 ) -> MapDescriptor<KC, V> {
+    match keyset_limit {
+        Some(limit) => descriptor.keyset_limit(limit as usize),
+        None => descriptor,
+    }
+}
+
+/// Applies the set keyset bound when configured.
+fn with_set_keyset<KC>(
+    descriptor: SetDescriptor<KC>,
+    keyset_limit: Option<u32>,
+) -> SetDescriptor<KC> {
     match keyset_limit {
         Some(limit) => descriptor.keyset_limit(limit as usize),
         None => descriptor,
@@ -566,6 +578,20 @@ fn register_state_collection(
             );
             let _ = keyed.register(with_capacity(descriptor, capacity));
         }
+        (StateKind::Set, StatePayload::Json) => {
+            let descriptor = with_def(
+                set_state::<Utf8KeyCodec>(name),
+                ttl_seconds,
+                read_uncommitted,
+                published,
+            );
+            let _ = keyed.register(with_set_keyset(descriptor, keyset_limit));
+        }
+        (StateKind::Set, StatePayload::Message) => {
+            return Err(permanent_config(format!(
+                "stateCollections[{index}].payload: a set stores no message payload"
+            )));
+        }
     }
 
     Ok(())
@@ -577,9 +603,9 @@ fn collection_bounds(
 ) -> Result<(Option<u32>, Option<NonZeroUsize>), FfiError> {
     let keyset_limit = match collection.keyset_limit {
         Some(limit) => {
-            if collection.kind != StateKind::Map {
+            if !matches!(collection.kind, StateKind::Map | StateKind::Set) {
                 return Err(permanent_config(format!(
-                    "stateCollections[{index}].keysetLimit: only valid for map collections"
+                    "stateCollections[{index}].keysetLimit: only valid for map and set collections"
                 )));
             }
             Some(limit)

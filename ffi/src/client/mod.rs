@@ -19,7 +19,9 @@ use crate::handler::{
     CsHandler, EventHandler, NativeExciseRequest, NativeRequest, NativeRequestResult,
 };
 use crate::logging::ensure_tracing_initialized;
-use crate::published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
+use crate::published::{
+    PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
+};
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
@@ -167,6 +169,29 @@ impl ProsodyClient {
             .await
             .map_err(|error| FfiError::PermanentState(error.to_string()))?;
         Ok(Arc::new(PublishedMapHandle {
+            reader,
+            propagator: Arc::new(new_propagator()),
+        }))
+    }
+
+    /// Opens a read-only published set collection.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error when the descriptor cannot be resolved.
+    pub async fn published_set(
+        &self,
+        subsystem: String,
+        name: String,
+        cache_ttl: Option<Duration>,
+        cache_disabled: bool,
+    ) -> Result<Arc<PublishedSetHandle>, FfiError> {
+        let reader = self
+            .client
+            .set_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+            .await
+            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        Ok(Arc::new(PublishedSetHandle {
             reader,
             propagator: Arc::new(new_propagator()),
         }))

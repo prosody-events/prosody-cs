@@ -24,7 +24,29 @@ use crate::error::FfiError;
 use crate::json_deque::JsonDequeStateHandle;
 use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
 use crate::message_deque::MessageDequeStateHandle;
+use crate::set::SetStateHandle;
 use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
+
+/// The demand that one handler call serves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DemandType {
+    /// The first attempt at an event.
+    Normal,
+    /// An attempt after one or more failures.
+    Failure {
+        /// The retry ordinal. It is 1 on the first retry. It is an estimate.
+        retry: u32,
+    },
+}
+
+impl From<CoreDemandType> for DemandType {
+    fn from(demand: CoreDemandType) -> Self {
+        match demand {
+            CoreDemandType::Normal => Self::Normal,
+            CoreDemandType::Failure { retry } => Self::Failure { retry },
+        }
+    }
+}
 
 /// Event context passed to message handlers during event processing.
 ///
@@ -268,6 +290,24 @@ impl Context {
         let handle = self.inner.map_state(&name)?;
         Ok(Arc::new(JsonMapStateHandle {
             name,
+            state: handle,
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named set collection.
+    ///
+    /// Vending verifies the collection's registration core-side. No span is
+    /// opened here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn set_state(&self, name: String) -> Result<Arc<SetStateHandle>, FfiError> {
+        let handle = self.inner.set_state(&name)?;
+        drop(name);
+        Ok(Arc::new(SetStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))

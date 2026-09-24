@@ -101,6 +101,9 @@ pub enum StateKind {
     Map,
     /// A deque.
     Deque,
+    /// A presence-only ordered set of `String` members. Its payload must be
+    /// [`StatePayload::Json`] because a set stores no items.
+    Set,
 }
 
 /// The item payload of a keyed-state collection.
@@ -135,14 +138,15 @@ pub struct StateCollectionConfig {
     #[uniffi(default = None)]
     pub read_uncommitted: Option<bool>,
 
-    /// Optional map-only keyset bound (`0..=4096`; default 128 core-side; `0`
-    /// disables ordered-scan tracking). Invalid on value or deque collections.
+    /// Optional map or set keyset bound (`0..=4096`; default 128 core-side;
+    /// `0` disables ordered-scan tracking). Invalid on value or deque
+    /// collections.
     #[uniffi(default = None)]
     pub keyset_limit: Option<u32>,
 
     /// Optional deque-only capacity bound (positive). Runtime-only — never
     /// persisted, not part of identity; enforced lazily on push. Invalid on
-    /// value or map collections.
+    /// value, map, or set collections.
     #[uniffi(default = None)]
     pub capacity: Option<u32>,
 

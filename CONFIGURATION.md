@@ -219,8 +219,9 @@ variable applies, then the default.
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy. Use `StateReadCache.For(ttl)`, `StateReadCache.Disabled`, or the environment value `none`. | 5s |
 | `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON collections whose definitions set `published: true`. | (none) |
+| `StateRecoveryDelay` / - | Deprecated and ignored. Keyed-state recovery needs no delay. Remove this setting. | (none) |
 
-Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants).
+Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` / `Set` and the `Message*` variants).
 The [API reference](README.md#api-reference) documents these factories. Their parameters map to these fields:
 
 Published collections require `Subsystem`. Keep it configured for one deployment after removing `published: true` so readers can observe the collection's retirement.
@@ -229,8 +230,8 @@ Published collections require `Subsystem`. Keep it configured for one deployment
 |---|---|---|---|
 | `name` | all | Collection name; non-empty and unique within the client. | (required) |
 | `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`. | (none) |
-| `published` | JSON | Advertises the owned collection for cross-group read-only access. | `false` |
-| `readCache` | JSON | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
+| `published` | JSON and set | Advertises the owned collection for cross-group read-only access. | `false` |
+| `readCache` | JSON and set | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
 | `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
-| `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
+| `keysetLimit` | map and set | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
 | `capacity` | deque only | Maximum slot count (at least 1), enforced lazily on push. Runtime-only and may change across deploys. | unbounded |

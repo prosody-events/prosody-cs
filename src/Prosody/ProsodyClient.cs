@@ -181,6 +181,30 @@ public sealed class ProsodyClient : IDisposable, IAsyncDisposable
         return new PublishedDeque<T>(handle, StateInterop.ResolveTypeInfo<T>(JsonOptions));
     }
 
+    /// <summary>Opens a read-only published set collection from the same descriptor used by its owner.</summary>
+    public async Task<PublishedSet> StateAsync(
+        string subsystem,
+        SetStateDefinition definition,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(subsystem);
+        ArgumentNullException.ThrowIfNull(definition);
+        var handle = await StateInterop
+            .RunAsync(
+                () =>
+                    _native.PublishedSet(
+                        subsystem,
+                        definition.Name,
+                        definition.ReadCacheTtl,
+                        definition.ReadCacheDisabled
+                    ),
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        return new PublishedSet(handle);
+    }
+
     /// <summary>
     /// Gets the current consumer state.
     /// </summary>
