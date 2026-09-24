@@ -140,8 +140,9 @@ impl TryFrom<PositionQuery> for DequeQuery {
     }
 }
 
-/// Converts a query limit. The C# wrapper rejects zero before the call.
+/// Converts a query limit. A zero limit is a bad argument, so it is
+/// permanent. The C# wrapper rejects zero before the call.
 fn positive(limit: u32) -> Result<NonZeroUsize, FfiError> {
     NonZeroUsize::new(limit as usize)
-        .ok_or_else(|| FfiError::TransientState("query limit must be positive".to_owned()))
+        .ok_or_else(|| FfiError::PermanentState("query limit must be positive".to_owned()))
 }

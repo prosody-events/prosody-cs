@@ -70,7 +70,7 @@ public sealed record PositionQuery
     public Range? Range
     {
         get;
-        init => field = Ascending(value);
+        init => field = Ascending(value, nameof(Range));
     }
 
     /// <summary>Gets the maximum number of returned items.</summary>
@@ -78,10 +78,7 @@ public sealed record PositionQuery
     public int? Limit
     {
         get;
-        init =>
-            field = value is <= 0
-                ? throw new ArgumentOutOfRangeException(nameof(value), value, "Limit must be positive.")
-                : value;
+        init => field = StateInterop.PositiveLimit(value, nameof(Limit));
     }
 
     /// <summary>Converts <paramref name="query"/> for the native layer.</summary>
@@ -112,10 +109,10 @@ public sealed record PositionQuery
 
     private static int? Position(int? value, string property) =>
         value is < 0
-            ? throw new ArgumentOutOfRangeException(nameof(value), value, $"{property} must not be negative.")
+            ? throw new ArgumentOutOfRangeException(property, value, $"{property} must not be negative.")
             : value;
 
-    private static Range? Ascending(Range? value)
+    private static Range? Ascending(Range? value, string property)
     {
         if (value is not { } range)
         {
@@ -125,7 +122,7 @@ public sealed record PositionQuery
         if (range.Start.IsFromEnd || (range.End.IsFromEnd && range.End.Value != 0))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(value),
+                property,
                 range,
                 "Range must count from the front. Only ^0 is allowed, as the end."
             );
@@ -133,7 +130,7 @@ public sealed record PositionQuery
 
         if (!range.End.IsFromEnd && range.Start.Value > range.End.Value)
         {
-            throw new ArgumentOutOfRangeException(nameof(value), range, "Range must be ascending.");
+            throw new ArgumentOutOfRangeException(property, range, "Range must be ascending, as in .NET slicing.");
         }
 
         return range;

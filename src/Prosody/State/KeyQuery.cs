@@ -42,10 +42,7 @@ public sealed record KeyQuery
     public int? Limit
     {
         get;
-        init =>
-            field = value is <= 0
-                ? throw new ArgumentOutOfRangeException(nameof(value), value, "Limit must be positive.")
-                : value;
+        init => field = StateInterop.PositiveLimit(value, nameof(Limit));
     }
 
     /// <summary>Converts <paramref name="query"/> for the native layer.</summary>

@@ -73,11 +73,17 @@ public interface ISetState : IAsyncEnumerable<string>
 
     /// <summary>Durably commits the buffered operations mid-handler.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns><see cref="StoreOutcome.Applied"/> when buffered operations were written.</returns>
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were written, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
     Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns><see cref="StoreOutcome.Applied"/> when buffered operations were discarded.</returns>
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were discarded, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
     Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default);
 }

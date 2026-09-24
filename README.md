@@ -736,8 +736,9 @@ Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque
 
 - `From` and `To` are inclusive. `After` and `Before` are exclusive. Set at most one start and one end.
 - Bounds are in iteration order. A `ScanDirection.Backward` query starts at the high end.
-- `PositionQuery.Range` accepts an ascending `System.Range` of positions, such as `2..5` or `3..`. It applies in either direction. Use positions that count from the front; only `^0` is allowed, as the end.
+- `PositionQuery.Range` accepts an ascending `System.Range` of positions, such as `2..5` or `3..`. It applies in either direction. Use positions that count from the front; only `^0` is allowed, as the end. A descending range such as `5..2` throws, as in .NET slicing.
 - Every option narrows the selection. `Limit` must be positive.
+- To read the last N elements of a deque, use a reverse query with `Limit = N`: `new PositionQuery { Direction = ScanDirection.Backward, Limit = N }`.
 
 To page through a map, pass the last key of the previous page as `After`:
 

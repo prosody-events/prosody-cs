@@ -69,6 +69,13 @@ internal static class StateInterop
         CancellationToken cancellationToken
     ) => RunAsync(async () => ToPublic(await operation(CreateCarrier()).ConfigureAwait(false)), cancellationToken);
 
+    /// <summary>
+    /// Validates a query limit. The exception names <paramref name="property"/>, the query property
+    /// that received the value.
+    /// </summary>
+    internal static int? PositiveLimit(int? value, string property) =>
+        value is <= 0 ? throw new ArgumentOutOfRangeException(property, value, $"{property} must be positive.") : value;
+
     /// <summary>Maps a native store outcome to the public enum.</summary>
     internal static StoreOutcome ToPublic(Native.StoreOutcome outcome) =>
         outcome switch

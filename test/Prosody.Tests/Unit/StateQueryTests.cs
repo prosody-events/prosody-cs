@@ -66,8 +66,16 @@ public sealed class StateQueryTests
     public void Queries_RejectANonPositiveLimit(int limit)
     {
         Assert.Multiple(
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new KeyQuery { Limit = limit }),
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Limit = limit })
+            () =>
+                Assert.Equal(
+                    "Limit",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new KeyQuery { Limit = limit }).ParamName
+                ),
+            () =>
+                Assert.Equal(
+                    "Limit",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Limit = limit }).ParamName
+                )
         );
     }
 
@@ -138,17 +146,35 @@ public sealed class StateQueryTests
     [MemberData(nameof(InvalidRanges))]
     public void PositionQuery_RejectsFromEndAndDescendingRanges(Range range)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Range = range });
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Range = range });
+
+        Assert.Equal("Range", exception.ParamName);
     }
 
     [Fact]
     public void PositionQuery_RejectsNegativePositionsAndBothEdgesOfAPair()
     {
         Assert.Multiple(
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { From = -1 }),
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { After = -1 }),
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { To = -1 }),
-            () => Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Before = -1 }),
+            () =>
+                Assert.Equal(
+                    "From",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { From = -1 }).ParamName
+                ),
+            () =>
+                Assert.Equal(
+                    "After",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { After = -1 }).ParamName
+                ),
+            () =>
+                Assert.Equal(
+                    "To",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { To = -1 }).ParamName
+                ),
+            () =>
+                Assert.Equal(
+                    "Before",
+                    Assert.Throws<ArgumentOutOfRangeException>(() => new PositionQuery { Before = -1 }).ParamName
+                ),
             () =>
                 Assert.Throws<ArgumentException>(() =>
                     PositionQuery.ToNative(new PositionQuery { From = 1, After = 1 })
