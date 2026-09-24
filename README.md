@@ -1456,6 +1456,7 @@ Represents the current event context:
 
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
+- `Demand Demand { get; }`: The demand this call serves. `Demand.Kind` is `DemandKind.Normal` for a first attempt or `DemandKind.Failure` for a retry. `Demand.Retry` is the retry ordinal: 0 for normal demand and 1 on the first retry. The ordinal is an estimate. Keep an exact attempt count in keyed state if you need one.
 
 Keyed-state binding:
 

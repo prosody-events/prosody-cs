@@ -38,6 +38,12 @@ public sealed class ProsodyContext
     public bool ShouldCancel => _native.ShouldCancel();
 
     /// <summary>
+    /// Gets the demand that this handler call serves: a first attempt, or a retry after a failure
+    /// with its retry ordinal.
+    /// </summary>
+    public Demand Demand => Demand.FromNative(_native.Demand());
+
+    /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
     public Task OnCancelAsync() => _native.OnCancel();

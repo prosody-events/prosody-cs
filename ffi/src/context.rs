@@ -16,6 +16,7 @@ use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use prosody::codec::BinaryPayload;
+use prosody::consumer::DemandType as CoreDemandType;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
@@ -60,6 +61,7 @@ impl From<CoreDemandType> for DemandType {
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
+    demand: DemandType,
 }
 
 #[expect(
@@ -67,13 +69,18 @@ pub struct Context {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
-    /// Creates a new context wrapping the given event context and propagator.
+    /// Creates a context for one handler call with the demand it serves.
     #[must_use]
     pub fn new(
         inner: BoxEventContext<BinaryPayload>,
         propagator: Arc<TextMapCompositePropagator>,
+        demand: CoreDemandType,
     ) -> Self {
-        Self { inner, propagator }
+        Self {
+            inner,
+            propagator,
+            demand: demand.into(),
+        }
     }
 }
 
@@ -87,6 +94,12 @@ impl Context {
     #[must_use]
     pub fn should_cancel(&self) -> bool {
         self.inner.should_cancel()
+    }
+
+    /// Returns the demand that this handler call serves.
+    #[must_use]
+    pub fn demand(&self) -> DemandType {
+        self.demand
     }
 
     /// Waits until cancellation is requested.
