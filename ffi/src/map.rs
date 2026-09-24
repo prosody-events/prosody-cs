@@ -12,7 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::{JsonMapCursor, MapKeyCursor, MessageMapCursor};
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{OwnedCarrier, ScanDirection, into_bytes, into_message, reject_null, traced};
+use crate::state::{ScanDirection, into_bytes, into_message, reject_null, traced};
 
 /// One optional JSON value from an ordered batch read.
 ///
@@ -87,13 +87,7 @@ impl JsonMapStateHandle {
 
     /// Opens a cursor over live keys without reading values.
     #[must_use]
-    pub fn scan_keys(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<MapKeyCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan_keys(&self, direction: ScanDirection) -> Arc<MapKeyCursor> {
         Arc::new(MapKeyCursor {
             cursor: self.state.keys().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
@@ -144,13 +138,7 @@ impl JsonMapStateHandle {
 
     /// Opens a cursor over live entries.
     #[must_use]
-    pub fn scan(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<JsonMapCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, direction: ScanDirection) -> Arc<JsonMapCursor> {
         Arc::new(JsonMapCursor {
             cursor: self.state.entries().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
@@ -234,13 +222,7 @@ impl MessageMapStateHandle {
 
     /// Opens a cursor over live keys without resolving messages.
     #[must_use]
-    pub fn scan_keys(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<MapKeyCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan_keys(&self, direction: ScanDirection) -> Arc<MapKeyCursor> {
         Arc::new(MapKeyCursor {
             cursor: self.state.keys().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),
@@ -290,13 +272,7 @@ impl MessageMapStateHandle {
 
     /// Opens a cursor over live entries.
     #[must_use]
-    pub fn scan(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<MessageMapCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, direction: ScanDirection) -> Arc<MessageMapCursor> {
         Arc::new(MessageMapCursor {
             cursor: self.state.entries().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),

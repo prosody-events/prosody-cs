@@ -10,7 +10,7 @@ use prosody::consumer::event_context::BoxDequeState;
 
 use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
-use crate::state::{OwnedCarrier, ScanDirection, into_bytes, platform_index, reject_null, traced};
+use crate::state::{ScanDirection, into_bytes, platform_index, reject_null, traced};
 
 /// A JSON deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -158,13 +158,7 @@ impl JsonDequeStateHandle {
 
     /// Opens a cursor over live elements.
     #[must_use]
-    pub fn scan(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<JsonDequeCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, direction: ScanDirection) -> Arc<JsonDequeCursor> {
         Arc::new(JsonDequeCursor {
             cursor: self.state.values().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),

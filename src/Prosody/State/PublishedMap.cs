@@ -68,10 +68,7 @@ public sealed class PublishedMap<TValue>
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Keys(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Keys(key, StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static item => item,
@@ -89,10 +86,7 @@ public sealed class PublishedMap<TValue>
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(key, StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             item => StateInterop.JsonMapEntry(item, _typeInfo),

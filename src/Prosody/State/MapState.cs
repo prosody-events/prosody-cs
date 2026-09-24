@@ -83,10 +83,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.ScanKeys(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static key => key,
@@ -101,10 +98,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             item => StateInterop.JsonMapEntry(item, _typeInfo),

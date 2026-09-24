@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
-use opentelemetry::Context;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use opentelemetry::trace::FutureExt;
 use prosody::codec::{BinaryPayload, ErasedStateCodec};
@@ -29,24 +28,6 @@ impl From<ScanDirection> for Direction {
             ScanDirection::Forward => Direction::Forward,
             ScanDirection::Backward => Direction::Backward,
         }
-    }
-}
-
-/// A carrier consumed while its OpenTelemetry context is extracted.
-///
-/// The owned wrapper keeps synchronous scan methods compatible with the
-/// required by-value FFI argument without a lint exception.
-pub(crate) struct OwnedCarrier(HashMap<String, String>);
-
-impl OwnedCarrier {
-    /// Creates an owned carrier.
-    pub(crate) fn new(carrier: HashMap<String, String>) -> Self {
-        Self(carrier)
-    }
-
-    /// Extracts the context and consumes the carrier.
-    pub(crate) fn into_context(self, propagator: &TextMapCompositePropagator) -> Context {
-        propagator.extract(&self.0)
     }
 }
 

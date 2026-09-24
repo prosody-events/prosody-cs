@@ -85,10 +85,7 @@ public sealed class PublishedDeque<T>
         ArgumentNullException.ThrowIfNull(key);
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(key, StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             bytes => StateInterop.DeserializeJson(bytes, _typeInfo),

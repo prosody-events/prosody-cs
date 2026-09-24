@@ -27,7 +27,7 @@ internal sealed class FakeMapStateHandle : Native.IJsonMapStateHandle
 
     public Task<bool> ContainsKey(string key, Dictionary<string, string> carrier) => Task.FromResult(ContainsKeyResult);
 
-    public Native.MapKeyCursor ScanKeys(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
+    public Native.MapKeyCursor ScanKeys(Native.ScanDirection direction) =>
         throw new NotSupportedException("FakeMapStateHandle does not support key scanning.");
 
     public Task Set(string key, byte[] bytes, Dictionary<string, string> carrier)
@@ -44,7 +44,7 @@ internal sealed class FakeMapStateHandle : Native.IJsonMapStateHandle
 
     public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
 
-    public Native.JsonMapCursor Scan(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
+    public Native.JsonMapCursor Scan(Native.ScanDirection direction) =>
         throw new NotSupportedException("FakeMapStateHandle does not support scanning.");
 
     public Task Commit(Dictionary<string, string> carrier) => Task.CompletedTask;

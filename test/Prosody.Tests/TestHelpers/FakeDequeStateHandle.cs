@@ -40,7 +40,7 @@ internal sealed class FakeDequeStateHandle : Native.IJsonDequeStateHandle
 
     public Task<bool> IsEmpty(Dictionary<string, string> carrier) => Task.FromResult(true);
 
-    public Native.JsonDequeCursor Scan(Native.ScanDirection direction, Dictionary<string, string> carrier) =>
+    public Native.JsonDequeCursor Scan(Native.ScanDirection direction) =>
         throw new NotSupportedException("FakeDequeStateHandle does not support scanning.");
 
     public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;

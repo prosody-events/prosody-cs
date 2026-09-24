@@ -10,7 +10,7 @@ use prosody::high_level::erased::{SharedDequeReader, SharedMapReader, SharedValu
 use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
-use crate::state::{OwnedCarrier, ScanDirection, into_bytes, platform_index, traced};
+use crate::state::{ScanDirection, into_bytes, platform_index, traced};
 
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
@@ -112,14 +112,7 @@ impl PublishedMapHandle {
     ///
     /// The cursor reads nothing until its first pull.
     #[must_use]
-    pub fn scan(
-        &self,
-        key: String,
-        direction_value: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<JsonMapCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, key: String, direction_value: ScanDirection) -> Arc<JsonMapCursor> {
         Arc::new(JsonMapCursor {
             cursor: self
                 .reader
@@ -134,14 +127,7 @@ impl PublishedMapHandle {
     ///
     /// The cursor reads nothing until its first pull.
     #[must_use]
-    pub fn keys(
-        &self,
-        key: String,
-        direction_value: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<MapKeyCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn keys(&self, key: String, direction_value: ScanDirection) -> Arc<MapKeyCursor> {
         Arc::new(MapKeyCursor {
             cursor: self
                 .reader
@@ -241,14 +227,7 @@ impl PublishedDequeHandle {
     ///
     /// The cursor reads nothing until its first pull.
     #[must_use]
-    pub fn scan(
-        &self,
-        key: String,
-        direction_value: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<JsonDequeCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, key: String, direction_value: ScanDirection) -> Arc<JsonDequeCursor> {
         Arc::new(JsonDequeCursor {
             cursor: self
                 .reader

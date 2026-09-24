@@ -106,10 +106,7 @@ internal sealed class DequeState<T> : IDequeState<T>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IJsonDequeCursor, byte[], T>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             bytes => StateInterop.DeserializeJson(bytes, _typeInfo),

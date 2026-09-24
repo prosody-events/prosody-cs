@@ -12,7 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::cursor::MessageDequeCursor;
 use crate::error::FfiError;
 use crate::message::Message;
-use crate::state::{OwnedCarrier, ScanDirection, into_message, platform_index, traced};
+use crate::state::{ScanDirection, into_message, platform_index, traced};
 
 /// A Kafka-message deque state handle for one event.
 #[derive(uniffi::Object)]
@@ -165,13 +165,7 @@ impl MessageDequeStateHandle {
 
     /// Opens a cursor over live elements.
     #[must_use]
-    pub fn scan(
-        &self,
-        direction: ScanDirection,
-        carrier: HashMap<String, String>,
-    ) -> Arc<MessageDequeCursor> {
-        let context = OwnedCarrier::new(carrier).into_context(&self.propagator);
-        let _guard = context.attach();
+    pub fn scan(&self, direction: ScanDirection) -> Arc<MessageDequeCursor> {
         Arc::new(MessageDequeCursor {
             cursor: self.state.values().direction(direction.into()).stream(),
             propagator: Arc::clone(&self.propagator),

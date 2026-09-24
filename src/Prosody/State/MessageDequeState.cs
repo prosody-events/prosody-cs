@@ -106,10 +106,7 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             message => MessageInterop.FromNative(message, _typeInfo),

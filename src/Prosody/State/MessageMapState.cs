@@ -83,10 +83,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     {
         cancellationToken.ThrowIfCancellationRequested();
         return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.ScanKeys(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static key => key,
@@ -105,10 +102,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
             Native.MessageMapEntry,
             KeyValuePair<string, Message<TPayload>>
         >(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Scan(StateInterop.ToNative(direction))),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             entry => KeyValuePair.Create(entry.Key, MessageInterop.FromNative(entry.Message, _typeInfo)),
