@@ -10,7 +10,7 @@
     <!-- Tests do not publish AOT, so reflection-safety warnings from annotated library APIs are suppressed.
          Annotated APIs include: ProsodyClient.CreateAsync, ProsodyClientBuilder.BuildAsync,
          ProsodyClient.SendAsync<T> (convenience overload), ProsodyClient.SubscribeAsync<TPayload>
-         (reflection overload), EventHandlerBridge<T> constructor, PermanentErrorResolver.GetAttribute,
+         (reflection overload), EventHandlerBridge<T> constructor,
          and ProsodyServiceCollectionExtensions.AddProsodyClient. -->
     <NoWarn>$(NoWarn);IL2026;IL3050</NoWarn>
   </PropertyGroup>
