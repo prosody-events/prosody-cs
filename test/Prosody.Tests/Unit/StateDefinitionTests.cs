@@ -46,14 +46,16 @@ public sealed class StateDefinitionTests
     [Fact]
     public void ToNative_Value_MapsPublicationAndReadCache()
     {
-        var native = StateDefinition
-            .Value<int>("v", published: true, readCache: StateReadCache.For(TimeSpan.FromSeconds(2)))
-            .ToNative();
+        var definition = StateDefinition.Value<int>(
+            "v",
+            published: true,
+            readCache: StateReadCache.For(TimeSpan.FromSeconds(2))
+        );
 
         Assert.Multiple(
-            () => Assert.True(native.Published),
-            () => Assert.Equal(TimeSpan.FromSeconds(2), native.ReadCacheTtl),
-            () => Assert.False(native.ReadCacheDisabled)
+            () => Assert.True(definition.ToNative().Published),
+            () => Assert.Equal(TimeSpan.FromSeconds(2), definition.ReadCacheTtl),
+            () => Assert.False(definition.ReadCacheDisabled)
         );
     }
 
@@ -62,7 +64,7 @@ public sealed class StateDefinitionTests
     {
         Assert.Equal(
             TimeSpan.Zero,
-            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ToNative().ReadCacheTtl
+            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ReadCacheTtl
         );
     }
 
@@ -153,8 +155,6 @@ public sealed class StateDefinitionTests
                 TimeSpan.FromSeconds(5),
                 true,
                 64,
-                null,
-                true,
                 null,
                 true
             ),

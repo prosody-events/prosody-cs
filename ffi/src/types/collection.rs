@@ -65,12 +65,4 @@ pub struct StateCollectionConfig {
     /// Whether owners advertise this collection for cross-group reads.
     #[uniffi(default = false)]
     pub published: bool,
-
-    /// Per-reader cache TTL override.
-    #[uniffi(default = None)]
-    pub read_cache_ttl: Option<Duration>,
-
-    /// Whether readers bypass their cache for this collection.
-    #[uniffi(default = false)]
-    pub read_cache_disabled: bool,
 }

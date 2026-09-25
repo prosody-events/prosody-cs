@@ -227,8 +227,6 @@ public abstract record StateDefinition
             ReadUncommitted,
             KeysetLimit is { } k ? (uint)k : null,
             Capacity is { } c ? (uint)c : null,
-            Published,
-            ReadCacheTtl,
-            ReadCacheDisabled
+            Published
         );
 }
