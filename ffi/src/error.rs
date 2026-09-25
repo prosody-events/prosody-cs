@@ -142,6 +142,13 @@ pub enum FfiError {
     #[error("task join failed: {0:#}")]
     Join(#[from] JoinError),
 
+    /// The consumer runtime failed to initialize.
+    ///
+    /// Indicates the OS refused to create the Tokio worker threads that
+    /// drive the consumer and timer pipeline.
+    #[error("consumer runtime initialization failed: {0}")]
+    RuntimeInit(String),
+
     /// A permanent keyed-state failure that must not be retried.
     ///
     /// Recovered structurally from the erased seam's

@@ -7,7 +7,7 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use opentelemetry::propagation::TextMapPropagator;
 use tracing::field::Empty;
-use tracing::{Instrument, debug, info_span};
+use tracing::{Instrument, Span, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::cancellation::CancellationSignal;
@@ -22,6 +22,7 @@ use crate::logging::ensure_tracing_initialized;
 use crate::published::{
     PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
 };
+use crate::runtime;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
@@ -228,15 +229,26 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns [`FfiError::Client`] if the consumer fails to start or
-    /// topic subscription fails.
+    /// Returns [`FfiError::Client`] if the consumer fails to start or topic
+    /// subscription fails, or [`FfiError::RuntimeInit`] if the consumer
+    /// runtime could not be created.
     pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), FfiError> {
         // Store the handler reference to keep it alive
         self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
         // Create the internal handler with propagator for distributed tracing
         let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
-        self.client.subscribe(cs_handler).await?;
+        let client = self.client.clone();
+
+        // Subscribing starts the background consumer and timer pipeline for
+        // this client's lifetime. Run it on `runtime::consumer` so the
+        // pipeline's deep await chains land on a worker thread sized for
+        // them, not on whatever foreign thread happened to call subscribe.
+        let outcome = runtime::consumer()
+            .map_err(|error| FfiError::RuntimeInit(error.to_string()))?
+            .spawn(async move { client.subscribe(cs_handler).await }.instrument(Span::current()))
+            .await?;
+        outcome?;
 
         Ok(())
     }
