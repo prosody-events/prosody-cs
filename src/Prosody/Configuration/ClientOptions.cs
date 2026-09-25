@@ -1,7 +1,10 @@
 using System.Net;
-using Prosody.State;
 
 namespace Prosody.Configuration;
+
+// This file owns the core, consumer, producer, Cassandra, telemetry, and serialization options.
+// ClientOptions.Middleware.cs owns the middleware options, ClientOptions.State.cs owns the keyed-state options,
+// and ClientOptions.Native.cs owns the conversion to the native options.
 
 /// <summary>
 /// Configuration options for the Prosody client.
@@ -42,7 +45,7 @@ namespace Prosody.Configuration;
 /// </code>
 /// </example>
 /// </remarks>
-public sealed class ClientOptions
+public sealed partial class ClientOptions
 {
     // ========================================================================
     // Core options
@@ -229,157 +232,6 @@ public sealed class ClientOptions
     public TimeSpan? SendTimeout { get; set; }
 
     // ========================================================================
-    // Retry options
-    // ========================================================================
-
-    /// <summary>
-    /// Low-latency retries before routing to the failure topic. Set to 0 to route the initial
-    /// failure without retrying. Pipeline mode uses deferral and does not use this limit.
-    /// Default: 3.
-    /// </summary>
-    public uint? MaxRetries { get; set; }
-
-    /// <summary>
-    /// Wait this long before first retry (exponential backoff base).
-    /// Default: 20ms.
-    /// </summary>
-    public TimeSpan? RetryBase { get; set; }
-
-    /// <summary>
-    /// Never wait longer than this between retries.
-    /// Default: 5 minutes.
-    /// </summary>
-    public TimeSpan? MaxRetryDelay { get; set; }
-
-    /// <summary>
-    /// Topic for unprocessable messages (dead letter queue).
-    /// Required for <see cref="ClientMode.LowLatency"/> mode.
-    /// </summary>
-    public string? FailureTopic { get; set; }
-
-    // ========================================================================
-    // Deferral options (Pipeline mode)
-    // ========================================================================
-
-    /// <summary>
-    /// Enable deferral for failing messages.
-    /// Default: <c>true</c>.
-    /// </summary>
-    public bool? DeferEnabled { get; set; }
-
-    /// <summary>
-    /// Wait this long before first deferred retry.
-    /// Default: 1 second.
-    /// </summary>
-    public TimeSpan? DeferBase { get; set; }
-
-    /// <summary>
-    /// Never wait longer than this for deferred retries.
-    /// Default: 24 hours.
-    /// </summary>
-    public TimeSpan? DeferMaxDelay { get; set; }
-
-    /// <summary>
-    /// Disable deferral when failure rate exceeds this threshold (0.0-1.0).
-    /// Default: 0.9 (90%).
-    /// </summary>
-    public double? DeferFailureThreshold { get; set; }
-
-    /// <summary>
-    /// Measure failure rate over this time window.
-    /// Default: 5 minutes.
-    /// </summary>
-    public TimeSpan? DeferFailureWindow { get; set; }
-
-    /// <summary>
-    /// Maximum deferred store cache entries per Cassandra defer store.
-    /// Default: 8192.
-    /// </summary>
-    /// <remarks>Environment variable: <c>PROSODY_DEFER_STORE_CACHE_SIZE</c></remarks>
-    public uint? DeferStoreCacheSize { get; set; }
-
-    // ========================================================================
-    // Kafka message loader options (all modes)
-    // ========================================================================
-
-    /// <summary>
-    /// Maximum messages retained by the shared Kafka loader.
-    /// Default: 1024.
-    /// </summary>
-    /// <remarks>Environment variable: <c>PROSODY_LOADER_CACHE_SIZE</c></remarks>
-    public uint? LoaderCacheSize { get; set; }
-
-    /// <summary>
-    /// Timeout for Kafka loader seek operations.
-    /// Default: 30 seconds.
-    /// </summary>
-    /// <remarks>Environment variable: <c>PROSODY_LOADER_SEEK_TIMEOUT</c></remarks>
-    public TimeSpan? LoaderSeekTimeout { get; set; }
-
-    /// <summary>
-    /// Sequential-read distance before the loader seeks. Rarely needs changing.
-    /// Default: 100.
-    /// </summary>
-    /// <remarks>Environment variable: <c>PROSODY_LOADER_DISCARD_THRESHOLD</c></remarks>
-    public uint? LoaderDiscardThreshold { get; set; }
-
-    // ========================================================================
-    // Monopolization detection options (Pipeline mode)
-    // ========================================================================
-
-    /// <summary>
-    /// Enable hot key protection.
-    /// Default: <c>true</c>.
-    /// </summary>
-    public bool? MonopolizationEnabled { get; set; }
-
-    /// <summary>
-    /// Reject keys using more than this fraction of window time (0.0-1.0).
-    /// Default: 0.9 (90%).
-    /// </summary>
-    public double? MonopolizationThreshold { get; set; }
-
-    /// <summary>
-    /// Measurement window for monopolization detection.
-    /// Default: 5 minutes.
-    /// </summary>
-    public TimeSpan? MonopolizationWindow { get; set; }
-
-    /// <summary>
-    /// Maximum distinct keys to track for monopolization.
-    /// Default: 8192.
-    /// </summary>
-    public uint? MonopolizationCacheSize { get; set; }
-
-    // ========================================================================
-    // Fair scheduling options (all modes)
-    // ========================================================================
-
-    /// <summary>
-    /// Fraction of processing time reserved for retries (0.0-1.0).
-    /// Default: 0.3 (30%).
-    /// </summary>
-    public double? SchedulerFailureWeight { get; set; }
-
-    /// <summary>
-    /// Messages waiting this long get maximum priority boost.
-    /// Default: 2 minutes.
-    /// </summary>
-    public TimeSpan? SchedulerMaxWait { get; set; }
-
-    /// <summary>
-    /// Priority boost multiplier for waiting messages. Higher = more aggressive.
-    /// Default: 200.0.
-    /// </summary>
-    public double? SchedulerWaitWeight { get; set; }
-
-    /// <summary>
-    /// Maximum distinct keys to track in scheduler.
-    /// Default: 8192.
-    /// </summary>
-    public uint? SchedulerCacheSize { get; set; }
-
-    // ========================================================================
     // Cassandra options for persistent features in non-mock mode
     // ========================================================================
 
@@ -459,54 +311,6 @@ public sealed class ClientOptions
     /// </remarks>
     public Action<System.Text.Json.JsonSerializerOptions>? ConfigureJsonOptions { get; set; }
 
-    // ========================================================================
-    // Keyed-state options
-    // ========================================================================
-
-    /// <summary>
-    /// The keyed-state collections to register, declared with <see cref="StateDefinition"/> factories.
-    /// </summary>
-    /// <remarks>
-    /// Set programmatically only — not bindable from
-    /// <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>. Prefer
-    /// <see cref="ProsodyClientBuilder.WithStateCollections"/>. Prosody validates collection names,
-    /// identities, and semantic limits when the client is built.
-    /// </remarks>
-    public StateDefinition[]? StateCollections { get; set; }
-
-    /// <summary>
-    /// Disk workspace for the local keyed-state cache. Each live client needs its own directory.
-    /// Falls back to <c>PROSODY_STATE_CACHE_DIR</c>, then a per-client temporary directory.
-    /// Must not be an empty string when set.
-    /// </summary>
-    public string? StateCacheDir { get; set; }
-
-    /// <summary>
-    /// Capacity of the owning keyed-state cache, such as <c>64 MiB</c>.
-    /// Uses <c>PROSODY_STATE_OWNED_CACHE_SIZE</c> when omitted.
-    /// Otherwise, the storage engine selects its default.
-    /// </summary>
-    public string? StateOwnedCacheSize { get; set; }
-
-    /// <summary>
-    /// Capacity of the published-state read cache, such as <c>1 MiB</c>.
-    /// Uses <c>PROSODY_STATE_READ_CACHE_SIZE</c> when omitted.
-    /// It then uses the owned cache size when set, or 1 MiB when both sizes are unset.
-    /// </summary>
-    public string? StateReadCacheSize { get; set; }
-
-    /// <summary>
-    /// Default cache policy for published-state reads.
-    /// Uses <c>PROSODY_STATE_READ_CACHE_TTL</c> when omitted, then 5 seconds.
-    /// </summary>
-    public StateReadCache? StateReadCache { get; set; }
-
-    /// <summary>
-    /// Subsystem under which published JSON collections are advertised.
-    /// Uses <c>PROSODY_SUBSYSTEM</c> when omitted. Published collections require it.
-    /// </summary>
-    public string? Subsystem { get; set; }
-
     /// <summary>
     /// Validates the configuration options and throws if any are invalid.
     /// </summary>
@@ -539,101 +343,4 @@ public sealed class ClientOptions
     }
 
     private static T[]? CloneArray<T>(T[]? source) => source is not null ? [.. source] : null;
-
-    private static Native.SpanRelation? ToNativeSpanRelation(SpanRelation? relation) =>
-        relation switch
-        {
-            SpanRelation.Child => Native.SpanRelation.Child,
-            SpanRelation.FollowsFrom => Native.SpanRelation.FollowsFrom,
-            null => null,
-            _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
-        };
-
-    private Native.ClientMode? ToNativeMode() =>
-        Mode switch
-        {
-            ClientMode.Pipeline => Native.ClientMode.Pipeline,
-            ClientMode.LowLatency => Native.ClientMode.LowLatency,
-            ClientMode.BestEffort => Native.ClientMode.BestEffort,
-            null => null,
-            _ => throw new InvalidOperationException($"Unknown client mode: {Mode}"),
-        };
-
-    /// <summary>
-    /// Converts to the internal native options type.
-    /// </summary>
-    internal Native.ClientOptions ToNative() =>
-        ToNativeBase() with
-        {
-            StateCollections = StateCollections is null
-                ? null
-                : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
-            StateCacheDir = StateCacheDir,
-            StateOwnedCacheSize = StateOwnedCacheSize,
-            StateReadCacheSize = StateReadCacheSize,
-            StateReadCacheTtl = StateReadCache?.Ttl,
-            StateReadCacheDisabled = StateReadCache?.IsDisabled,
-            Subsystem = Subsystem,
-        };
-
-    private Native.ClientOptions ToNativeBase() =>
-        new(
-            BootstrapServers: BootstrapServers,
-            GroupId: GroupId,
-            SubscribedTopics: SubscribedTopics,
-            Mode: ToNativeMode(),
-            AllowedEvents: AllowedEvents,
-            SourceSystem: SourceSystem,
-            Mock: Mock,
-            PeerBindAddress: PeerBindAddress?.ToString(),
-            PeerAdvertisedConnect: PeerAdvertisedConnect?.OriginalString,
-            PeerNetworkName: PeerNetworkName,
-            PeerCacheCapacity: PeerCacheCapacity,
-            PeerRegistrationTtl: PeerRegistrationTtl,
-            MaxConcurrency: MaxConcurrency,
-            MaxUncommitted: MaxUncommitted,
-            IdempotenceCacheSize: IdempotenceCacheSize,
-            IdempotenceVersion: IdempotenceVersion,
-            IdempotenceTtl: IdempotenceTtl,
-            Timeout: Timeout,
-            StallThreshold: StallThreshold,
-            ShutdownTimeout: ShutdownTimeout,
-            PollInterval: PollInterval,
-            CommitInterval: CommitInterval,
-            ProbePort: ProbePort,
-            SlabSize: SlabSize,
-            SendTimeout: SendTimeout,
-            MaxRetries: MaxRetries,
-            RetryBase: RetryBase,
-            MaxRetryDelay: MaxRetryDelay,
-            FailureTopic: FailureTopic,
-            DeferEnabled: DeferEnabled,
-            DeferBase: DeferBase,
-            DeferMaxDelay: DeferMaxDelay,
-            DeferFailureThreshold: DeferFailureThreshold,
-            DeferFailureWindow: DeferFailureWindow,
-            DeferStoreCacheSize: DeferStoreCacheSize,
-            LoaderCacheSize: LoaderCacheSize,
-            LoaderSeekTimeout: LoaderSeekTimeout,
-            LoaderDiscardThreshold: LoaderDiscardThreshold,
-            MonopolizationEnabled: MonopolizationEnabled,
-            MonopolizationThreshold: MonopolizationThreshold,
-            MonopolizationWindow: MonopolizationWindow,
-            MonopolizationCacheSize: MonopolizationCacheSize,
-            SchedulerFailureWeight: SchedulerFailureWeight,
-            SchedulerMaxWait: SchedulerMaxWait,
-            SchedulerWaitWeight: SchedulerWaitWeight,
-            SchedulerCacheSize: SchedulerCacheSize,
-            CassandraNodes: CassandraNodes,
-            CassandraKeyspace: CassandraKeyspace,
-            CassandraDatacenter: CassandraDatacenter,
-            CassandraRack: CassandraRack,
-            CassandraUser: CassandraUser,
-            CassandraPassword: CassandraPassword,
-            CassandraRetention: CassandraRetention,
-            TelemetryTopic: TelemetryTopic,
-            TelemetryEnabled: TelemetryEnabled,
-            MessageSpans: ToNativeSpanRelation(MessageSpans),
-            TimerSpans: ToNativeSpanRelation(TimerSpans)
-        );
 }
