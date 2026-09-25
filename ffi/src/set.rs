@@ -10,6 +10,7 @@ use prosody::consumer::event_context::BoxSetState;
 use crate::cursor::KeyCursor;
 use crate::error::FfiError;
 use crate::query::KeyQuery;
+use crate::runtime::run;
 use crate::state::{StoreOutcome, traced};
 
 /// A set state handle for one event. A set stores ordered string members.
@@ -19,7 +20,7 @@ pub struct SetStateHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl SetStateHandle {
     /// Reports whether `member` is in the set.
     ///
@@ -27,11 +28,12 @@ impl SetStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains(
-        &self,
+        self: Arc<Self>,
         member: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains(member)).await
+        run(async move { traced(&self.propagator, carrier, self.state.contains(member)).await })
+            .await
     }
 
     /// Reports whether each member is in the set, in request order.
@@ -40,11 +42,14 @@ impl SetStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains_many(
-        &self,
+        self: Arc<Self>,
         members: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<bool>, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains_many(members)).await
+        run(async move {
+            traced(&self.propagator, carrier, self.state.contains_many(members)).await
+        })
+        .await
     }
 
     /// Reports whether the set has no members.
@@ -52,8 +57,11 @@ impl SetStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.is_empty()).await
+    pub async fn is_empty(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.is_empty()).await }).await
     }
 
     /// Adds `member` to the set.
@@ -62,11 +70,11 @@ impl SetStateHandle {
     ///
     /// Returns a state error if the write fails.
     pub async fn insert(
-        &self,
+        self: Arc<Self>,
         member: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.insert(member)).await
+        run(async move { traced(&self.propagator, carrier, self.state.insert(member)).await }).await
     }
 
     /// Removes `member` from the set. An absent member is a no-op.
@@ -75,11 +83,11 @@ impl SetStateHandle {
     ///
     /// Returns a state error if the write fails.
     pub async fn remove(
-        &self,
+        self: Arc<Self>,
         member: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.remove(member)).await
+        run(async move { traced(&self.propagator, carrier, self.state.remove(member)).await }).await
     }
 
     /// Removes every member.
@@ -87,8 +95,8 @@ impl SetStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the clear fails.
-    pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.clear()).await
+    pub async fn clear(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.clear()).await }).await
     }
 
     /// Opens a cursor over the members that `query` selects.
@@ -108,15 +116,24 @@ impl SetStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
-        traced(&self.propagator, carrier, self.state.commit())
-            .await
-            .map(StoreOutcome::from)
+    pub async fn commit(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<StoreOutcome, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.commit())
+                .await
+                .map(StoreOutcome::from)
+        })
+        .await
     }
 
     /// Discards the buffered operations and reports whether any existed.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
-        let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await.into()
+    pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
+        run(async move {
+            let context = self.propagator.extract(&carrier);
+            self.state.rollback().with_context(context).await.into()
+        })
+        .await
     }
 }

@@ -27,7 +27,6 @@ use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
-use tokio::task::JoinError;
 
 /// Primary error type for FFI boundary operations.
 ///
@@ -135,19 +134,6 @@ pub enum FfiError {
     /// A timestamp value is invalid or out of range.
     #[error("invalid timestamp: {0:#}")]
     CompactDateTime(#[from] CompactDateTimeError),
-
-    /// A background task failed or panicked.
-    ///
-    /// Indicates that an async task did not complete successfully.
-    #[error("task join failed: {0:#}")]
-    Join(#[from] JoinError),
-
-    /// The consumer runtime failed to initialize.
-    ///
-    /// Indicates the OS refused to create the Tokio worker threads that
-    /// drive the consumer and timer pipeline.
-    #[error("consumer runtime initialization failed: {0}")]
-    RuntimeInit(String),
 
     /// A permanent keyed-state failure that must not be retried.
     ///

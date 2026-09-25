@@ -7,7 +7,7 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use opentelemetry::propagation::TextMapPropagator;
 use tracing::field::Empty;
-use tracing::{Instrument, Span, debug, info_span};
+use tracing::{Instrument, debug, info_span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::cancellation::CancellationSignal;
@@ -22,7 +22,7 @@ use crate::logging::ensure_tracing_initialized;
 use crate::published::{
     PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
 };
-use crate::runtime;
+use crate::runtime::run;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
@@ -91,7 +91,7 @@ pub struct ProsodyClient {
 }
 
 /// UniFFI-exported methods for [`ProsodyClient`].
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl ProsodyClient {
     /// Creates a new client with the specified configuration.
     ///
@@ -106,27 +106,30 @@ impl ProsodyClient {
     /// - Cassandra connection fails (when persistence is enabled)
     #[uniffi::constructor]
     pub async fn new(options: ClientOptions) -> Result<Self, FfiError> {
-        // Ensure tracing is initialized (idempotent)
-        ensure_tracing_initialized();
+        run(async move {
+            // Ensure tracing is initialized (idempotent)
+            ensure_tracing_initialized();
 
-        // Build all configuration from ClientOptions
-        let mut producer_config = build_producer_config(&options);
-        let consumer_builders = build_consumer_builders(&options)?;
-        let cassandra = build_cassandra_config(&options);
-        let mode = get_mode(&options);
+            // Build all configuration from ClientOptions
+            let mut producer_config = build_producer_config(&options);
+            let consumer_builders = build_consumer_builders(&options)?;
+            let cassandra = build_cassandra_config(&options);
+            let mode = get_mode(&options);
 
-        let client = Box::pin(new_erased(
-            mode,
-            &mut producer_config,
-            &consumer_builders,
-            &cassandra,
-        ))
-        .await?;
+            let client = Box::pin(new_erased(
+                mode,
+                &mut producer_config,
+                &consumer_builders,
+                &cassandra,
+            ))
+            .await?;
 
-        Ok(Self {
-            client,
-            handler: ArcSwap::new(Arc::new(None)),
+            Ok(Self {
+                client,
+                handler: ArcSwap::new(Arc::new(None)),
+            })
         })
+        .await
     }
 
     /// Opens a read-only published value collection.
@@ -135,21 +138,24 @@ impl ProsodyClient {
     ///
     /// Returns a permanent state error when the descriptor cannot be resolved.
     pub async fn published_value(
-        &self,
+        self: Arc<Self>,
         subsystem: String,
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
     ) -> Result<Arc<PublishedValueHandle>, FfiError> {
-        let reader = self
-            .client
-            .value_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-            .await
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedValueHandle {
-            reader,
-            propagator: Arc::new(new_propagator()),
-        }))
+        run(async move {
+            let reader = self
+                .client
+                .value_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+                .await
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            Ok(Arc::new(PublishedValueHandle {
+                reader,
+                propagator: Arc::new(new_propagator()),
+            }))
+        })
+        .await
     }
 
     /// Opens a read-only published map collection.
@@ -158,21 +164,24 @@ impl ProsodyClient {
     ///
     /// Returns a permanent state error when the descriptor cannot be resolved.
     pub async fn published_map(
-        &self,
+        self: Arc<Self>,
         subsystem: String,
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
     ) -> Result<Arc<PublishedMapHandle>, FfiError> {
-        let reader = self
-            .client
-            .map_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-            .await
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedMapHandle {
-            reader,
-            propagator: Arc::new(new_propagator()),
-        }))
+        run(async move {
+            let reader = self
+                .client
+                .map_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+                .await
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            Ok(Arc::new(PublishedMapHandle {
+                reader,
+                propagator: Arc::new(new_propagator()),
+            }))
+        })
+        .await
     }
 
     /// Opens a read-only published set collection.
@@ -181,21 +190,24 @@ impl ProsodyClient {
     ///
     /// Returns a permanent state error when the descriptor cannot be resolved.
     pub async fn published_set(
-        &self,
+        self: Arc<Self>,
         subsystem: String,
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
     ) -> Result<Arc<PublishedSetHandle>, FfiError> {
-        let reader = self
-            .client
-            .set_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-            .await
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedSetHandle {
-            reader,
-            propagator: Arc::new(new_propagator()),
-        }))
+        run(async move {
+            let reader = self
+                .client
+                .set_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+                .await
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            Ok(Arc::new(PublishedSetHandle {
+                reader,
+                propagator: Arc::new(new_propagator()),
+            }))
+        })
+        .await
     }
 
     /// Opens a read-only published deque collection.
@@ -204,21 +216,24 @@ impl ProsodyClient {
     ///
     /// Returns a permanent state error when the descriptor cannot be resolved.
     pub async fn published_deque(
-        &self,
+        self: Arc<Self>,
         subsystem: String,
         name: String,
         cache_ttl: Option<Duration>,
         cache_disabled: bool,
     ) -> Result<Arc<PublishedDequeHandle>, FfiError> {
-        let reader = self
-            .client
-            .deque_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-            .await
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        Ok(Arc::new(PublishedDequeHandle {
-            reader,
-            propagator: Arc::new(new_propagator()),
-        }))
+        run(async move {
+            let reader = self
+                .client
+                .deque_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
+                .await
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            Ok(Arc::new(PublishedDequeHandle {
+                reader,
+                propagator: Arc::new(new_propagator()),
+            }))
+        })
+        .await
     }
 
     /// Subscribes to configured topics and begins consuming messages.
@@ -229,28 +244,23 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns [`FfiError::Client`] if the consumer fails to start or topic
-    /// subscription fails, or [`FfiError::RuntimeInit`] if the consumer
-    /// runtime could not be created.
-    pub async fn subscribe(&self, handler: Arc<dyn EventHandler>) -> Result<(), FfiError> {
-        // Store the handler reference to keep it alive
-        self.handler.store(Arc::new(Some(Arc::clone(&handler))));
+    /// Returns [`FfiError::Client`] if the consumer fails to start or
+    /// topic subscription fails.
+    pub async fn subscribe(
+        self: Arc<Self>,
+        handler: Arc<dyn EventHandler>,
+    ) -> Result<(), FfiError> {
+        run(async move {
+            // Store the handler reference to keep it alive
+            self.handler.store(Arc::new(Some(Arc::clone(&handler))));
 
-        // Create the internal handler with propagator for distributed tracing
-        let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
-        let client = self.client.clone();
+            // Wrap the handler with a trace propagator
+            let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
+            self.client.subscribe(cs_handler).await?;
 
-        // Subscribing starts the background consumer and timer pipeline for
-        // this client's lifetime. Run it on `runtime::consumer` so the
-        // pipeline's deep await chains land on a worker thread sized for
-        // them, not on whatever foreign thread happened to call subscribe.
-        let outcome = runtime::consumer()
-            .map_err(|error| FfiError::RuntimeInit(error.to_string()))?
-            .spawn(async move { client.subscribe(cs_handler).await }.instrument(Span::current()))
-            .await?;
-        outcome?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Stops consuming messages and unsubscribes from all topics.
@@ -261,14 +271,17 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns [`FfiError::Client`] if the consumer fails to stop cleanly.
-    pub async fn unsubscribe(&self) -> Result<(), FfiError> {
-        // Unsubscribe from the client
-        self.client.unsubscribe().await?;
+    pub async fn unsubscribe(self: Arc<Self>) -> Result<(), FfiError> {
+        run(async move {
+            // Unsubscribe from the client
+            self.client.unsubscribe().await?;
 
-        // Clear the handler reference
-        self.handler.store(Arc::new(None));
+            // Clear the handler reference
+            self.handler.store(Arc::new(None));
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Shuts down the client and all its services.
@@ -276,11 +289,14 @@ impl ProsodyClient {
     /// # Errors
     ///
     /// Returns [`FfiError::Client`] if shutdown fails.
-    pub async fn shutdown(&self) -> Result<(), FfiError> {
-        let result = self.client.clone().shutdown().await;
-        self.handler.store(Arc::new(None));
-        result?;
-        Ok(())
+    pub async fn shutdown(self: Arc<Self>) -> Result<(), FfiError> {
+        run(async move {
+            let result = self.client.clone().shutdown().await;
+            self.handler.store(Arc::new(None));
+            result?;
+            Ok(())
+        })
+        .await
     }
 
     /// Sends a message to a Kafka topic.
@@ -299,7 +315,7 @@ impl ProsodyClient {
     /// - [`FfiError::Cancelled`] if the cancellation signal was triggered.
     /// - [`FfiError::Client`] if the Kafka producer fails to deliver.
     pub async fn send(
-        &self,
+        self: Arc<Self>,
         topic: String,
         key: String,
         metadata: EventMetadata,
@@ -307,40 +323,44 @@ impl ProsodyClient {
         carrier: HashMap<String, String>,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.client.propagator().extract(&carrier);
+        run(async move {
+            // Extract OpenTelemetry context from carrier passed by C#
+            let context = self.client.propagator().extract(&carrier);
 
-        // Create span with extracted context as parent (matches C# SendAsync)
-        let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        let binary_payload = BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
-
-        // Send the message with tracing, with optional cancellation
-        let send_future = self
-            .client
-            .send(topic.as_str().into(), key, binary_payload)
-            .instrument(span.clone());
-
-        if let Some(signal) = cancel {
-            tokio::select! {
-                result = send_future => {
-                    span.record("aborted", false);
-                    result?;
-                }
-                () = signal.cancelled() => {
-                    span.record("aborted", true);
-                    return Err(FfiError::Cancelled);
-                }
+            // Create span with extracted context as parent
+            let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
+            if let Err(err) = span.set_parent(context) {
+                debug!("failed to set parent span: {err:#}");
             }
-        } else {
-            send_future.await?;
-            span.record("aborted", false);
-        }
 
-        Ok(())
+            let binary_payload =
+                BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
+
+            // Send the message with tracing, with optional cancellation
+            let send_future = self
+                .client
+                .send(topic.as_str().into(), key, binary_payload)
+                .instrument(span.clone());
+
+            if let Some(signal) = cancel {
+                tokio::select! {
+                    result = send_future => {
+                        span.record("aborted", false);
+                        result?;
+                    }
+                    () = signal.cancelled() => {
+                        span.record("aborted", true);
+                        return Err(FfiError::Cancelled);
+                    }
+                }
+            } else {
+                send_future.await?;
+                span.record("aborted", false);
+            }
+
+            Ok(())
+        })
+        .await
     }
 
     /// Sends an excise record for a key.
@@ -350,34 +370,37 @@ impl ProsodyClient {
     /// Returns an error when Prosody cannot send the record or the caller
     /// cancels the operation.
     pub async fn excise(
-        &self,
+        self: Arc<Self>,
         topic: String,
         key: String,
         carrier: HashMap<String, String>,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
-        let context = self.client.propagator().extract(&carrier);
-        let span = info_span!("csharp-Excise", %topic, %key, aborted = Empty);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-        let excise_future = self
-            .client
-            .excise(topic.as_str().into(), key)
-            .instrument(span.clone());
-        if let Some(signal) = cancel {
-            tokio::select! {
-                result = excise_future => { span.record("aborted", false); result?; }
-                () = signal.cancelled() => {
-                    span.record("aborted", true);
-                    return Err(FfiError::Cancelled);
-                }
+        run(async move {
+            let context = self.client.propagator().extract(&carrier);
+            let span = info_span!("csharp-Excise", %topic, %key, aborted = Empty);
+            if let Err(err) = span.set_parent(context) {
+                debug!("failed to set parent span: {err:#}");
             }
-        } else {
-            excise_future.await?;
-            span.record("aborted", false);
-        }
-        Ok(())
+            let excise_future = self
+                .client
+                .excise(topic.as_str().into(), key)
+                .instrument(span.clone());
+            if let Some(signal) = cancel {
+                tokio::select! {
+                    result = excise_future => { span.record("aborted", false); result?; }
+                    () = signal.cancelled() => {
+                        span.record("aborted", true);
+                        return Err(FfiError::Cancelled);
+                    }
+                }
+            } else {
+                excise_future.await?;
+                span.record("aborted", false);
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// Sends one request and returns one outcome per subsystem.
@@ -386,49 +409,52 @@ impl ProsodyClient {
     ///
     /// Returns an error for invalid arguments, a send failure, or shutdown.
     pub async fn request(
-        &self,
+        self: Arc<Self>,
         request: NativeRequest,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
-        let subsystems = request
-            .subsystems
-            .into_iter()
-            .map(SubsystemName::try_new)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        let context = self.client.propagator().extract(&request.carrier);
-        let span = info_span!("csharp-request", topic = %request.topic, key = %request.key);
-        if let Err(error) = span.set_parent(context) {
-            debug!("failed to set parent span: {error:#}");
-        }
-        let payload = BinaryPayload::new(
-            request.payload,
-            request.metadata.event_id,
-            request.metadata.event_type,
-        );
-        let request = self
-            .client
-            .request(
-                Vec::new(),
-                request.topic.as_str().into(),
-                request.key,
-                payload,
-                subsystems,
-                request.timeout,
-            )
-            .instrument(span);
-        let results = if let Some(signal) = cancel {
-            tokio::select! {
-                result = request => result?,
-                () = signal.cancelled() => return Err(FfiError::Cancelled),
+        run(async move {
+            let subsystems = request
+                .subsystems
+                .into_iter()
+                .map(SubsystemName::try_new)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            let context = self.client.propagator().extract(&request.carrier);
+            let span = info_span!("csharp-request", topic = %request.topic, key = %request.key);
+            if let Err(error) = span.set_parent(context) {
+                debug!("failed to set parent span: {error:#}");
             }
-        } else {
-            request.await?
-        };
-        Ok(results
-            .into_iter()
-            .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
-            .collect())
+            let payload = BinaryPayload::new(
+                request.payload,
+                request.metadata.event_id,
+                request.metadata.event_type,
+            );
+            let request = self
+                .client
+                .request(
+                    Vec::new(),
+                    request.topic.as_str().into(),
+                    request.key,
+                    payload,
+                    subsystems,
+                    request.timeout,
+                )
+                .instrument(span);
+            let results = if let Some(signal) = cancel {
+                tokio::select! {
+                    result = request => result?,
+                    () = signal.cancelled() => return Err(FfiError::Cancelled),
+                }
+            } else {
+                request.await?
+            };
+            Ok(results
+                .into_iter()
+                .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
+                .collect())
+        })
+        .await
     }
 
     /// Sends one excise request and returns one outcome per subsystem.
@@ -437,66 +463,73 @@ impl ProsodyClient {
     ///
     /// Returns an error for invalid arguments, a send failure, or shutdown.
     pub async fn request_excise(
-        &self,
+        self: Arc<Self>,
         request: NativeExciseRequest,
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
-        let subsystems = request
-            .subsystems
-            .into_iter()
-            .map(SubsystemName::try_new)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-        let context = self.client.propagator().extract(&request.carrier);
-        let span = info_span!("csharp-request-excise", topic = %request.topic, key = %request.key);
-        if let Err(error) = span.set_parent(context) {
-            debug!("failed to set parent span: {error:#}");
-        }
-        let request = self
-            .client
-            .request_excise(
-                Vec::new(),
-                request.topic.as_str().into(),
-                request.key,
-                subsystems,
-                request.timeout,
-            )
-            .instrument(span);
-        let results = if let Some(signal) = cancel {
-            tokio::select! {
-                result = request => result?,
-                () = signal.cancelled() => return Err(FfiError::Cancelled),
+        run(async move {
+            let subsystems = request
+                .subsystems
+                .into_iter()
+                .map(SubsystemName::try_new)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+            let context = self.client.propagator().extract(&request.carrier);
+            let span =
+                info_span!("csharp-request-excise", topic = %request.topic, key = %request.key);
+            if let Err(error) = span.set_parent(context) {
+                debug!("failed to set parent span: {error:#}");
             }
-        } else {
-            request.await?
-        };
-        Ok(results
-            .into_iter()
-            .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
-            .collect())
+            let request = self
+                .client
+                .request_excise(
+                    Vec::new(),
+                    request.topic.as_str().into(),
+                    request.key,
+                    subsystems,
+                    request.timeout,
+                )
+                .instrument(span);
+            let results = if let Some(signal) = cancel {
+                tokio::select! {
+                    result = request => result?,
+                    () = signal.cancelled() => return Err(FfiError::Cancelled),
+                }
+            } else {
+                request.await?
+            };
+            Ok(results
+                .into_iter()
+                .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
+                .collect())
+        })
+        .await
     }
 
     /// Returns the current consumer state.
-    pub async fn consumer_state(&self) -> ConsumerState {
-        match self.client.consumer_state().await {
-            ErasedConsumerState::Shutdown => ConsumerState::Shutdown,
-            ErasedConsumerState::Unconfigured => ConsumerState::Unconfigured,
-            ErasedConsumerState::ConfigurationFailed(error) => {
-                ConsumerState::ConfigurationFailed { message: error }
+    pub async fn consumer_state(self: Arc<Self>) -> ConsumerState {
+        run(async move {
+            match self.client.consumer_state().await {
+                ErasedConsumerState::Shutdown => ConsumerState::Shutdown,
+                ErasedConsumerState::Unconfigured => ConsumerState::Unconfigured,
+                ErasedConsumerState::ConfigurationFailed(error) => {
+                    ConsumerState::ConfigurationFailed { message: error }
+                }
+                ErasedConsumerState::Configured(_) => ConsumerState::Configured,
+                ErasedConsumerState::Running { .. } => ConsumerState::Running,
             }
-            ErasedConsumerState::Configured(_) => ConsumerState::Configured,
-            ErasedConsumerState::Running { .. } => ConsumerState::Running,
-        }
+        })
+        .await
     }
 
     /// Returns the number of partitions currently assigned to this consumer.
-    pub async fn assigned_partition_count(&self) -> u32 {
-        self.client.assigned_partition_count().await
+    pub async fn assigned_partition_count(self: Arc<Self>) -> u32 {
+        run(async move { self.client.assigned_partition_count().await }).await
     }
 
     /// Returns `true` if the consumer is currently stalled.
-    pub async fn is_stalled(&self) -> bool {
-        self.client.is_stalled().await
+    pub async fn is_stalled(self: Arc<Self>) -> bool {
+        run(async move { self.client.is_stalled().await }).await
     }
 
     /// Returns the source system identifier configured for this client.

@@ -135,6 +135,9 @@ jobs:
       - name: Build FFI and generate bindings
         run: make build-ci
 
+      - name: Run Rust tests
+        run: cargo test -p prosody-ffi
+
       - name: Run tests
         run: dotnet run --project test/Prosody.Tests --framework net10.0 --no-build --no-launch-profile -c Release
         env:

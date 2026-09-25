@@ -11,6 +11,7 @@ use prosody::consumer::event_context::BoxDequeState;
 use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
 use crate::query::PositionQuery;
+use crate::runtime::run;
 use crate::state::{StoreOutcome, into_bytes, platform_index, reject_null, traced};
 
 /// A JSON deque state handle for one event.
@@ -21,17 +22,20 @@ pub struct JsonDequeStateHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl JsonDequeStateHandle {
     /// Returns the live element count.
     ///
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn len(&self, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
-        traced(&self.propagator, carrier, self.state.len())
-            .await
-            .map(|length| length as u64)
+    pub async fn len(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.len())
+                .await
+                .map(|length| length as u64)
+        })
+        .await
     }
 
     /// Reports whether the deque has no live elements.
@@ -39,8 +43,11 @@ impl JsonDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.is_empty()).await
+    pub async fn is_empty(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.is_empty()).await }).await
     }
 
     /// Reads the JSON document bytes at `index`.
@@ -49,17 +56,20 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.state.get(platform_index(index)?),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.state.get(platform_index(index)?),
+            )
+            .await
+            .map(into_bytes)
+        })
         .await
-        .map(into_bytes)
     }
 
     /// Appends one JSON document.
@@ -68,13 +78,16 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the document is `null` or the write fails.
     pub async fn push_back(
-        &self,
+        self: Arc<Self>,
         bytes: Vec<u8>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-        reject_null(&payload, &self.name, " in a deque")?;
-        traced(&self.propagator, carrier, self.state.push_back(payload)).await
+        run(async move {
+            let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
+            reject_null(&payload, &self.name, " in a deque")?;
+            traced(&self.propagator, carrier, self.state.push_back(payload)).await
+        })
+        .await
     }
 
     /// Prepends one JSON document.
@@ -83,13 +96,16 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the document is `null` or the write fails.
     pub async fn push_front(
-        &self,
+        self: Arc<Self>,
         bytes: Vec<u8>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-        reject_null(&payload, &self.name, " in a deque")?;
-        traced(&self.propagator, carrier, self.state.push_front(payload)).await
+        run(async move {
+            let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
+            reject_null(&payload, &self.name, " in a deque")?;
+            traced(&self.propagator, carrier, self.state.push_front(payload)).await
+        })
+        .await
     }
 
     /// Removes and returns the front JSON document bytes.
@@ -98,12 +114,15 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the operation fails.
     pub async fn pop_front(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.pop_front())
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.state.pop_front())
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Removes and returns the back JSON document bytes.
@@ -112,12 +131,15 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the operation fails.
     pub async fn pop_back(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.pop_back())
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.state.pop_back())
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads the front JSON document bytes.
@@ -126,12 +148,15 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn peek_front(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.peek_front())
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.state.peek_front())
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads the back JSON document bytes.
@@ -140,12 +165,15 @@ impl JsonDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn peek_back(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.peek_back())
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.state.peek_back())
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Removes every element.
@@ -153,8 +181,8 @@ impl JsonDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the clear fails.
-    pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.clear()).await
+    pub async fn clear(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.clear()).await }).await
     }
 
     /// Opens a cursor over the live elements that `query` selects.
@@ -175,15 +203,24 @@ impl JsonDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
-        traced(&self.propagator, carrier, self.state.commit())
-            .await
-            .map(StoreOutcome::from)
+    pub async fn commit(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<StoreOutcome, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.commit())
+                .await
+                .map(StoreOutcome::from)
+        })
+        .await
     }
 
     /// Discards the buffered operations and reports whether any existed.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
-        let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await.into()
+    pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
+        run(async move {
+            let context = self.propagator.extract(&carrier);
+            self.state.rollback().with_context(context).await.into()
+        })
+        .await
     }
 }

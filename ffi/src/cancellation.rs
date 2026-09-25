@@ -5,7 +5,11 @@
 //! cooperative cancellation: the caller requests cancellation, and the async
 //! operation checks for that request at appropriate points.
 
+use std::sync::Arc;
+
 use tokio_util::sync::CancellationToken;
+
+use crate::runtime::run;
 
 /// A thread-safe signal for cooperative cancellation of async operations.
 ///
@@ -24,7 +28,7 @@ impl Default for CancellationSignal {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl CancellationSignal {
     /// Creates a new cancellation signal in the unsignalled state.
     #[uniffi::constructor]
@@ -49,7 +53,10 @@ impl CancellationSignal {
     /// Returns immediately if [`cancel`](Self::cancel) has already been called.
     /// Typically used in a `tokio::select!` branch to abort work when
     /// cancellation is requested.
-    pub async fn cancelled(&self) {
-        self.token.cancelled().await;
+    pub async fn cancelled(self: Arc<Self>) {
+        run(async move {
+            self.token.cancelled().await;
+        })
+        .await;
     }
 }

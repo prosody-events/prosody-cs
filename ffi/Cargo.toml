@@ -24,11 +24,11 @@ opentelemetry.workspace = true
 prosody.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
-uniffi = { workspace = true, features = ["tokio"] }
+uniffi.workspace = true
 validator.workspace = true
 
 [dev-dependencies]

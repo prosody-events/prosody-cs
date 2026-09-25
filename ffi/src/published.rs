@@ -13,6 +13,7 @@ use crate::cursor::{JsonDequeCursor, JsonMapCursor, KeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
 use crate::query::{KeyQuery, PositionQuery};
+use crate::runtime::run;
 use crate::state::{into_bytes, platform_index, traced};
 
 #[derive(uniffi::Object)]
@@ -22,7 +23,7 @@ pub struct PublishedValueHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedValueHandle {
     /// Reads the committed value for a user key.
     ///
@@ -30,13 +31,16 @@ impl PublishedValueHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.get(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.get(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 }
 
@@ -47,7 +51,7 @@ pub struct PublishedMapHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedMapHandle {
     /// Reads one committed map entry.
     ///
@@ -55,14 +59,17 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.get(key, map_key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.get(key, map_key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads several committed map entries in one batch.
@@ -71,25 +78,28 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the batch fails.
     pub async fn get_many(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<JsonMapValue>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.get_many(key, map_keys),
-        )
-        .await
-        .map(|values| {
-            values
-                .into_iter()
-                .map(|value| JsonMapValue {
-                    bytes: into_bytes(value),
-                })
-                .collect()
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.get_many(key, map_keys),
+            )
+            .await
+            .map(|values| {
+                values
+                    .into_iter()
+                    .map(|value| JsonMapValue {
+                        bytes: into_bytes(value),
+                    })
+                    .collect()
+            })
         })
+        .await
     }
 
     /// Reports whether a committed map entry exists.
@@ -98,16 +108,19 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn contains_key(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.contains_key(key, map_key),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_key(key, map_key),
+            )
+            .await
+        })
         .await
     }
 
@@ -117,16 +130,19 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the batch fails.
     pub async fn contains_many(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<bool>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.contains_many(key, map_keys),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_many(key, map_keys),
+            )
+            .await
+        })
         .await
     }
 
@@ -136,11 +152,11 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn is_empty(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
     }
 
     /// Opens a cursor over the entries that `query` selects.
@@ -183,7 +199,7 @@ pub struct PublishedSetHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedSetHandle {
     /// Reports whether a committed member exists.
     ///
@@ -191,12 +207,15 @@ impl PublishedSetHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn contains(
-        &self,
+        self: Arc<Self>,
         key: String,
         member: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.reader.contains(key, member)).await
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.contains(key, member)).await
+        })
+        .await
     }
 
     /// Reports whether each committed member exists, in request order.
@@ -205,16 +224,19 @@ impl PublishedSetHandle {
     ///
     /// Returns a categorized state error when the batch fails.
     pub async fn contains_many(
-        &self,
+        self: Arc<Self>,
         key: String,
         members: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<bool>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.contains_many(key, members),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_many(key, members),
+            )
+            .await
+        })
         .await
     }
 
@@ -224,11 +246,11 @@ impl PublishedSetHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn is_empty(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
     }
 
     /// Opens a cursor over the members that `query` selects.
@@ -253,7 +275,7 @@ pub struct PublishedDequeHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedDequeHandle {
     /// Reads one committed deque element.
     ///
@@ -261,15 +283,18 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let index = platform_index(index)?;
-        traced(&self.propagator, carrier, self.reader.get(key, index))
-            .await
-            .map(into_bytes)
+        run(async move {
+            let index = platform_index(index)?;
+            traced(&self.propagator, carrier, self.reader.get(key, index))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Returns the committed deque length.
@@ -278,13 +303,16 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn len(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<u64, FfiError> {
-        traced(&self.propagator, carrier, self.reader.len(key))
-            .await
-            .map(|length| length as u64)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.len(key))
+                .await
+                .map(|length| length as u64)
+        })
+        .await
     }
 
     /// Reports whether the committed deque is empty.
@@ -293,11 +321,11 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn is_empty(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
     }
 
     /// Reads the committed front element.
@@ -306,13 +334,16 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn peek_front(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.peek_front(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.peek_front(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads the committed back element.
@@ -321,13 +352,16 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn peek_back(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.peek_back(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.peek_back(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Opens a cursor over the elements that `query` selects.

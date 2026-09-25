@@ -14,6 +14,7 @@ use prosody::consumer::message::ConsumerMessage;
 
 use crate::error::FfiError;
 use crate::message::Message;
+use crate::runtime::run;
 use crate::state::{into_message, traced};
 
 /// Maximum number of immediately-ready scan items in one FFI vector.
@@ -50,7 +51,7 @@ pub struct JsonDequeCursor {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl JsonDequeCursor {
     /// Pulls the next immediately-ready chunk.
     ///
@@ -60,21 +61,29 @@ impl JsonDequeCursor {
     ///
     /// Returns a state error if the pull fails or the cursor is closed.
     pub async fn next_chunk(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<Vec<u8>>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+            )
+            .await
+            .map(|chunk| {
+                chunk.map(|items| items.into_iter().map(|payload| payload.bytes).collect())
+            })
+        })
         .await
-        .map(|chunk| chunk.map(|items| items.into_iter().map(|payload| payload.bytes).collect()))
     }
 
     /// Closes the cursor.
-    pub async fn close(&self) {
-        self.cursor.close().await;
+    pub async fn close(self: Arc<Self>) {
+        run(async move {
+            self.cursor.close().await;
+        })
+        .await;
     }
 }
 
@@ -85,7 +94,7 @@ pub struct JsonMapCursor {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl JsonMapCursor {
     /// Pulls the next immediately-ready chunk.
     ///
@@ -95,31 +104,37 @@ impl JsonMapCursor {
     ///
     /// Returns a state error if the pull fails or the cursor is closed.
     pub async fn next_chunk(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<JsonMapEntry>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
-        )
-        .await
-        .map(|chunk| {
-            chunk.map(|items| {
-                items
-                    .into_iter()
-                    .map(|(key, payload)| JsonMapEntry {
-                        key,
-                        bytes: payload.bytes,
-                    })
-                    .collect()
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+            )
+            .await
+            .map(|chunk| {
+                chunk.map(|items| {
+                    items
+                        .into_iter()
+                        .map(|(key, payload)| JsonMapEntry {
+                            key,
+                            bytes: payload.bytes,
+                        })
+                        .collect()
+                })
             })
         })
+        .await
     }
 
     /// Closes the cursor.
-    pub async fn close(&self) {
-        self.cursor.close().await;
+    pub async fn close(self: Arc<Self>) {
+        run(async move {
+            self.cursor.close().await;
+        })
+        .await;
     }
 }
 
@@ -130,7 +145,7 @@ pub struct MessageDequeCursor {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl MessageDequeCursor {
     /// Pulls the next immediately-ready chunk.
     ///
@@ -140,21 +155,27 @@ impl MessageDequeCursor {
     ///
     /// Returns a state error if the pull fails or the cursor is closed.
     pub async fn next_chunk(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<Arc<Message>>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+            )
+            .await
+            .map(|chunk| chunk.map(|items| items.into_iter().map(into_message).collect()))
+        })
         .await
-        .map(|chunk| chunk.map(|items| items.into_iter().map(into_message).collect()))
     }
 
     /// Closes the cursor.
-    pub async fn close(&self) {
-        self.cursor.close().await;
+    pub async fn close(self: Arc<Self>) {
+        run(async move {
+            self.cursor.close().await;
+        })
+        .await;
     }
 }
 
@@ -165,7 +186,7 @@ pub struct MessageMapCursor {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl MessageMapCursor {
     /// Pulls the next immediately-ready chunk.
     ///
@@ -175,31 +196,37 @@ impl MessageMapCursor {
     ///
     /// Returns a state error if the pull fails or the cursor is closed.
     pub async fn next_chunk(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<MessageMapEntry>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
-        )
-        .await
-        .map(|chunk| {
-            chunk.map(|items| {
-                items
-                    .into_iter()
-                    .map(|(key, message)| MessageMapEntry {
-                        key,
-                        message: into_message(message),
-                    })
-                    .collect()
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+            )
+            .await
+            .map(|chunk| {
+                chunk.map(|items| {
+                    items
+                        .into_iter()
+                        .map(|(key, message)| MessageMapEntry {
+                            key,
+                            message: into_message(message),
+                        })
+                        .collect()
+                })
             })
         })
+        .await
     }
 
     /// Closes the cursor.
-    pub async fn close(&self) {
-        self.cursor.close().await;
+    pub async fn close(self: Arc<Self>) {
+        run(async move {
+            self.cursor.close().await;
+        })
+        .await;
     }
 }
 
@@ -210,7 +237,7 @@ pub struct KeyCursor {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl KeyCursor {
     /// Pulls the next immediately-ready chunk.
     ///
@@ -220,19 +247,25 @@ impl KeyCursor {
     ///
     /// Returns a state error if the pull fails or the cursor is closed.
     pub async fn next_chunk(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<String>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.cursor.next_ready_chunk(READY_CHUNK_SIZE),
+            )
+            .await
+        })
         .await
     }
 
     /// Closes the cursor.
-    pub async fn close(&self) {
-        self.cursor.close().await;
+    pub async fn close(self: Arc<Self>) {
+        run(async move {
+            self.cursor.close().await;
+        })
+        .await;
     }
 }

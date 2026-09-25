@@ -13,6 +13,7 @@ use crate::cursor::{JsonMapCursor, KeyCursor, MessageMapCursor};
 use crate::error::FfiError;
 use crate::message::Message;
 use crate::query::KeyQuery;
+use crate::runtime::run;
 use crate::state::{StoreOutcome, into_bytes, into_message, reject_null, traced};
 
 /// One optional JSON value from an ordered batch read.
@@ -34,7 +35,7 @@ pub struct JsonMapStateHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl JsonMapStateHandle {
     /// Reads the JSON document bytes for `key`.
     ///
@@ -42,13 +43,16 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.get(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.state.get(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads several JSON values in request order.
@@ -57,20 +61,23 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get_many(
-        &self,
+        self: Arc<Self>,
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<JsonMapValue>, FfiError> {
-        traced(&self.propagator, carrier, self.state.get_many(keys))
-            .await
-            .map(|items| {
-                items
-                    .into_iter()
-                    .map(|item| JsonMapValue {
-                        bytes: into_bytes(item),
-                    })
-                    .collect()
-            })
+        run(async move {
+            traced(&self.propagator, carrier, self.state.get_many(keys))
+                .await
+                .map(|items| {
+                    items
+                        .into_iter()
+                        .map(|item| JsonMapValue {
+                            bytes: into_bytes(item),
+                        })
+                        .collect()
+                })
+        })
+        .await
     }
 
     /// Reports whether `key` exists.
@@ -79,11 +86,12 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains_key(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains_key(key)).await
+        run(async move { traced(&self.propagator, carrier, self.state.contains_key(key)).await })
+            .await
     }
 
     /// Opens a cursor over the live keys that `query` selects without reading
@@ -104,8 +112,11 @@ impl JsonMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.is_empty()).await
+    pub async fn is_empty(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.is_empty()).await }).await
     }
 
     /// Reports whether each key exists, in request order.
@@ -114,11 +125,12 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains_many(
-        &self,
+        self: Arc<Self>,
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<bool>, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains_many(keys)).await
+        run(async move { traced(&self.propagator, carrier, self.state.contains_many(keys)).await })
+            .await
     }
 
     /// Inserts or replaces one JSON document.
@@ -127,18 +139,21 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the document is `null` or the write fails.
     pub async fn set(
-        &self,
+        self: Arc<Self>,
         key: String,
         bytes: Vec<u8>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-        reject_null(
-            &payload,
-            &self.name,
-            "; use RemoveAsync to remove the entry",
-        )?;
-        traced(&self.propagator, carrier, self.state.set(key, payload)).await
+        run(async move {
+            let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
+            reject_null(
+                &payload,
+                &self.name,
+                "; use RemoveAsync to remove the entry",
+            )?;
+            traced(&self.propagator, carrier, self.state.set(key, payload)).await
+        })
+        .await
     }
 
     /// Removes `key`.
@@ -147,11 +162,11 @@ impl JsonMapStateHandle {
     ///
     /// Returns a state error if the removal fails.
     pub async fn remove(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.remove(key)).await
+        run(async move { traced(&self.propagator, carrier, self.state.remove(key)).await }).await
     }
 
     /// Removes every entry.
@@ -159,8 +174,8 @@ impl JsonMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the clear fails.
-    pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.clear()).await
+    pub async fn clear(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.clear()).await }).await
     }
 
     /// Opens a cursor over the live entries that `query` selects.
@@ -180,16 +195,25 @@ impl JsonMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
-        traced(&self.propagator, carrier, self.state.commit())
-            .await
-            .map(StoreOutcome::from)
+    pub async fn commit(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<StoreOutcome, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.commit())
+                .await
+                .map(StoreOutcome::from)
+        })
+        .await
     }
 
     /// Discards the buffered operations and reports whether any existed.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
-        let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await.into()
+    pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
+        run(async move {
+            let context = self.propagator.extract(&carrier);
+            self.state.rollback().with_context(context).await.into()
+        })
+        .await
     }
 }
 
@@ -200,7 +224,7 @@ pub struct MessageMapStateHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl MessageMapStateHandle {
     /// Reads the Kafka message for `key`.
     ///
@@ -208,13 +232,16 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.get(key))
-            .await
-            .map(|item| item.map(into_message))
+        run(async move {
+            traced(&self.propagator, carrier, self.state.get(key))
+                .await
+                .map(|item| item.map(into_message))
+        })
+        .await
     }
 
     /// Reads several Kafka messages in request order.
@@ -223,18 +250,21 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get_many(
-        &self,
+        self: Arc<Self>,
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<Option<Arc<Message>>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.get_many(keys))
-            .await
-            .map(|items| {
-                items
-                    .into_iter()
-                    .map(|item| item.map(into_message))
-                    .collect()
-            })
+        run(async move {
+            traced(&self.propagator, carrier, self.state.get_many(keys))
+                .await
+                .map(|items| {
+                    items
+                        .into_iter()
+                        .map(|item| item.map(into_message))
+                        .collect()
+                })
+        })
+        .await
     }
 
     /// Reports whether `key` exists without resolving its message.
@@ -243,11 +273,12 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains_key(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains_key(key)).await
+        run(async move { traced(&self.propagator, carrier, self.state.contains_key(key)).await })
+            .await
     }
 
     /// Opens a cursor over the live keys that `query` selects without resolving
@@ -268,8 +299,11 @@ impl MessageMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.is_empty()).await
+    pub async fn is_empty(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.is_empty()).await }).await
     }
 
     /// Reports whether each key exists, in request order.
@@ -278,11 +312,12 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn contains_many(
-        &self,
+        self: Arc<Self>,
         keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<bool>, FfiError> {
-        traced(&self.propagator, carrier, self.state.contains_many(keys)).await
+        run(async move { traced(&self.propagator, carrier, self.state.contains_many(keys)).await })
+            .await
     }
 
     /// Inserts or replaces one Kafka message.
@@ -291,16 +326,19 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the write fails.
     pub async fn set(
-        &self,
+        self: Arc<Self>,
         key: String,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.state.set(key, message.consumer_message()),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.state.set(key, message.consumer_message()),
+            )
+            .await
+        })
         .await
     }
 
@@ -310,11 +348,11 @@ impl MessageMapStateHandle {
     ///
     /// Returns a state error if the removal fails.
     pub async fn remove(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.remove(key)).await
+        run(async move { traced(&self.propagator, carrier, self.state.remove(key)).await }).await
     }
 
     /// Removes every entry.
@@ -322,8 +360,8 @@ impl MessageMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the clear fails.
-    pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.clear()).await
+    pub async fn clear(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.clear()).await }).await
     }
 
     /// Opens a cursor over the live entries that `query` selects.
@@ -343,15 +381,24 @@ impl MessageMapStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
-        traced(&self.propagator, carrier, self.state.commit())
-            .await
-            .map(StoreOutcome::from)
+    pub async fn commit(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<StoreOutcome, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.commit())
+                .await
+                .map(StoreOutcome::from)
+        })
+        .await
     }
 
     /// Discards the buffered operations and reports whether any existed.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
-        let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await.into()
+    pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
+        run(async move {
+            let context = self.propagator.extract(&carrier);
+            self.state.rollback().with_context(context).await.into()
+        })
+        .await
     }
 }

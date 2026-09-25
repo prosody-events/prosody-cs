@@ -340,7 +340,7 @@ visible, so no message is silently lost.
 
 ## Testing
 
-**ALL tests must be written in C#**, not Rust. The Rust FFI crate (`ffi/`) contains zero tests.
+**Write all tests in C#**, not Rust. The one exception is `ffi/src/runtime/tests.rs`. It checks which thread runs Rust code, and C# cannot see that.
 
 - Unit tests: `test/Prosody.Tests/Unit/`
 - Integration tests: `test/Prosody.Tests/Integration/`

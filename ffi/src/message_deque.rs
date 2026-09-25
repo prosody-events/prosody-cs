@@ -13,6 +13,7 @@ use crate::cursor::MessageDequeCursor;
 use crate::error::FfiError;
 use crate::message::Message;
 use crate::query::PositionQuery;
+use crate::runtime::run;
 use crate::state::{StoreOutcome, into_message, platform_index, traced};
 
 /// A Kafka-message deque state handle for one event.
@@ -22,17 +23,20 @@ pub struct MessageDequeStateHandle {
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl MessageDequeStateHandle {
     /// Returns the live element count.
     ///
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn len(&self, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
-        traced(&self.propagator, carrier, self.state.len())
-            .await
-            .map(|length| length as u64)
+    pub async fn len(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<u64, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.len())
+                .await
+                .map(|length| length as u64)
+        })
+        .await
     }
 
     /// Reports whether the deque has no live elements.
@@ -40,8 +44,11 @@ impl MessageDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the read fails.
-    pub async fn is_empty(&self, carrier: HashMap<String, String>) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.state.is_empty()).await
+    pub async fn is_empty(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.is_empty()).await }).await
     }
 
     /// Reads the Kafka message at `index`.
@@ -50,17 +57,20 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.state.get(platform_index(index)?),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.state.get(platform_index(index)?),
+            )
+            .await
+            .map(|item| item.map(into_message))
+        })
         .await
-        .map(|item| item.map(into_message))
     }
 
     /// Appends one Kafka message.
@@ -69,15 +79,18 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the write fails.
     pub async fn push_back(
-        &self,
+        self: Arc<Self>,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.state.push_back(message.consumer_message()),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.state.push_back(message.consumer_message()),
+            )
+            .await
+        })
         .await
     }
 
@@ -87,15 +100,18 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the write fails.
     pub async fn push_front(
-        &self,
+        self: Arc<Self>,
         message: Arc<Message>,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.state.push_front(message.consumer_message()),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.state.push_front(message.consumer_message()),
+            )
+            .await
+        })
         .await
     }
 
@@ -105,12 +121,15 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the operation fails.
     pub async fn pop_front(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.pop_front())
-            .await
-            .map(|item| item.map(into_message))
+        run(async move {
+            traced(&self.propagator, carrier, self.state.pop_front())
+                .await
+                .map(|item| item.map(into_message))
+        })
+        .await
     }
 
     /// Removes and returns the back Kafka message.
@@ -119,12 +138,15 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the operation fails.
     pub async fn pop_back(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.pop_back())
-            .await
-            .map(|item| item.map(into_message))
+        run(async move {
+            traced(&self.propagator, carrier, self.state.pop_back())
+                .await
+                .map(|item| item.map(into_message))
+        })
+        .await
     }
 
     /// Reads the front Kafka message.
@@ -133,12 +155,15 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn peek_front(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.peek_front())
-            .await
-            .map(|item| item.map(into_message))
+        run(async move {
+            traced(&self.propagator, carrier, self.state.peek_front())
+                .await
+                .map(|item| item.map(into_message))
+        })
+        .await
     }
 
     /// Reads the back Kafka message.
@@ -147,12 +172,15 @@ impl MessageDequeStateHandle {
     ///
     /// Returns a state error if the read fails.
     pub async fn peek_back(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Arc<Message>>, FfiError> {
-        traced(&self.propagator, carrier, self.state.peek_back())
-            .await
-            .map(|item| item.map(into_message))
+        run(async move {
+            traced(&self.propagator, carrier, self.state.peek_back())
+                .await
+                .map(|item| item.map(into_message))
+        })
+        .await
     }
 
     /// Removes every element.
@@ -160,8 +188,8 @@ impl MessageDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the clear fails.
-    pub async fn clear(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        traced(&self.propagator, carrier, self.state.clear()).await
+    pub async fn clear(self: Arc<Self>, carrier: HashMap<String, String>) -> Result<(), FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.clear()).await }).await
     }
 
     /// Opens a cursor over the live elements that `query` selects.
@@ -182,15 +210,24 @@ impl MessageDequeStateHandle {
     /// # Errors
     ///
     /// Returns a state error if the commit fails.
-    pub async fn commit(&self, carrier: HashMap<String, String>) -> Result<StoreOutcome, FfiError> {
-        traced(&self.propagator, carrier, self.state.commit())
-            .await
-            .map(StoreOutcome::from)
+    pub async fn commit(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<StoreOutcome, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.state.commit())
+                .await
+                .map(StoreOutcome::from)
+        })
+        .await
     }
 
     /// Discards the buffered operations and reports whether any existed.
-    pub async fn rollback(&self, carrier: HashMap<String, String>) -> StoreOutcome {
-        let context = self.propagator.extract(&carrier);
-        self.state.rollback().with_context(context).await.into()
+    pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
+        run(async move {
+            let context = self.propagator.extract(&carrier);
+            self.state.rollback().with_context(context).await.into()
+        })
+        .await
     }
 }
