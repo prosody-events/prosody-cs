@@ -1,204 +1,17 @@
-//! FFI type definitions for the Prosody C# client.
-//!
-//! This module defines configuration and data types exposed to C# via `UniFFI`.
-//! Types are designed to be idiomatic for C# consumers while mapping cleanly
-//! to the underlying Prosody builder pattern.
-//!
-//! # Design Principles
-//!
-//! - **Idiomatic C# types**: [`Duration`] maps to `TimeSpan`, `f64` to
-//!   `double`, enums to enums
-//! - **Optional fields with defaults**: `None` means "use environment variable
-//!   or library default"
-//! - **Named parameters**: C# consumers can specify only the fields they want
-//!   to override
+//! The [`ClientOptions`] record that configures a Prosody client.
 
 use std::time::Duration;
 
-/// Controls how a new span relates to a propagated OpenTelemetry context.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
-pub enum SpanRelation {
-    /// The propagated span becomes this span's `OTel` parent (child-of
-    /// relationship).
-    #[default]
-    Child,
-    /// The propagated span is added as an `OTel` link; this span starts a new
-    /// trace root (follows-from relationship).
-    FollowsFrom,
-}
-
-/// Determines how the client handles message processing failures.
-///
-/// Each mode offers different trade-offs between reliability and throughput:
-///
-/// - [`Pipeline`][Self::Pipeline]: Maximum reliability with automatic deferral
-/// - [`LowLatency`][Self::LowLatency]: Bounded retries with dead-letter queue
-/// - [`BestEffort`][Self::BestEffort]: Fire-and-forget for non-critical
-///   workloads
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
-pub enum ClientMode {
-    /// Retries failed messages indefinitely using deferral and monopolization
-    /// detection.
-    ///
-    /// This is the default mode for production workloads where no message loss
-    /// is acceptable. Failed messages are deferred and retried with exponential
-    /// backoff. Hot keys that monopolize processing are automatically
-    /// throttled.
-    #[default]
-    Pipeline,
-
-    /// Retries a bounded number of times, then sends to a dead-letter topic.
-    ///
-    /// Use when you need predictable latency and can reprocess failures later.
-    /// Requires [`ClientOptions::failure_topic`] to be set.
-    LowLatency,
-
-    /// Logs failures and moves on without retrying.
-    ///
-    /// Use for development, testing, or workloads where occasional message
-    /// loss is acceptable.
-    BestEffort,
-}
-
-/// Represents the current lifecycle state of a consumer.
-///
-/// The normal lifecycle progresses linearly:
-/// [`Unconfigured`][Self::Unconfigured] -> [`Configured`][Self::Configured] ->
-/// [`Running`][Self::Running].
-///
-/// If the consumer configuration fails during build (e.g. invalid mode,
-/// missing required fields), the state transitions to
-/// [`ConfigurationFailed`][Self::ConfigurationFailed] instead of
-/// [`Configured`][Self::Configured].
-#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Enum)]
-pub enum ConsumerState {
-    /// Initial state before configuration is applied.
-    #[default]
-    Unconfigured,
-
-    /// Configuration applied but consumption not yet started.
-    Configured,
-
-    /// Actively polling and processing messages.
-    Running,
-
-    /// The client is shut down.
-    Shutdown,
-
-    /// Configuration failed during build.
-    ConfigurationFailed {
-        /// The error message describing the configuration failure.
-        message: String,
-    },
-}
-
-/// The kind of a keyed-state collection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum StateKind {
-    /// A single-value collection.
-    Value,
-    /// A `String`-keyed ordered map.
-    Map,
-    /// A deque.
-    Deque,
-    /// A presence-only ordered set of `String` members. Its payload must be
-    /// [`StatePayload::Json`] because a set stores no items.
-    Set,
-}
-
-/// The item payload of a keyed-state collection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum StatePayload {
-    /// JSON documents crossing as raw bytes.
-    Json,
-    /// The full Kafka message the handler received.
-    Message,
-}
-
-/// Declares one keyed-state collection to register before subscribe.
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct StateCollectionConfig {
-    /// The collection name. Must be non-empty and unique within the client's
-    /// definition set.
-    pub name: String,
-
-    /// The collection kind.
-    pub kind: StateKind,
-
-    /// The item payload.
-    pub payload: StatePayload,
-
-    /// Optional per-write TTL. Must be a whole number of seconds of at least 1
-    /// (fractional and sub-second values are rejected). The Cassandra TTL limit applies.
-    #[uniffi(default = None)]
-    pub ttl: Option<Duration>,
-
-    /// Optional opt-out of transactional staging (read-uncommitted, at-least
-    /// once). Defaults to transactional.
-    #[uniffi(default = None)]
-    pub read_uncommitted: Option<bool>,
-
-    /// Optional map or set keyset bound (`0..=4096`; default 128 core-side;
-    /// `0` disables ordered-scan tracking). Invalid on value or deque
-    /// collections.
-    #[uniffi(default = None)]
-    pub keyset_limit: Option<u32>,
-
-    /// Optional deque-only capacity bound (positive). Runtime-only — never
-    /// persisted, not part of identity; enforced lazily on push. Invalid on
-    /// value, map, or set collections.
-    #[uniffi(default = None)]
-    pub capacity: Option<u32>,
-
-    /// Whether owners advertise this collection for cross-group reads.
-    #[uniffi(default = false)]
-    pub published: bool,
-
-    /// Per-reader cache TTL override.
-    #[uniffi(default = None)]
-    pub read_cache_ttl: Option<Duration>,
-
-    /// Whether readers bypass their cache for this collection.
-    #[uniffi(default = false)]
-    pub read_cache_disabled: bool,
-}
+use super::{ClientMode, SpanRelation, StateCollectionConfig};
 
 /// Configuration options for the Prosody client.
 ///
-/// All fields are optional and default to `null` in C#, meaning "use the
-/// environment variable or library default". Configure only the settings you
-/// need to override.
-///
-/// # Sections
-///
-/// Options are grouped by functionality:
-/// - **Core**: Bootstrap servers, group ID, topics, operating mode
-/// - **Consumer**: Concurrency, timeouts, polling intervals
-/// - **Producer**: Send timeout
-/// - **Retry**: Attempt limits and backoff configuration
-/// - **Deferral**: Pipeline mode message deferral settings
-/// - **Monopolization**: Hot key detection and throttling
-/// - **Scheduler**: Fair scheduling weights and limits
-/// - **Cassandra**: Timer storage backend configuration
-///
-/// # Example (C#)
-///
-/// ```csharp
-/// var options = new ClientOptions(
-///     bootstrapServers: new[] { "localhost:9092" },
-///     groupId: "my-app",
-///     subscribedTopics: new[] { "my-topic" },
-///     // Override only what you need:
-///     stallThreshold: TimeSpan.FromMinutes(5),
-///     mode: ClientMode.LowLatency,
-///     failureTopic: "dead-letters"
-/// );
-/// ```
+/// The C# `Prosody.Configuration.ClientOptions` class fills this record. Every
+/// field is optional. `None` means "use the environment variable or library
+/// default". Comments group the fields by subsystem.
 #[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct ClientOptions {
-    // ========================================================================
     // Core options
-    // ========================================================================
     /// Kafka bootstrap servers for initial cluster connection.
     ///
     /// Falls back to `PROSODY_BOOTSTRAP_SERVERS` environment variable if unset.
@@ -216,8 +29,6 @@ pub struct ClientOptions {
     /// Topics to subscribe to for message consumption.
     ///
     /// Falls back to `PROSODY_SUBSCRIBED_TOPICS` environment variable if unset.
-    ///
-    /// **Example:** `["my-topic"]` or `["topic1", "topic2"]`
     #[uniffi(default = None)]
     pub subscribed_topics: Option<Vec<String>>,
 
@@ -229,10 +40,7 @@ pub struct ClientOptions {
 
     /// Event type prefixes to process; `None` allows all events.
     ///
-    /// Messages with event types not matching any prefix are skipped.
-    ///
-    /// **Example:** `["user.", "account."]` processes only events starting
-    /// with those prefixes.
+    /// A message whose event type matches no prefix is skipped.
     #[uniffi(default = None)]
     pub allowed_events: Option<Vec<String>>,
 
@@ -281,9 +89,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub peer_registration_ttl: Option<Duration>,
 
-    // ========================================================================
     // Consumer options
-    // ========================================================================
     /// Maximum messages processed concurrently.
     ///
     /// **Default:** `32`
@@ -300,10 +106,8 @@ pub struct ClientOptions {
 
     /// Global shared cache capacity across all partitions for deduplication.
     ///
-    /// Set to `0` to disable the deduplication middleware entirely.
-    ///
-    /// Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE` environment variable if
-    /// unset.
+    /// Must be greater than `0`. Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE`
+    /// if unset.
     ///
     /// **Default:** `8192`
     #[uniffi(default = None)]
@@ -393,9 +197,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub slab_size: Option<Duration>,
 
-    // ========================================================================
     // Producer options
-    // ========================================================================
     /// Maximum time to wait for message delivery acknowledgment.
     ///
     /// Messages not acknowledged within this duration are considered failed.
@@ -404,9 +206,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub send_timeout: Option<Duration>,
 
-    // ========================================================================
     // Retry options
-    // ========================================================================
     /// Low-latency retries before routing to the failure topic.
     ///
     /// Set to `0` to route the initial low-latency failure without retrying.
@@ -440,9 +240,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub failure_topic: Option<String>,
 
-    // ========================================================================
     // Deferral options (Pipeline mode)
-    // ========================================================================
     /// Enables message deferral for transient failures.
     ///
     /// When enabled, messages that fail processing are persisted and retried
@@ -467,14 +265,11 @@ pub struct ClientOptions {
 
     /// Failure rate threshold for disabling deferral.
     ///
-    /// When the failure rate within
+    /// Deferral pauses when the failure rate within
     /// [`defer_failure_window`][Self::defer_failure_window] exceeds this
-    /// fraction, deferral is temporarily disabled to prevent
-    /// cascading failures.
+    /// fraction. This prevents cascading failures.
     ///
-    /// **Range:** `0.0` to `1.0`
-    ///
-    /// **Default:** `0.9` (90%)
+    /// **Range:** `0.0` to `1.0`. **Default:** `0.9` (90%)
     #[uniffi(default = None)]
     pub defer_failure_threshold: Option<f64>,
 
@@ -484,18 +279,14 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub defer_failure_window: Option<Duration>,
 
-    /// Maximum deferred store cache entries per Cassandra defer store.
-    ///
-    /// Controls the size of the built-in write-through cache for deferred store
-    /// entries (next offset/timer + retry count).
+    /// Maximum entries in the write-through cache of each Cassandra defer
+    /// store. An entry holds the next offset or timer and the retry count.
     ///
     /// **Default:** `8192`
     #[uniffi(default = None)]
     pub defer_store_cache_size: Option<u32>,
 
-    // ========================================================================
     // Kafka message loader options (all modes)
-    // ========================================================================
     /// Maximum messages retained by the shared Kafka loader.
     ///
     /// The loader evicts messages when it reaches this bound.
@@ -510,17 +301,14 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub loader_seek_timeout: Option<Duration>,
 
-    /// Sequential-read distance before the loader seeks.
-    ///
-    /// Advanced tuning parameter; rarely needs adjustment.
+    /// Sequential-read distance before the loader seeks. Rarely needs
+    /// adjustment.
     ///
     /// **Default:** `100`
     #[uniffi(default = None)]
     pub loader_discard_threshold: Option<u32>,
 
-    // ========================================================================
     // Monopolization detection options (Pipeline mode)
-    // ========================================================================
     /// Enables hot key detection and throttling.
     ///
     /// When enabled, keys consuming excessive processing time are temporarily
@@ -536,9 +324,7 @@ pub struct ClientOptions {
     /// Keys using more than this fraction of total processing time within
     /// [`monopolization_window`][Self::monopolization_window] are throttled.
     ///
-    /// **Range:** `0.0` to `1.0`
-    ///
-    /// **Default:** `0.9` (90%)
+    /// **Range:** `0.0` to `1.0`. **Default:** `0.9` (90%)
     #[uniffi(default = None)]
     pub monopolization_threshold: Option<f64>,
 
@@ -557,16 +343,12 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub monopolization_cache_size: Option<u32>,
 
-    // ========================================================================
     // Fair scheduling options (all modes)
-    // ========================================================================
     /// Fraction of processing capacity reserved for retry attempts.
     ///
     /// Ensures retries make progress even under high load from new messages.
     ///
-    /// **Range:** `0.0` to `1.0`
-    ///
-    /// **Default:** `0.3` (30%)
+    /// **Range:** `0.0` to `1.0`. **Default:** `0.3` (30%)
     #[uniffi(default = None)]
     pub scheduler_failure_weight: Option<f64>,
 
@@ -591,15 +373,11 @@ pub struct ClientOptions {
 
     /// Maximum distinct keys tracked by the fair scheduler.
     ///
-    /// Limits memory usage for scheduling state.
-    ///
     /// **Default:** `8192`
     #[uniffi(default = None)]
     pub scheduler_cache_size: Option<u32>,
 
-    // ========================================================================
     // Cassandra options (required for timers in non-mock mode)
-    // ========================================================================
     /// Cassandra contact nodes for timer storage.
     ///
     /// Required for deferral functionality when [`mock`][Self::mock] is
@@ -643,9 +421,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub cassandra_retention: Option<Duration>,
 
-    // ========================================================================
     // Telemetry options
-    // ========================================================================
     /// Kafka topic to produce telemetry events to.
     ///
     /// Falls back to `PROSODY_TELEMETRY_TOPIC` environment variable if unset.
@@ -682,9 +458,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub timer_spans: Option<SpanRelation>,
 
-    // ========================================================================
     // Keyed-state options
-    // ========================================================================
     /// Keyed-state collections to register before subscribe.
     ///
     /// Each entry declares one collection by name, kind, and payload. Duplicate
@@ -720,22 +494,4 @@ pub struct ClientOptions {
     /// Subsystem under which published collections are advertised.
     #[uniffi(default = None)]
     pub subsystem: Option<String>,
-}
-
-/// Optional event metadata supplied by the caller on send.
-///
-/// Both fields are optional. `event_id`, when present, participates in
-/// producer idempotence dedup. `event_type` is carried alongside the payload
-/// for downstream consumers that filter on `allowed_events`. Pulling these
-/// from the typed object on the C# side avoids re-parsing the JSON payload
-/// in Rust.
-#[derive(Debug, Clone, Default, uniffi::Record)]
-pub struct EventMetadata {
-    /// Stable identifier for the event, used by producer idempotence dedup.
-    #[uniffi(default = None)]
-    pub event_id: Option<String>,
-
-    /// Event-type tag, used by consumer-side `allowed_events` filtering.
-    #[uniffi(default = None)]
-    pub event_type: Option<String>,
 }
