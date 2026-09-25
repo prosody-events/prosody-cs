@@ -11,9 +11,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use tracing::{Instrument, debug, info_span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
+use tracing::{Instrument, info_span};
 
 use prosody::codec::BinaryPayload;
 use prosody::consumer::DemandType as CoreDemandType;
@@ -27,6 +26,7 @@ use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
 use crate::message_deque::MessageDequeStateHandle;
 use crate::runtime::run;
 use crate::set::SetStateHandle;
+use crate::state::with_parent;
 use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 
 /// The demand that one handler call serves.
@@ -132,16 +132,9 @@ impl Context {
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.propagator.extract(&carrier);
-
             let compact_time = CompactDateTime::try_from(time)?;
-
-            // Create span with extracted context as parent
             let span = info_span!("Schedule", time = %compact_time);
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
+            let span = with_parent(span, &self.propagator, &carrier);
 
             self.inner
                 .schedule(compact_time, TimerType::Application)
@@ -169,16 +162,9 @@ impl Context {
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.propagator.extract(&carrier);
-
             let compact_time = CompactDateTime::try_from(time)?;
-
-            // Create span with extracted context as parent
             let span = info_span!("ClearAndSchedule", time = %compact_time);
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
+            let span = with_parent(span, &self.propagator, &carrier);
 
             self.inner
                 .clear_and_schedule(compact_time, TimerType::Application)
@@ -205,16 +191,9 @@ impl Context {
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.propagator.extract(&carrier);
-
             let compact_time = CompactDateTime::try_from(time)?;
-
-            // Create span with extracted context as parent
             let span = info_span!("Unschedule", time = %compact_time);
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
+            let span = with_parent(span, &self.propagator, &carrier);
 
             self.inner
                 .unschedule(compact_time, TimerType::Application)
@@ -239,14 +218,7 @@ impl Context {
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.propagator.extract(&carrier);
-
-            // Create span with extracted context as parent
-            let span = info_span!("ClearScheduled");
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
+            let span = with_parent(info_span!("ClearScheduled"), &self.propagator, &carrier);
 
             self.inner
                 .clear_scheduled(TimerType::Application)
@@ -270,14 +242,7 @@ impl Context {
         carrier: HashMap<String, String>,
     ) -> Result<Vec<SystemTime>, FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.propagator.extract(&carrier);
-
-            // Create span with extracted context as parent
-            let span = info_span!("Scheduled");
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
+            let span = with_parent(info_span!("Scheduled"), &self.propagator, &carrier);
 
             Ok(self
                 .inner
@@ -381,8 +346,8 @@ impl Context {
         name: String,
     ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
         let handle = self.inner.message_value_state(&name)?;
-        // Consume each message collection name after lookup. This keeps the by-value
-        // FFI argument without a lint exception.
+        // Consume each message collection name after lookup. This keeps the
+        // by-value FFI argument without a lint exception.
         drop(name);
         Ok(Arc::new(MessageValueStateHandle {
             state: handle,

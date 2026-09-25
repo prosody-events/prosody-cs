@@ -5,12 +5,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use opentelemetry::propagation::TextMapPropagator;
 use tracing::field::Empty;
-use tracing::{Instrument, debug, info_span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing::{Instrument, info_span};
 
-use crate::cancellation::CancellationSignal;
+use crate::cancellation::{CancellationSignal, cancellable};
 use crate::config::{
     build_cassandra_config, build_consumer_builders, build_producer_config, get_mode,
 };
@@ -21,31 +19,18 @@ use crate::handler::{
 use crate::logging::ensure_tracing_initialized;
 use crate::published::{
     PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
+    deque_handle, map_handle, read_cache, set_handle, value_handle,
 };
 use crate::runtime::run;
+use crate::state::with_parent;
 use crate::types::{ClientOptions, ConsumerState, EventMetadata};
 use prosody::codec::BinaryPayload;
-use prosody::high_level::erased::{
-    ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
-};
+use prosody::high_level::erased::{ErasedConsumerState, SharedHighLevelClient, new_erased};
 use prosody::propagator::new_propagator;
-use prosody::requester::ResponseError;
-use prosody::subsystem::SubsystemName;
 
 mod outcome;
 
-use outcome::native_request_result;
-
-fn read_cache(ttl: Option<Duration>, disabled: bool) -> Result<ErasedReadCache, FfiError> {
-    match (ttl, disabled) {
-        (Some(_), true) => Err(FfiError::PermanentState(
-            "read cache cannot set both a TTL and disabled".to_owned(),
-        )),
-        (None, true) => Ok(ErasedReadCache::Disabled),
-        (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
-        (None, false) => Ok(ErasedReadCache::Inherit),
-    }
-}
+use outcome::{native_request_results, subsystem_names};
 
 /// Native Prosody client exposed to C# via `UniFFI`.
 ///
@@ -145,15 +130,9 @@ impl ProsodyClient {
         cache_disabled: bool,
     ) -> Result<Arc<PublishedValueHandle>, FfiError> {
         run(async move {
-            let reader = self
-                .client
-                .value_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-                .await
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            Ok(Arc::new(PublishedValueHandle {
-                reader,
-                propagator: Arc::new(new_propagator()),
-            }))
+            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let reader = self.client.value_state(subsystem, name, cache).await?;
+            Ok(value_handle(reader))
         })
         .await
     }
@@ -171,15 +150,9 @@ impl ProsodyClient {
         cache_disabled: bool,
     ) -> Result<Arc<PublishedMapHandle>, FfiError> {
         run(async move {
-            let reader = self
-                .client
-                .map_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-                .await
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            Ok(Arc::new(PublishedMapHandle {
-                reader,
-                propagator: Arc::new(new_propagator()),
-            }))
+            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let reader = self.client.map_state(subsystem, name, cache).await?;
+            Ok(map_handle(reader))
         })
         .await
     }
@@ -197,15 +170,9 @@ impl ProsodyClient {
         cache_disabled: bool,
     ) -> Result<Arc<PublishedSetHandle>, FfiError> {
         run(async move {
-            let reader = self
-                .client
-                .set_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-                .await
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            Ok(Arc::new(PublishedSetHandle {
-                reader,
-                propagator: Arc::new(new_propagator()),
-            }))
+            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let reader = self.client.set_state(subsystem, name, cache).await?;
+            Ok(set_handle(reader))
         })
         .await
     }
@@ -223,15 +190,9 @@ impl ProsodyClient {
         cache_disabled: bool,
     ) -> Result<Arc<PublishedDequeHandle>, FfiError> {
         run(async move {
-            let reader = self
-                .client
-                .deque_state(subsystem, name, read_cache(cache_ttl, cache_disabled)?)
-                .await
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            Ok(Arc::new(PublishedDequeHandle {
-                reader,
-                propagator: Arc::new(new_propagator()),
-            }))
+            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let reader = self.client.deque_state(subsystem, name, cache).await?;
+            Ok(deque_handle(reader))
         })
         .await
     }
@@ -324,41 +285,17 @@ impl ProsodyClient {
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Extract OpenTelemetry context from carrier passed by C#
-            let context = self.client.propagator().extract(&carrier);
-
-            // Create span with extracted context as parent
             let span = info_span!("csharp-Send", %topic, %key, aborted = Empty);
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
-
-            let binary_payload =
-                BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
-
-            // Send the message with tracing, with optional cancellation
-            let send_future = self
+            let span = with_parent(span, self.client.propagator(), &carrier);
+            let payload = BinaryPayload::new(payload, metadata.event_id, metadata.event_type);
+            let send = self
                 .client
-                .send(topic.as_str().into(), key, binary_payload)
+                .send(topic.as_str().into(), key, payload)
                 .instrument(span.clone());
 
-            if let Some(signal) = cancel {
-                tokio::select! {
-                    result = send_future => {
-                        span.record("aborted", false);
-                        result?;
-                    }
-                    () = signal.cancelled() => {
-                        span.record("aborted", true);
-                        return Err(FfiError::Cancelled);
-                    }
-                }
-            } else {
-                send_future.await?;
-                span.record("aborted", false);
-            }
-
-            Ok(())
+            let result = cancellable(cancel, send).await;
+            span.record("aborted", matches!(result, Err(FfiError::Cancelled)));
+            result
         })
         .await
     }
@@ -377,28 +314,16 @@ impl ProsodyClient {
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<(), FfiError> {
         run(async move {
-            let context = self.client.propagator().extract(&carrier);
             let span = info_span!("csharp-Excise", %topic, %key, aborted = Empty);
-            if let Err(err) = span.set_parent(context) {
-                debug!("failed to set parent span: {err:#}");
-            }
-            let excise_future = self
+            let span = with_parent(span, self.client.propagator(), &carrier);
+            let excise = self
                 .client
                 .excise(topic.as_str().into(), key)
                 .instrument(span.clone());
-            if let Some(signal) = cancel {
-                tokio::select! {
-                    result = excise_future => { span.record("aborted", false); result?; }
-                    () = signal.cancelled() => {
-                        span.record("aborted", true);
-                        return Err(FfiError::Cancelled);
-                    }
-                }
-            } else {
-                excise_future.await?;
-                span.record("aborted", false);
-            }
-            Ok(())
+
+            let result = cancellable(cancel, excise).await;
+            span.record("aborted", matches!(result, Err(FfiError::Cancelled)));
+            result
         })
         .await
     }
@@ -414,17 +339,9 @@ impl ProsodyClient {
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
         run(async move {
-            let subsystems = request
-                .subsystems
-                .into_iter()
-                .map(SubsystemName::try_new)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            let context = self.client.propagator().extract(&request.carrier);
+            let subsystems = subsystem_names(request.subsystems)?;
             let span = info_span!("csharp-request", topic = %request.topic, key = %request.key);
-            if let Err(error) = span.set_parent(context) {
-                debug!("failed to set parent span: {error:#}");
-            }
+            let span = with_parent(span, self.client.propagator(), &request.carrier);
             let payload = BinaryPayload::new(
                 request.payload,
                 request.metadata.event_id,
@@ -441,18 +358,10 @@ impl ProsodyClient {
                     request.timeout,
                 )
                 .instrument(span);
-            let results = if let Some(signal) = cancel {
-                tokio::select! {
-                    result = request => result?,
-                    () = signal.cancelled() => return Err(FfiError::Cancelled),
-                }
-            } else {
-                request.await?
-            };
-            Ok(results
-                .into_iter()
-                .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
-                .collect())
+
+            cancellable(cancel, request)
+                .await
+                .map(native_request_results)
         })
         .await
     }
@@ -468,18 +377,10 @@ impl ProsodyClient {
         cancel: Option<Arc<CancellationSignal>>,
     ) -> Result<HashMap<String, NativeRequestResult>, FfiError> {
         run(async move {
-            let subsystems = request
-                .subsystems
-                .into_iter()
-                .map(SubsystemName::try_new)
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?;
-            let context = self.client.propagator().extract(&request.carrier);
+            let subsystems = subsystem_names(request.subsystems)?;
             let span =
                 info_span!("csharp-request-excise", topic = %request.topic, key = %request.key);
-            if let Err(error) = span.set_parent(context) {
-                debug!("failed to set parent span: {error:#}");
-            }
+            let span = with_parent(span, self.client.propagator(), &request.carrier);
             let request = self
                 .client
                 .request_excise(
@@ -490,18 +391,10 @@ impl ProsodyClient {
                     request.timeout,
                 )
                 .instrument(span);
-            let results = if let Some(signal) = cancel {
-                tokio::select! {
-                    result = request => result?,
-                    () = signal.cancelled() => return Err(FfiError::Cancelled),
-                }
-            } else {
-                request.await?
-            };
-            Ok(results
-                .into_iter()
-                .map(|(subsystem, result)| (subsystem.to_string(), native_request_result(result)))
-                .collect())
+
+            cancellable(cancel, request)
+                .await
+                .map(native_request_results)
         })
         .await
     }

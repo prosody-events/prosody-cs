@@ -1,4 +1,4 @@
-//! Shared keyed-state types and validation.
+//! Shared keyed-state types, validation, and trace helpers.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -9,6 +9,8 @@ use opentelemetry::trace::FutureExt;
 use prosody::codec::{BinaryPayload, ErasedStateCodec};
 use prosody::consumer::message::ConsumerMessage;
 use prosody::state::{Direction, StoreOutcome as CoreStoreOutcome};
+use tracing::{Span, debug};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::error::FfiError;
 use crate::message::Message;
@@ -62,6 +64,20 @@ where
         .with_context(propagator.extract(&carrier))
         .await
         .map_err(Into::into)
+}
+
+/// Makes the caller's trace context the parent of `span` and returns `span`.
+///
+/// A failure to set the parent is logged at debug level. The span stays usable.
+pub(crate) fn with_parent(
+    span: Span,
+    propagator: &TextMapCompositePropagator,
+    carrier: &HashMap<String, String>,
+) -> Span {
+    if let Err(error) = span.set_parent(propagator.extract(carrier)) {
+        debug!("failed to set parent span: {error:#}");
+    }
+    span
 }
 
 /// Returns the bytes from an optional binary payload.

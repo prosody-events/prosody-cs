@@ -5,17 +5,20 @@
 //! cooperative cancellation: the caller requests cancellation, and the async
 //! operation checks for that request at appropriate points.
 
+use std::future::Future;
 use std::sync::Arc;
 
+use tokio::select;
 use tokio_util::sync::CancellationToken;
 
+use crate::error::FfiError;
 use crate::runtime::run;
 
 /// A thread-safe signal for cooperative cancellation of async operations.
 ///
 /// Created by C# code and passed to Rust async methods. The C# caller can
-/// invoke [`cancel`](Self::cancel) at any time to request cancellation, and
-/// Rust code uses [`cancelled`](Self::cancelled) to await that signal.
+/// invoke [`cancel`](Self::cancel) at any time to request cancellation.
+/// Rust code passes the signal to `cancellable` to stop its work.
 #[derive(uniffi::Object)]
 pub struct CancellationSignal {
     token: CancellationToken,
@@ -51,12 +54,32 @@ impl CancellationSignal {
     /// Waits until cancellation is signaled.
     ///
     /// Returns immediately if [`cancel`](Self::cancel) has already been called.
-    /// Typically used in a `tokio::select!` branch to abort work when
-    /// cancellation is requested.
     pub async fn cancelled(self: Arc<Self>) {
         run(async move {
             self.token.cancelled().await;
         })
         .await;
+    }
+}
+
+/// Runs `future` until it completes or `cancel` fires.
+///
+/// Returns [`FfiError::Cancelled`] only when `cancel` fires first. Without a
+/// signal, the future runs to completion.
+pub(crate) async fn cancellable<F, T, E>(
+    cancel: Option<Arc<CancellationSignal>>,
+    future: F,
+) -> Result<T, FfiError>
+where
+    F: Future<Output = Result<T, E>>,
+    E: Into<FfiError>,
+{
+    let Some(signal) = cancel else {
+        return future.await.map_err(Into::into);
+    };
+
+    select! {
+        result = future => result.map_err(Into::into),
+        () = signal.token.cancelled() => Err(FfiError::Cancelled),
     }
 }

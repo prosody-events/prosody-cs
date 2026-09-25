@@ -19,7 +19,7 @@ use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
-use prosody::high_level::erased::ErasedClientBuildError;
+use prosody::high_level::erased::{ErasedClientBuildError, ErasedReaderBuildError};
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::requester::RequestError;
@@ -178,6 +178,13 @@ impl From<ErasedStateError> for FfiError {
             ErasedCategory::Permanent => Self::PermanentState(error.message().to_owned()),
             ErasedCategory::Transient => Self::TransientState(error.message().to_owned()),
         }
+    }
+}
+
+/// Classifies a failure to open a published reader as permanent.
+impl From<ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>> for FfiError {
+    fn from(error: ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>) -> Self {
+        Self::PermanentState(error.to_string())
     }
 }
 

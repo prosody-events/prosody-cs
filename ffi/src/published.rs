@@ -2,12 +2,14 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
-    SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
+    ErasedReadCache, SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
 };
+use prosody::propagator::new_propagator;
 
 use crate::cursor::{JsonDequeCursor, JsonMapCursor, KeyCursor};
 use crate::error::FfiError;
@@ -19,8 +21,8 @@ use crate::state::{into_bytes, platform_index, traced};
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
 pub struct PublishedValueHandle {
-    pub(crate) reader: SharedValueReader<BinaryPayload>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedValueReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export]
@@ -47,8 +49,8 @@ impl PublishedValueHandle {
 #[derive(uniffi::Object)]
 /// Reads a published map collection.
 pub struct PublishedMapHandle {
-    pub(crate) reader: SharedMapReader<BinaryPayload>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedMapReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export]
@@ -195,8 +197,8 @@ impl PublishedMapHandle {
 #[derive(uniffi::Object)]
 /// Reads a published set collection.
 pub struct PublishedSetHandle {
-    pub(crate) reader: SharedSetReader,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedSetReader,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export]
@@ -271,8 +273,8 @@ impl PublishedSetHandle {
 #[derive(uniffi::Object)]
 /// Reads a published deque collection.
 pub struct PublishedDequeHandle {
-    pub(crate) reader: SharedDequeReader<BinaryPayload>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedDequeReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
 #[uniffi::export]
@@ -386,4 +388,46 @@ impl PublishedDequeHandle {
             propagator: Arc::clone(&self.propagator),
         }))
     }
+}
+
+/// Chooses the read cache for a published reader.
+///
+/// Returns a permanent state error when the caller sets both a TTL and
+/// `disabled`.
+pub(crate) fn read_cache(
+    ttl: Option<Duration>,
+    disabled: bool,
+) -> Result<ErasedReadCache, FfiError> {
+    match (ttl, disabled) {
+        (Some(_), true) => Err(FfiError::PermanentState(
+            "read cache cannot set both a TTL and disabled".to_owned(),
+        )),
+        (None, true) => Ok(ErasedReadCache::Disabled),
+        (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
+        (None, false) => Ok(ErasedReadCache::Inherit),
+    }
+}
+
+/// Wraps a published value reader for FFI.
+pub(crate) fn value_handle(reader: SharedValueReader<BinaryPayload>) -> Arc<PublishedValueHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedValueHandle { reader, propagator })
+}
+
+/// Wraps a published map reader for FFI.
+pub(crate) fn map_handle(reader: SharedMapReader<BinaryPayload>) -> Arc<PublishedMapHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedMapHandle { reader, propagator })
+}
+
+/// Wraps a published set reader for FFI.
+pub(crate) fn set_handle(reader: SharedSetReader) -> Arc<PublishedSetHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedSetHandle { reader, propagator })
+}
+
+/// Wraps a published deque reader for FFI.
+pub(crate) fn deque_handle(reader: SharedDequeReader<BinaryPayload>) -> Arc<PublishedDequeHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedDequeHandle { reader, propagator })
 }
