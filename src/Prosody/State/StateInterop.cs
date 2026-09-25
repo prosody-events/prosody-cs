@@ -116,7 +116,8 @@ internal static class StateInterop
     /// <summary>Creates a fresh trace-propagation carrier for one native operation.</summary>
     internal static Dictionary<string, string> CreateCarrier()
     {
-        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Standard propagation adds at most traceparent, tracestate, and baggage.
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         return carrier;
     }
