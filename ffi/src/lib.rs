@@ -36,6 +36,8 @@
 //! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
 //! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
 //! - [`message`]: Kafka message wrapper for C# consumption
+//! - [`query`]: Keyed-state query settings
+//! - [`set`]: Set state handle
 //! - [`state`]: Shared keyed-state types and validation
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
@@ -61,6 +63,9 @@ pub mod map;
 pub mod message;
 pub mod message_deque;
 pub mod published;
+pub mod query;
+mod runtime;
+pub mod set;
 pub mod state;
 pub mod timer;
 pub mod types;
@@ -83,10 +88,10 @@ pub type Carrier = HashMap<String, String>;
 pub use admin::AdminClient;
 pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
-pub use context::Context;
+pub use context::{Context, DemandType};
 pub use cursor::{
-    JsonDequeCursor, JsonMapCursor, JsonMapEntry, MapKeyCursor, MessageDequeCursor,
-    MessageMapCursor, MessageMapEntry,
+    JsonDequeCursor, JsonMapCursor, JsonMapEntry, KeyCursor, MessageDequeCursor, MessageMapCursor,
+    MessageMapEntry,
 };
 pub use error::FfiError;
 pub use handler::{
@@ -96,8 +101,12 @@ pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
 pub use message::{ExciseMessage, Message};
 pub use message_deque::MessageDequeStateHandle;
-pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
-pub use state::ScanDirection;
+pub use published::{
+    PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
+};
+pub use query::{KeyEdge, KeyQuery, PositionEdge, PositionQuery, PositionRange};
+pub use set::SetStateHandle;
+pub use state::{ScanDirection, StoreOutcome};
 pub use timer::Timer;
 pub use types::{
     ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,

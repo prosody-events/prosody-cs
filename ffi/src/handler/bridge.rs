@@ -70,6 +70,7 @@ impl CsHandler {
         &self,
         context: C,
         message: ConsumerMessage<P>,
+        demand: DemandType,
     ) -> (tracing::Span, Arc<Context>, Arc<M>, HashMap<String, String>)
     where
         C: EventContext<Payload = BinaryPayload>,
@@ -80,7 +81,11 @@ impl CsHandler {
         let mut carrier = HashMap::with_capacity(2);
         self.propagator
             .inject_context(&span.context(), &mut carrier);
-        let context = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
+        let context = Arc::new(Context::new(
+            context.boxed(),
+            Arc::clone(&self.propagator),
+            demand,
+        ));
         (span, context, Arc::new(message.into()), carrier)
     }
 }
@@ -102,12 +107,12 @@ impl FallibleHandler for CsHandler {
         &self,
         context: C,
         message: ConsumerMessage<Self::Payload>,
-        _demand_type: DemandType,
+        demand: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where
         C: EventContext<Payload = Self::Payload>,
     {
-        let (span, context, message, carrier) = self.record_args(context, message);
+        let (span, context, message, carrier) = self.record_args(context, message, demand);
         let result = self
             .handler
             .on_message(context, message, carrier)
@@ -122,12 +127,12 @@ impl FallibleHandler for CsHandler {
         &self,
         context: C,
         message: ConsumerMessage<()>,
-        _demand_type: DemandType,
+        demand: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where
         C: EventContext<Payload = Self::Payload>,
     {
-        let (span, context, message, carrier) = self.record_args(context, message);
+        let (span, context, message, carrier) = self.record_args(context, message, demand);
         let result = self
             .handler
             .on_excise(context, message, carrier)
@@ -144,7 +149,7 @@ impl FallibleHandler for CsHandler {
         &self,
         context: C,
         trigger: Trigger,
-        _demand_type: DemandType,
+        demand: DemandType,
     ) -> Result<Self::Output, Self::Error>
     where
         C: EventContext<Payload = Self::Payload>,
@@ -167,11 +172,15 @@ impl FallibleHandler for CsHandler {
             .inject_context(&span.context(), &mut carrier);
 
         // Wrap the context and timer for C#
-        let ctx = Arc::new(Context::new(context.boxed(), Arc::clone(&self.propagator)));
+        let ctx = Arc::new(Context::new(
+            context.boxed(),
+            Arc::clone(&self.propagator),
+            demand,
+        ));
         let tmr = Arc::new(Timer::new(trigger));
 
-        // Call the C# handler - it returns a result with code and optional error
-        // message
+        // Call the C# handler - it returns a result with code and optional
+        // error message
         let result = self
             .handler
             .on_timer(ctx, tmr, carrier)

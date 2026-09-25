@@ -58,24 +58,50 @@ public sealed class PublishedMap<TValue>
         );
     }
 
+    /// <summary>Tests several entries for a user key in one batch. <c>result[i]</c> answers the i-th map key.</summary>
+    public Task<IReadOnlyList<bool>> ContainsManyAsync(
+        string key,
+        IEnumerable<string> mapKeys,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(mapKeys);
+        var keys = mapKeys as string[] ?? [.. mapKeys];
+        return StateInterop.RunAsync<IReadOnlyList<bool>>(
+            async () => await _handle.ContainsMany(key, keys, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            cancellationToken
+        );
+    }
+
+    /// <summary>Determines whether the map for a user key is empty.</summary>
+    public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(() => _handle.IsEmpty(key, StateInterop.CreateCarrier()), cancellationToken);
+    }
+
     /// <summary>Enumerates keys without reading values.</summary>
     public IAsyncEnumerable<string> EnumerateKeysAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
+    ) => EnumerateKeysAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>Enumerates the keys that <paramref name="query"/> selects without reading values.</summary>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    public IAsyncEnumerable<string> EnumerateKeysAsync(
+        string key,
+        KeyQuery query,
+        CancellationToken cancellationToken = default
     )
     {
         ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () =>
-                StateInterop.RunAsync<Native.IMapKeyCursor>(
-                    async () =>
-                        await _handle
-                            .Keys(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                            .ConfigureAwait(false),
-                    cancellationToken
-                ),
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IKeyCursor, string, string>(
+            () => StateInterop.RunSync(() => _handle.Keys(key, native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static item => item,
@@ -83,27 +109,52 @@ public sealed class PublishedMap<TValue>
         );
     }
 
-    /// <summary>Enumerates entries with a typed JSON map cursor.</summary>
+    /// <summary>Enumerates entries in key order.</summary>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
+    ) => EnumerateAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>Enumerates the entries that <paramref name="query"/> selects.</summary>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
+        string key,
+        KeyQuery query,
+        CancellationToken cancellationToken = default
+    ) => Entries(key, query, item => StateInterop.JsonMapEntry(item, _typeInfo), cancellationToken);
+
+    /// <summary>Enumerates values in key order.</summary>
+    public IAsyncEnumerable<TValue> EnumerateValuesAsync(
+        string key,
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    ) => EnumerateValuesAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>Enumerates the values of the entries that <paramref name="query"/> selects.</summary>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    public IAsyncEnumerable<TValue> EnumerateValuesAsync(
+        string key,
+        KeyQuery query,
+        CancellationToken cancellationToken = default
+    ) => Entries(key, query, item => StateInterop.DeserializeJson(item.Bytes, _typeInfo), cancellationToken);
+
+    private StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, TItem> Entries<TItem>(
+        string key,
+        KeyQuery query,
+        Func<Native.JsonMapEntry, TItem> transform,
+        CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, KeyValuePair<string, TValue>>(
-            () =>
-                StateInterop.RunAsync<Native.IJsonMapCursor>(
-                    async () =>
-                        await _handle
-                            .Scan(key, StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                            .ConfigureAwait(false),
-                    cancellationToken
-                ),
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, TItem>(
+            () => StateInterop.RunSync(() => _handle.Entries(key, native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
-            item => StateInterop.JsonMapEntry(item, _typeInfo),
+            transform,
             cancellationToken
         );
     }

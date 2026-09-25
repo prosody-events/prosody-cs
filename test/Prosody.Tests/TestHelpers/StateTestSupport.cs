@@ -5,14 +5,13 @@ namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
 /// Shared keyed-state definitions and payload records for the integration suite. Mirrors the JS
-/// reference <c>STATE_DEFS</c> — one of every kind × payload — plus the scalar/array/source-gen and
+/// reference <c>STATE_DEFS</c> — one of every kind × payload and a set — plus the scalar/array/source-gen and
 /// missing-vs-default pins the C# suite adds.
 /// </summary>
 /// <remarks>
 /// Fixed names are safe because <see cref="IntegrationTestContext"/> mints a unique group id per
 /// context and identity is keyed by <c>(group_id, state_type, name)</c>, so every context is fully
-/// isolated. Definitions carry no TTL, which avoids the set-level <c>Ttl &gt; StateRecoveryDelay</c>
-/// cross-rule.
+/// isolated. Definitions carry no TTL.
 /// </remarks>
 internal static class StateTestSupport
 {
@@ -53,6 +52,9 @@ internal static class StateTestSupport
         capacity: 3
     );
 
+    /// <summary>A set collection of string members.</summary>
+    public static readonly SetStateDefinition Tags = StateDefinition.Set("tags");
+
     /// <summary>A single-value message collection.</summary>
     public static readonly MessageValueDefinition<StateMessagePayload> LastMsg =
         StateDefinition.MessageValue<StateMessagePayload>("lastMsg");
@@ -77,6 +79,7 @@ internal static class StateTestSupport
         Backlog,
         BoolDeque,
         BoundedDeque,
+        Tags,
         LastMsg,
         MsgIndex,
         MsgLog,

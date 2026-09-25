@@ -23,8 +23,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
     where TCursor : class
     where TNative : class
 {
-    private readonly Func<TCursor>? _cursorFactory;
-    private readonly Func<Task<TCursor>>? _asyncCursorFactory;
+    private readonly Func<TCursor> _cursorFactory;
     private readonly Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> _nextChunk;
     private readonly Func<TCursor, Task> _close;
     private readonly Func<TNative, T> _transform;
@@ -45,39 +44,12 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
         _cancellationToken = cancellationToken;
     }
 
-    internal StateScanSequence(
-        Func<Task<TCursor>> cursorFactory,
-        Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
-        Func<TCursor, Task> close,
-        Func<TNative, T> transform,
-        CancellationToken cancellationToken
-    )
-    {
-        _asyncCursorFactory = cursorFactory;
-        _nextChunk = nextChunk;
-        _close = close;
-        _transform = transform;
-        _cancellationToken = cancellationToken;
-    }
-
-    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-    {
-        return _cursorFactory is { } cursorFactory
-            ? new Enumerator(cursorFactory(), _nextChunk, _close, _transform, _cancellationToken, cancellationToken)
-            : new Enumerator(
-                _asyncCursorFactory ?? throw new InvalidOperationException("A state scan must have a cursor factory."),
-                _nextChunk,
-                _close,
-                _transform,
-                _cancellationToken,
-                cancellationToken
-            );
-    }
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
+        new Enumerator(_cursorFactory(), _nextChunk, _close, _transform, _cancellationToken, cancellationToken);
 
     private sealed class Enumerator : IAsyncEnumerator<T>
     {
-        private readonly Func<Task<TCursor>> _cursorFactory;
-        private TCursor? _cursor;
+        private readonly TCursor _cursor;
         private readonly Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> _nextChunk;
         private readonly Func<TCursor, Task> _close;
         private readonly Func<TNative, T> _transform;
@@ -96,21 +68,8 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             CancellationToken sequenceToken,
             CancellationToken enumeratorToken
         )
-            : this(() => Task.FromResult(cursor), nextChunk, close, transform, sequenceToken, enumeratorToken)
         {
             _cursor = cursor;
-        }
-
-        internal Enumerator(
-            Func<Task<TCursor>> cursorFactory,
-            Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> nextChunk,
-            Func<TCursor, Task> close,
-            Func<TNative, T> transform,
-            CancellationToken sequenceToken,
-            CancellationToken enumeratorToken
-        )
-        {
-            _cursorFactory = cursorFactory;
             _nextChunk = nextChunk;
             _close = close;
             _transform = transform;
@@ -152,7 +111,6 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
                     TNative[]? pulled;
                     try
                     {
-                        _cursor ??= await _cursorFactory().ConfigureAwait(false);
                         pulled = await _nextChunk(_cursor, StateInterop.CreateCarrier()).ConfigureAwait(false);
                     }
                     catch (Native.FfiException ex)
@@ -216,20 +174,13 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             }
         }
 
-        private ValueTask CloseQuietlyAsync()
-        {
-            var cursor = _cursor;
-            return cursor is null ? ValueTask.CompletedTask : BestEffort.RunAsync(() => _close(cursor));
-        }
+        private ValueTask CloseQuietlyAsync() => BestEffort.RunAsync(() => _close(_cursor));
 
         private async ValueTask CloseOrThrowAsync()
         {
             try
             {
-                if (_cursor is not null)
-                {
-                    await _close(_cursor).ConfigureAwait(false);
-                }
+                await _close(_cursor).ConfigureAwait(false);
             }
             catch (Native.FfiException ex)
             {

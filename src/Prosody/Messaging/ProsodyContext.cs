@@ -38,6 +38,12 @@ public sealed class ProsodyContext
     public bool ShouldCancel => _native.ShouldCancel();
 
     /// <summary>
+    /// Gets the demand that this handler call serves: a first attempt, or a retry after a failure
+    /// with its retry ordinal.
+    /// </summary>
+    public Demand Demand => Demand.FromNative(_native.Demand());
+
+    /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
     public Task OnCancelAsync() => _native.OnCancel();
@@ -146,6 +152,20 @@ public sealed class ProsodyContext
                 StateInterop.RunSync(() => _native.DequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
+        );
+    }
+
+    /// <summary>
+    /// Binds a set collection for the current handler invocation.
+    /// </summary>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A handle. Repeated calls within one invocation return the same handle.</returns>
+    public ISetState State(SetStateDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(
+            definition,
+            _ => new SetState(StateInterop.RunSync(() => _native.SetState(definition.Name)))
         );
     }
 

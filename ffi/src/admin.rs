@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::error::FfiError;
+use crate::runtime::run;
 use prosody::admin::{AdminConfiguration, ProsodyAdminClient, TopicConfiguration};
 
 /// Async client for Kafka topic administration.
@@ -18,7 +19,7 @@ pub struct AdminClient {
     client: Arc<ProsodyAdminClient>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl AdminClient {
     /// Creates a new admin client connected to the given brokers.
     ///
@@ -44,20 +45,23 @@ impl AdminClient {
     /// the broker rejects the creation request (e.g., topic already exists,
     /// insufficient replication factor).
     pub async fn create_topic(
-        &self,
+        self: Arc<Self>,
         name: String,
         partition_count: u16,
         replication_factor: u16,
     ) -> Result<(), FfiError> {
-        let config = TopicConfiguration::builder()
-            .name(name)
-            .partition_count(partition_count)
-            .replication_factor(replication_factor)
-            .build()?;
+        run(async move {
+            let config = TopicConfiguration::builder()
+                .name(name)
+                .partition_count(partition_count)
+                .replication_factor(replication_factor)
+                .build()?;
 
-        self.client.create_topic(&config).await?;
+            self.client.create_topic(&config).await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Deletes a Kafka topic by name.
@@ -66,9 +70,12 @@ impl AdminClient {
     ///
     /// Returns [`FfiError`] if the topic does not exist or the broker
     /// rejects the deletion request.
-    pub async fn delete_topic(&self, name: String) -> Result<(), FfiError> {
-        self.client.delete_topic(&name).await?;
+    pub async fn delete_topic(self: Arc<Self>, name: String) -> Result<(), FfiError> {
+        run(async move {
+            self.client.delete_topic(&name).await?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }

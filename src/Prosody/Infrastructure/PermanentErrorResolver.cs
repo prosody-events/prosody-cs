@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Prosody.Errors;
+using Prosody.Messaging;
 
 namespace Prosody.Infrastructure;
 
@@ -30,7 +31,7 @@ internal static class PermanentErrorResolver
     /// <returns>The attribute if found; otherwise, <see langword="null"/>.</returns>
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
     [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
-    internal static PermanentErrorAttribute? GetAttribute(
+    private static PermanentErrorAttribute? GetAttribute(
         [DynamicallyAccessedMembers(
             DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
         )]
@@ -47,23 +48,25 @@ internal static class PermanentErrorResolver
         );
 
     /// <summary>
-    /// Determines whether an exception represents a permanent error.
+    /// Creates a classifier from the <see cref="PermanentErrorAttribute"/> on each handler method of
+    /// <paramref name="handler"/>. A method without the attribute classifies every error as transient.
     /// </summary>
-    /// <param name="exception">The exception to classify.</param>
-    /// <param name="attribute">The method's <see cref="PermanentErrorAttribute"/>, if any.</param>
-    /// <returns>
-    /// <see langword="true"/> if the exception is permanent (should not retry); otherwise, <see langword="false"/>.
-    /// </returns>
-    internal static bool IsPermanentError(Exception exception, PermanentErrorAttribute? attribute)
+    /// <param name="handler">The handler implementation.</param>
+    /// <param name="interfaceType">
+    /// The implemented handler interface. <see cref="IProsodyHandler{TPayload}"/> and
+    /// <see cref="IProsodyRequestHandler{TPayload, TResponse}"/> use the same method names.
+    /// </param>
+    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
+    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
+    internal static IPermanentErrorClassifier Classifier(object handler, Type interfaceType)
     {
-        // Priority 1: IPermanentError marker interface (runtime decision)
-        if (exception is IPermanentError)
-        {
-            return true;
-        }
-        // Priority 2: PermanentErrorAttribute on the method (declaration-time)
-        return attribute?.IsMatch(exception) == true;
-        // Default: transient (will retry)
+        ArgumentNullException.ThrowIfNull(handler);
+        var handlerType = handler.GetType();
+        return new AttributeClassifier(
+            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnMessageAsync)),
+            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnExciseAsync)),
+            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnTimerAsync))
+        );
     }
 
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
@@ -101,5 +104,19 @@ internal static class PermanentErrorResolver
         }
 
         return null;
+    }
+
+    /// <summary>Classifies an error by the <see cref="PermanentErrorAttribute"/> of the method that threw it.</summary>
+    private sealed class AttributeClassifier(
+        PermanentErrorAttribute? message,
+        PermanentErrorAttribute? excise,
+        PermanentErrorAttribute? timer
+    ) : IPermanentErrorClassifier
+    {
+        public bool IsMessageErrorPermanent(Exception exception) => message?.IsMatch(exception) == true;
+
+        public bool IsExciseErrorPermanent(Exception exception) => excise?.IsMatch(exception) == true;
+
+        public bool IsTimerErrorPermanent(Exception exception) => timer?.IsMatch(exception) == true;
     }
 }

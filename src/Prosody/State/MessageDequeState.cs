@@ -102,14 +102,18 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     public IAsyncEnumerable<Message<TPayload>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
+    ) => EnumerateAsync(new PositionQuery { Direction = direction }, cancellationToken);
+
+    public IAsyncEnumerable<Message<TPayload>> EnumerateAsync(
+        PositionQuery query,
+        CancellationToken cancellationToken = default
     )
     {
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
+        var native = PositionQuery.ToNative(query);
         return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => StateInterop.RunSync(() => _handle.Values(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             message => MessageInterop.FromNative(message, _typeInfo),
@@ -120,9 +124,9 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     public IAsyncEnumerator<Message<TPayload>> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
         EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
 }

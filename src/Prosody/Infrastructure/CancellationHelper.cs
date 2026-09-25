@@ -1,31 +1,59 @@
 namespace Prosody.Infrastructure;
 
 /// <summary>
-/// Helper methods for bridging .NET CancellationToken to native CancellationSignal.
+/// Runs a native call with a <see cref="Native.CancellationSignal"/> linked to a <see cref="CancellationToken"/>.
 /// </summary>
+/// <remarks>
+/// Only the token's registration triggers the signal. So a native cancellation always means the caller's
+/// token fired, and it surfaces as the standard <see cref="OperationCanceledException"/>.
+/// </remarks>
 internal static class CancellationHelper
 {
-    /// <summary>
-    /// Creates a native CancellationSignal linked to a CancellationToken.
-    /// </summary>
-    /// <param name="cancellationToken">The token to monitor for cancellation.</param>
-    /// <returns>
-    /// A linked signal and registration, or null if the token is default/none.
-    /// Both the signal and registration must be disposed by the caller.
-    /// </returns>
-#pragma warning disable CA2000 // Ownership of signal is transferred to the caller via the returned struct
-    internal static LinkedCancellationSignal? CreateSignal(CancellationToken cancellationToken)
+    /// <summary>Runs <paramref name="operation"/> and translates a native cancellation.</summary>
+    internal static async Task RunAsync(
+        Func<Native.CancellationSignal?, Task> operation,
+        string cancelledMessage,
+        CancellationToken cancellationToken
+    )
     {
-        if (!cancellationToken.CanBeCanceled)
-            return null;
-
-        var signal = new Native.CancellationSignal();
-        CancellationTokenRegistration registration = cancellationToken.Register(
-            static state => ((Native.CancellationSignal)state!).Cancel(),
-            signal
-        );
-
-        return new LinkedCancellationSignal(signal, registration);
+        using var signal = cancellationToken.CanBeCanceled ? new Native.CancellationSignal() : null;
+        var registration = cancellationToken.Register(Cancel, signal);
+        try
+        {
+            await operation(signal).ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Cancelled error)
+        {
+            throw new OperationCanceledException(cancelledMessage, error, cancellationToken);
+        }
+        finally
+        {
+            await registration.DisposeAsync().ConfigureAwait(false);
+        }
     }
-#pragma warning restore CA2000
+
+    /// <summary>Runs <paramref name="operation"/>, returns its result, and translates a native cancellation.</summary>
+    internal static async Task<T> RunAsync<T>(
+        Func<Native.CancellationSignal?, Task<T>> operation,
+        string cancelledMessage,
+        CancellationToken cancellationToken
+    )
+    {
+        using var signal = cancellationToken.CanBeCanceled ? new Native.CancellationSignal() : null;
+        var registration = cancellationToken.Register(Cancel, signal);
+        try
+        {
+            return await operation(signal).ConfigureAwait(false);
+        }
+        catch (Native.FfiException.Cancelled error)
+        {
+            throw new OperationCanceledException(cancelledMessage, error, cancellationToken);
+        }
+        finally
+        {
+            await registration.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private static void Cancel(object? signal) => ((Native.CancellationSignal)signal!).Cancel();
 }

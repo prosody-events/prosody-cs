@@ -2,33 +2,30 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
-use prosody::codec::JsonBinaryCodec;
+use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
-    ErasedDequeReader, ErasedDirection, ErasedMapReader, ErasedValueReader,
+    ErasedReadCache, SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
 };
+use prosody::propagator::new_propagator;
 
-use crate::cursor::{JsonDequeCursor, JsonMapCursor, MapKeyCursor};
+use crate::cursor::{JsonDequeCursor, JsonMapCursor, KeyCursor};
 use crate::error::FfiError;
 use crate::map::JsonMapValue;
-use crate::state::{ScanDirection, into_bytes, platform_index, traced};
-
-fn direction(direction: ScanDirection) -> ErasedDirection {
-    match direction {
-        ScanDirection::Forward => ErasedDirection::Forward,
-        ScanDirection::Backward => ErasedDirection::Backward,
-    }
-}
+use crate::query::{KeyQuery, PositionQuery};
+use crate::runtime::run;
+use crate::state::{into_bytes, platform_index, traced};
 
 #[derive(uniffi::Object)]
 /// Reads a published value collection.
 pub struct PublishedValueHandle {
-    pub(crate) reader: Arc<dyn ErasedValueReader<JsonBinaryCodec>>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedValueReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedValueHandle {
     /// Reads the committed value for a user key.
     ///
@@ -36,24 +33,27 @@ impl PublishedValueHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.get(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.get(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 }
 
 #[derive(uniffi::Object)]
 /// Reads a published map collection.
 pub struct PublishedMapHandle {
-    pub(crate) reader: Arc<dyn ErasedMapReader<JsonBinaryCodec>>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedMapReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedMapHandle {
     /// Reads one committed map entry.
     ///
@@ -61,14 +61,17 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.get(key, map_key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.get(key, map_key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads several committed map entries in one batch.
@@ -77,25 +80,28 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the batch fails.
     pub async fn get_many(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_keys: Vec<String>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<JsonMapValue>, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.get_many(key, map_keys),
-        )
-        .await
-        .map(|values| {
-            values
-                .into_iter()
-                .map(|value| JsonMapValue {
-                    bytes: into_bytes(value),
-                })
-                .collect()
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.get_many(key, map_keys),
+            )
+            .await
+            .map(|values| {
+                values
+                    .into_iter()
+                    .map(|value| JsonMapValue {
+                        bytes: into_bytes(value),
+                    })
+                    .collect()
+            })
         })
+        .await
     }
 
     /// Reports whether a committed map entry exists.
@@ -104,61 +110,161 @@ impl PublishedMapHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn contains_key(
-        &self,
+        self: Arc<Self>,
         key: String,
         map_key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(
-            &self.propagator,
-            carrier,
-            self.reader.contains_key(key, map_key),
-        )
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_key(key, map_key),
+            )
+            .await
+        })
         .await
     }
 
-    /// Opens an ordered map cursor.
+    /// Reports whether each committed map entry exists, in request order.
     ///
     /// # Errors
     ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn scan(
-        &self,
+    /// Returns a categorized state error when the batch fails.
+    pub async fn contains_many(
+        self: Arc<Self>,
         key: String,
-        direction_value: ScanDirection,
+        map_keys: Vec<String>,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<JsonMapCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.stream(key, direction(direction_value)),
-        )
-        .await?;
+    ) -> Result<Vec<bool>, FfiError> {
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_many(key, map_keys),
+            )
+            .await
+        })
+        .await
+    }
+
+    /// Reports whether the committed map has no entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn is_empty(
+        self: Arc<Self>,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
+    }
+
+    /// Opens a cursor over the entries that `query` selects.
+    ///
+    /// The cursor reads nothing until its first pull.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn entries(&self, key: String, query: KeyQuery) -> Result<Arc<JsonMapCursor>, FfiError> {
         Ok(Arc::new(JsonMapCursor {
-            cursor,
+            cursor: self
+                .reader
+                .entries(key)
+                .with_query(query.try_into()?)
+                .stream(),
             propagator: Arc::clone(&self.propagator),
         }))
     }
 
-    /// Opens an ordered key-only map cursor.
+    /// Opens a key-only cursor over the entries that `query` selects.
+    ///
+    /// The cursor reads nothing until its first pull.
     ///
     /// # Errors
     ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn keys(
-        &self,
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, key: String, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.reader.keys(key).with_query(query.try_into()?).stream(),
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+}
+
+#[derive(uniffi::Object)]
+/// Reads a published set collection.
+pub struct PublishedSetHandle {
+    reader: SharedSetReader,
+    propagator: Arc<TextMapCompositePropagator>,
+}
+
+#[uniffi::export]
+impl PublishedSetHandle {
+    /// Reports whether a committed member exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn contains(
+        self: Arc<Self>,
         key: String,
-        direction_value: ScanDirection,
+        member: String,
         carrier: HashMap<String, String>,
-    ) -> Result<Arc<MapKeyCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.keys(key, direction(direction_value)),
-        )
-        .await?;
-        Ok(Arc::new(MapKeyCursor {
-            cursor,
+    ) -> Result<bool, FfiError> {
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.contains(key, member)).await
+        })
+        .await
+    }
+
+    /// Reports whether each committed member exists, in request order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the batch fails.
+    pub async fn contains_many(
+        self: Arc<Self>,
+        key: String,
+        members: Vec<String>,
+        carrier: HashMap<String, String>,
+    ) -> Result<Vec<bool>, FfiError> {
+        run(async move {
+            traced(
+                &self.propagator,
+                carrier,
+                self.reader.contains_many(key, members),
+            )
+            .await
+        })
+        .await
+    }
+
+    /// Reports whether the committed set has no members.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn is_empty(
+        self: Arc<Self>,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
+    }
+
+    /// Opens a cursor over the members that `query` selects.
+    ///
+    /// The cursor reads nothing until its first pull.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the query limit is zero.
+    pub fn keys(&self, key: String, query: KeyQuery) -> Result<Arc<KeyCursor>, FfiError> {
+        Ok(Arc::new(KeyCursor {
+            cursor: self.reader.keys(key).with_query(query.try_into()?).stream(),
             propagator: Arc::clone(&self.propagator),
         }))
     }
@@ -167,11 +273,11 @@ impl PublishedMapHandle {
 #[derive(uniffi::Object)]
 /// Reads a published deque collection.
 pub struct PublishedDequeHandle {
-    pub(crate) reader: Arc<dyn ErasedDequeReader<JsonBinaryCodec>>,
-    pub(crate) propagator: Arc<TextMapCompositePropagator>,
+    reader: SharedDequeReader<BinaryPayload>,
+    propagator: Arc<TextMapCompositePropagator>,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl PublishedDequeHandle {
     /// Reads one committed deque element.
     ///
@@ -179,15 +285,18 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn get(
-        &self,
+        self: Arc<Self>,
         key: String,
         index: u64,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        let index = platform_index(index)?;
-        traced(&self.propagator, carrier, self.reader.get(key, index))
-            .await
-            .map(into_bytes)
+        run(async move {
+            let index = platform_index(index)?;
+            traced(&self.propagator, carrier, self.reader.get(key, index))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Returns the committed deque length.
@@ -196,13 +305,16 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn len(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<u64, FfiError> {
-        traced(&self.propagator, carrier, self.reader.len(key))
-            .await
-            .map(|length| length as u64)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.len(key))
+                .await
+                .map(|length| length as u64)
+        })
+        .await
     }
 
     /// Reports whether the committed deque is empty.
@@ -211,11 +323,11 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn is_empty(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<bool, FfiError> {
-        traced(&self.propagator, carrier, self.reader.is_empty(key)).await
+        run(async move { traced(&self.propagator, carrier, self.reader.is_empty(key)).await }).await
     }
 
     /// Reads the committed front element.
@@ -224,13 +336,16 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn peek_front(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.peek_front(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.peek_front(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
     /// Reads the committed back element.
@@ -239,35 +354,80 @@ impl PublishedDequeHandle {
     ///
     /// Returns a categorized state error when the read fails.
     pub async fn peek_back(
-        &self,
+        self: Arc<Self>,
         key: String,
         carrier: HashMap<String, String>,
     ) -> Result<Option<Vec<u8>>, FfiError> {
-        traced(&self.propagator, carrier, self.reader.peek_back(key))
-            .await
-            .map(into_bytes)
+        run(async move {
+            traced(&self.propagator, carrier, self.reader.peek_back(key))
+                .await
+                .map(into_bytes)
+        })
+        .await
     }
 
-    /// Opens an ordered deque cursor.
+    /// Opens a cursor over the elements that `query` selects.
+    ///
+    /// The cursor reads nothing until its first pull.
     ///
     /// # Errors
     ///
-    /// Returns a categorized state error when the cursor cannot be opened.
-    pub async fn scan(
+    /// Returns a state error if a position exceeds the platform range or the
+    /// query limit is zero.
+    pub fn values(
         &self,
         key: String,
-        direction_value: ScanDirection,
-        carrier: HashMap<String, String>,
+        query: PositionQuery,
     ) -> Result<Arc<JsonDequeCursor>, FfiError> {
-        let cursor = traced(
-            &self.propagator,
-            carrier,
-            self.reader.stream(key, direction(direction_value)),
-        )
-        .await?;
         Ok(Arc::new(JsonDequeCursor {
-            cursor,
+            cursor: self
+                .reader
+                .values(key)
+                .with_query(query.try_into()?)
+                .stream(),
             propagator: Arc::clone(&self.propagator),
         }))
     }
+}
+
+/// Chooses the read cache for a published reader.
+///
+/// Returns a permanent state error when the caller sets both a TTL and
+/// `disabled`.
+pub(crate) fn read_cache(
+    ttl: Option<Duration>,
+    disabled: bool,
+) -> Result<ErasedReadCache, FfiError> {
+    match (ttl, disabled) {
+        (Some(_), true) => Err(FfiError::PermanentState(
+            "read cache cannot set both a TTL and disabled".to_owned(),
+        )),
+        (None, true) => Ok(ErasedReadCache::Disabled),
+        (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
+        (None, false) => Ok(ErasedReadCache::Inherit),
+    }
+}
+
+/// Wraps a published value reader for FFI.
+pub(crate) fn value_handle(reader: SharedValueReader<BinaryPayload>) -> Arc<PublishedValueHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedValueHandle { reader, propagator })
+}
+
+/// Wraps a published map reader for FFI.
+pub(crate) fn map_handle(reader: SharedMapReader<BinaryPayload>) -> Arc<PublishedMapHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedMapHandle { reader, propagator })
+}
+
+/// Wraps a published set reader for FFI.
+pub(crate) fn set_handle(reader: SharedSetReader) -> Arc<PublishedSetHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedSetHandle { reader, propagator })
+}
+
+/// Wraps a published deque reader for FFI.
+pub(crate) fn deque_handle(reader: SharedDequeReader<BinaryPayload>) -> Arc<PublishedDequeHandle> {
+    let propagator = Arc::new(new_propagator());
+    Arc::new(PublishedDequeHandle { reader, propagator })
 }

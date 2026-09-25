@@ -46,14 +46,16 @@ public sealed class StateDefinitionTests
     [Fact]
     public void ToNative_Value_MapsPublicationAndReadCache()
     {
-        var native = StateDefinition
-            .Value<int>("v", published: true, readCache: StateReadCache.For(TimeSpan.FromSeconds(2)))
-            .ToNative();
+        var definition = StateDefinition.Value<int>(
+            "v",
+            published: true,
+            readCache: StateReadCache.For(TimeSpan.FromSeconds(2))
+        );
 
         Assert.Multiple(
-            () => Assert.True(native.Published),
-            () => Assert.Equal(TimeSpan.FromSeconds(2), native.ReadCacheTtl),
-            () => Assert.False(native.ReadCacheDisabled)
+            () => Assert.True(definition.ToNative().Published),
+            () => Assert.Equal(TimeSpan.FromSeconds(2), definition.ReadCacheTtl),
+            () => Assert.False(definition.ReadCacheDisabled)
         );
     }
 
@@ -62,7 +64,7 @@ public sealed class StateDefinitionTests
     {
         Assert.Equal(
             TimeSpan.Zero,
-            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ToNative().ReadCacheTtl
+            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ReadCacheTtl
         );
     }
 
@@ -128,6 +130,35 @@ public sealed class StateDefinitionTests
             () => Assert.Equal(bounded.Payload, unbounded.Payload),
             () => Assert.Equal(5u, bounded.Capacity),
             () => Assert.Null(unbounded.Capacity)
+        );
+    }
+
+    [Fact]
+    public void SetDefinitionMapsToANativeSetCollection()
+    {
+        var native = StateDefinition
+            .Set(
+                "tags",
+                ttl: TimeSpan.FromSeconds(5),
+                readUncommitted: true,
+                keysetLimit: 64,
+                published: true,
+                readCache: StateReadCache.Disabled
+            )
+            .ToNative();
+
+        Assert.Equal(
+            new Native.StateCollectionConfig(
+                "tags",
+                Native.StateKind.Set,
+                Native.StatePayload.Json,
+                TimeSpan.FromSeconds(5),
+                true,
+                64,
+                null,
+                true
+            ),
+            native
         );
     }
 }

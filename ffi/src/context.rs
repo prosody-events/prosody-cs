@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use tracing::{Instrument, debug, info_span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
+use tracing::{Instrument, info_span};
 
 use prosody::codec::BinaryPayload;
+use prosody::consumer::DemandType as CoreDemandType;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
@@ -24,7 +24,31 @@ use crate::error::FfiError;
 use crate::json_deque::JsonDequeStateHandle;
 use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
 use crate::message_deque::MessageDequeStateHandle;
+use crate::runtime::run;
+use crate::set::SetStateHandle;
+use crate::state::with_parent;
 use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
+
+/// The demand that one handler call serves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DemandType {
+    /// The first attempt at an event.
+    Normal,
+    /// An attempt after one or more failures.
+    Failure {
+        /// The retry ordinal. It is 1 on the first retry. It is an estimate.
+        retry: u32,
+    },
+}
+
+impl From<CoreDemandType> for DemandType {
+    fn from(demand: CoreDemandType) -> Self {
+        match demand {
+            CoreDemandType::Normal => Self::Normal,
+            CoreDemandType::Failure { retry } => Self::Failure { retry },
+        }
+    }
+}
 
 /// Event context passed to message handlers during event processing.
 ///
@@ -38,6 +62,7 @@ use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
+    demand: DemandType,
 }
 
 #[expect(
@@ -45,17 +70,22 @@ pub struct Context {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
-    /// Creates a new context wrapping the given event context and propagator.
+    /// Creates a context for one handler call with the demand it serves.
     #[must_use]
     pub fn new(
         inner: BoxEventContext<BinaryPayload>,
         propagator: Arc<TextMapCompositePropagator>,
+        demand: CoreDemandType,
     ) -> Self {
-        Self { inner, propagator }
+        Self {
+            inner,
+            propagator,
+            demand: demand.into(),
+        }
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl Context {
     /// Checks whether the handler should stop processing.
     ///
@@ -67,13 +97,22 @@ impl Context {
         self.inner.should_cancel()
     }
 
+    /// Returns the demand that this handler call serves.
+    #[must_use]
+    pub fn demand(&self) -> DemandType {
+        self.demand
+    }
+
     /// Waits until cancellation is requested.
     ///
     /// Use this in a `select!` or similar construct to respond to cancellation
     /// while awaiting other operations. Completes immediately if cancellation
     /// has already been requested.
-    pub async fn on_cancel(&self) {
-        self.inner.on_cancel().await;
+    pub async fn on_cancel(self: Arc<Self>) {
+        run(async move {
+            self.inner.on_cancel().await;
+        })
+        .await;
     }
 
     /// Schedules a new timer to fire at the specified time.
@@ -88,27 +127,23 @@ impl Context {
     /// Returns an error if `time` cannot be converted to a valid timestamp
     /// or if the scheduling operation fails.
     pub async fn schedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("Schedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .schedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C# ScheduleAsync)
-        let span = info_span!("Schedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .schedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Clears all timers for the current key, then schedules a new one.
@@ -122,28 +157,23 @@ impl Context {
     /// Returns an error if `time` cannot be converted to a valid timestamp
     /// or if the operation fails.
     pub async fn clear_and_schedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("ClearAndSchedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .clear_and_schedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C#
-        // ClearAndScheduleAsync)
-        let span = info_span!("ClearAndSchedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .clear_and_schedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Cancels a timer scheduled for the specified time.
@@ -156,27 +186,23 @@ impl Context {
     /// Returns an error if `time` cannot be converted to a valid timestamp
     /// or if the operation fails.
     pub async fn unschedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("Unschedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .unschedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C# UnscheduleAsync)
-        let span = info_span!("Unschedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .unschedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Cancels all timers for the current key.
@@ -187,22 +213,21 @@ impl Context {
     /// # Errors
     ///
     /// Returns an error if the operation fails.
-    pub async fn clear_scheduled(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+    pub async fn clear_scheduled(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), FfiError> {
+        run(async move {
+            let span = with_parent(info_span!("ClearScheduled"), &self.propagator, &carrier);
 
-        // Create span with extracted context as parent (matches C# ClearScheduledAsync)
-        let span = info_span!("ClearScheduled");
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
+            self.inner
+                .clear_scheduled(TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        self.inner
-            .clear_scheduled(TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Returns all scheduled timer times for the current key.
@@ -213,26 +238,22 @@ impl Context {
     ///
     /// Returns an error if the operation fails.
     pub async fn scheduled(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<SystemTime>, FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let span = with_parent(info_span!("Scheduled"), &self.propagator, &carrier);
 
-        // Create span with extracted context as parent (matches C# ScheduledAsync)
-        let span = info_span!("Scheduled");
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        Ok(self
-            .inner
-            .scheduled(TimerType::Application)
-            .instrument(span)
-            .await?
-            .into_iter()
-            .map(Into::<SystemTime>::into)
-            .collect())
+            Ok(self
+                .inner
+                .scheduled(TimerType::Application)
+                .instrument(span)
+                .await?
+                .into_iter()
+                .map(Into::<SystemTime>::into)
+                .collect())
+        })
+        .await
     }
 
     /// Vends the state handle for the named JSON value collection.
@@ -273,6 +294,24 @@ impl Context {
         }))
     }
 
+    /// Vends the state handle for the named set collection.
+    ///
+    /// Vending verifies the collection's registration core-side. No span is
+    /// opened here.
+    ///
+    /// # Errors
+    ///
+    /// Returns a permanent state error if the name is unregistered or its
+    /// registered identity mismatches.
+    pub fn set_state(&self, name: String) -> Result<Arc<SetStateHandle>, FfiError> {
+        let handle = self.inner.set_state(&name)?;
+        drop(name);
+        Ok(Arc::new(SetStateHandle {
+            state: handle,
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
     /// Vends the state handle for the named JSON deque collection.
     ///
     /// Vending verifies the collection's registration core-side; no span is
@@ -307,8 +346,8 @@ impl Context {
         name: String,
     ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
         let handle = self.inner.message_value_state(&name)?;
-        // Consume each message collection name after lookup. This keeps the by-value
-        // FFI argument without a lint exception.
+        // Consume each message collection name after lookup. This keeps the
+        // by-value FFI argument without a lint exception.
         drop(name);
         Ok(Arc::new(MessageValueStateHandle {
             state: handle,

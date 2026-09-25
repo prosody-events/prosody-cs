@@ -358,12 +358,8 @@ public sealed class ProsodyClientBuilder
     /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>BuildAsync()</c>.
     /// </para>
     /// </remarks>
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
+    [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(ProsodyClient.DefaultResolverAotWarning)]
     public Task<ProsodyClient> BuildAsync()
     {
         _options.Validate();

@@ -19,7 +19,7 @@ use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
-use prosody::high_level::erased::ErasedClientBuildError;
+use prosody::high_level::erased::{ErasedClientBuildError, ErasedReaderBuildError};
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::requester::RequestError;
@@ -27,7 +27,6 @@ use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
-use tokio::task::JoinError;
 
 /// Primary error type for FFI boundary operations.
 ///
@@ -136,12 +135,6 @@ pub enum FfiError {
     #[error("invalid timestamp: {0:#}")]
     CompactDateTime(#[from] CompactDateTimeError),
 
-    /// A background task failed or panicked.
-    ///
-    /// Indicates that an async task did not complete successfully.
-    #[error("task join failed: {0:#}")]
-    Join(#[from] JoinError),
-
     /// A permanent keyed-state failure that must not be retried.
     ///
     /// Recovered structurally from the erased seam's
@@ -185,6 +178,13 @@ impl From<ErasedStateError> for FfiError {
             ErasedCategory::Permanent => Self::PermanentState(error.message().to_owned()),
             ErasedCategory::Transient => Self::TransientState(error.message().to_owned()),
         }
+    }
+}
+
+/// Classifies a failure to open a published reader as permanent.
+impl From<ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>> for FfiError {
+    fn from(error: ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>) -> Self {
+        Self::PermanentState(error.to_string())
     }
 }
 

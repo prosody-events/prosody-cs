@@ -4,7 +4,7 @@ FROM rust:bookworm AS chef
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev mold protobuf-compiler \
-    && cargo install cargo-chef --version 0.1.77 --locked \
+    && cargo install cargo-chef --version 0.1.78 --locked \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

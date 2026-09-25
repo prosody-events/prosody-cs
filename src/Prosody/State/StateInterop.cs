@@ -62,6 +62,30 @@ internal static class StateInterop
     }
 
     /// <summary>
+    /// Runs one native commit or rollback with a fresh carrier and converts its outcome.
+    /// </summary>
+    internal static Task<StoreOutcome> RunOutcomeAsync(
+        Func<Dictionary<string, string>, Task<Native.StoreOutcome>> operation,
+        CancellationToken cancellationToken
+    ) => RunAsync(async () => ToPublic(await operation(CreateCarrier()).ConfigureAwait(false)), cancellationToken);
+
+    /// <summary>
+    /// Validates a query limit. The exception names <paramref name="property"/>, the query property
+    /// that received the value.
+    /// </summary>
+    internal static int? PositiveLimit(int? value, string property) =>
+        value is <= 0 ? throw new ArgumentOutOfRangeException(property, value, $"{property} must be positive.") : value;
+
+    /// <summary>Maps a native store outcome to the public enum.</summary>
+    internal static StoreOutcome ToPublic(Native.StoreOutcome outcome) =>
+        outcome switch
+        {
+            Native.StoreOutcome.Applied => StoreOutcome.Applied,
+            Native.StoreOutcome.NoOp => StoreOutcome.NoOp,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown native store outcome."),
+        };
+
+    /// <summary>
     /// Runs one synchronous native call (a handle vend or a scan open), translating a categorized
     /// failure into the matching public state exception.
     /// </summary>
@@ -92,7 +116,8 @@ internal static class StateInterop
     /// <summary>Creates a fresh trace-propagation carrier for one native operation.</summary>
     internal static Dictionary<string, string> CreateCarrier()
     {
-        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Standard propagation adds at most traceparent, tracestate, and baggage.
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         return carrier;
     }
