@@ -84,7 +84,11 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
 | `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |
 | `Mode` / - | Processing mode: `Pipeline`, `LowLatency`, or `BestEffort` | `Pipeline` |
-| - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info` |
+| - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info`, with `warn` for `scylla` and `opentelemetry` |
+
+A `PROSODY_LOG` directive replaces the default for its target. A value that names only targets,
+such as `prosody=debug`, keeps other targets at `info`. Set `PROSODY_LOG=opentelemetry=info` to
+restore the OpenTelemetry info events.
 
 ## Requests
 
