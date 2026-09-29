@@ -34,7 +34,8 @@ public sealed partial class ClientOptions
     /// <summary>
     /// Bytes of in-memory writes the local keyed-state cache holds for each assigned partition
     /// before it flushes them to disk. Memory use scales with the number of assigned partitions.
-    /// Unset uses the storage engine's default of 64 MiB.
+    /// Uses <c>PROSODY_STATE_MEMTABLE_SIZE</c> when omitted.
+    /// Otherwise, the storage engine's default of 64 MiB applies.
     /// </summary>
     public string? StateMemtableSize { get; set; }
 

@@ -476,8 +476,9 @@ pub struct ClientOptions {
     /// Bytes of in-memory writes the local keyed-state cache holds for each
     /// assigned partition before it flushes them to disk.
     ///
-    /// Memory use scales with the number of assigned partitions. Unset uses
-    /// the storage engine's default of 64 MiB.
+    /// Memory use scales with the number of assigned partitions. Uses
+    /// `PROSODY_STATE_MEMTABLE_SIZE` when omitted. Otherwise, the storage
+    /// engine's default of 64 MiB applies.
     #[uniffi(default = None)]
     pub state_memtable_size: Option<String>,
 
