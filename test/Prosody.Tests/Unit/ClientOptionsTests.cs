@@ -324,4 +324,16 @@ public sealed class ClientOptionsTests
             () => Assert.True(uncached.StateReadCacheDisabled)
         );
     }
+
+    [Fact]
+    public void ToNativeConvertsStateMemtableSize()
+    {
+        var set = new ClientOptions { StateMemtableSize = "16 MiB" }.ToNative();
+        var unset = new ClientOptions { GroupId = "test" }.ToNative();
+
+        Assert.Multiple(
+            () => Assert.Equal("16 MiB", set.StateMemtableSize),
+            () => Assert.Null(unset.StateMemtableSize)
+        );
+    }
 }

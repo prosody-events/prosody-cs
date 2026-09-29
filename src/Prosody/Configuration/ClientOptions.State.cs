@@ -32,6 +32,13 @@ public sealed partial class ClientOptions
     public string? StateOwnedCacheSize { get; set; }
 
     /// <summary>
+    /// Bytes of in-memory writes the local keyed-state cache holds for each assigned partition
+    /// before it flushes them to disk. Memory use scales with the number of assigned partitions.
+    /// Unset uses the storage engine's default of 64 MiB.
+    /// </summary>
+    public string? StateMemtableSize { get; set; }
+
+    /// <summary>
     /// Capacity of the published-state read cache, such as <c>1 MiB</c>.
     /// Uses <c>PROSODY_STATE_READ_CACHE_SIZE</c> when omitted.
     /// It then uses the owned cache size when set, or 1 MiB when both sizes are unset.

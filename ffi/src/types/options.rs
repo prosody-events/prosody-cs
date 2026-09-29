@@ -479,6 +479,14 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_owned_cache_size: Option<String>,
 
+    /// Bytes of in-memory writes the local keyed-state cache holds for each
+    /// assigned partition before it flushes them to disk.
+    ///
+    /// Memory use scales with the number of assigned partitions. Unset uses
+    /// the storage engine's default of 64 MiB.
+    #[uniffi(default = None)]
+    pub state_memtable_size: Option<String>,
+
     /// Capacity of the published-state read cache, such as `1 MiB`.
     #[uniffi(default = None)]
     pub state_read_cache_size: Option<String>,

@@ -34,6 +34,7 @@ public sealed partial class ClientOptions
                 : Array.ConvertAll(StateCollections, definition => definition.ToNative()),
             StateCacheDir = StateCacheDir,
             StateOwnedCacheSize = StateOwnedCacheSize,
+            StateMemtableSize = StateMemtableSize,
             StateReadCacheSize = StateReadCacheSize,
             StateReadCacheTtl = StateReadCache?.Ttl,
             StateReadCacheDisabled = StateReadCache?.IsDisabled,

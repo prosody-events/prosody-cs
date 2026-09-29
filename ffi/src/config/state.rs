@@ -47,6 +47,13 @@ pub(super) fn build_keyed_state_config(
         builder.owned_cache_size(Some(size));
     }
 
+    if let Some(size) = &options.state_memtable_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| FfiError::PermanentState(format!("stateMemtableSize: {error}")))?;
+        builder.memtable_size(Some(size));
+    }
+
     if let Some(size) = &options.state_read_cache_size {
         let size = size
             .parse::<ByteSize>()
