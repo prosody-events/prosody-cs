@@ -218,7 +218,7 @@ variable applies, then the default.
 | Property / Environment Variable | Description | Default |
 |---|---|---|
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
-| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. Set a mounted path in production. | per-client temp dir |
+| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Directory that holds the local keyed-state caches. Each consumer opens its cache in a new subdirectory and deletes it when the consumer is released, so clients can share the directory. Set a mounted path in production. | `<temp>/prosody/keyed-state` |
 | `StateOwnedCacheSize` / `PROSODY_STATE_OWNED_CACHE_SIZE` | Capacity of the owning keyed-state cache; accepts sizes such as `64 MiB` or `500 MB`. | storage-engine default |
 | `StateMemtableSize` / `PROSODY_STATE_MEMTABLE_SIZE` | Bytes of in-memory writes the local keyed-state cache holds for each assigned partition before it flushes them to disk; memory use scales with the number of assigned partitions. | storage-engine default of 64 MiB |
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |

@@ -460,12 +460,12 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_collections: Option<Vec<StateCollectionConfig>>,
 
-    /// Root directory for the local keyed-state cache (the committed-value
-    /// workspace).
+    /// Directory that holds the local keyed-state caches.
     ///
-    /// Each live client needs its own directory. Falls back to the
-    /// `PROSODY_STATE_CACHE_DIR` environment variable, then a per-client
-    /// temporary directory. Must not be an empty string when set.
+    /// Each consumer opens its cache in a fresh subdirectory and removes it on
+    /// drop, so clients can share the directory. Falls back to
+    /// `PROSODY_STATE_CACHE_DIR`, then `<temp>/prosody/keyed-state`. Must not
+    /// be an empty string when set.
     #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
 

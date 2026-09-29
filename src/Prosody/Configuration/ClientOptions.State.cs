@@ -18,8 +18,9 @@ public sealed partial class ClientOptions
     public StateDefinition[]? StateCollections { get; set; }
 
     /// <summary>
-    /// Disk workspace for the local keyed-state cache. Each live client needs its own directory.
-    /// Falls back to <c>PROSODY_STATE_CACHE_DIR</c>, then a per-client temporary directory.
+    /// Directory that holds the local keyed-state caches. Each consumer opens its cache in a new
+    /// subdirectory and deletes it when the consumer is released, so clients can share the directory.
+    /// Falls back to <c>PROSODY_STATE_CACHE_DIR</c>, then <c>&lt;temp&gt;/prosody/keyed-state</c>.
     /// Must not be an empty string when set.
     /// </summary>
     public string? StateCacheDir { get; set; }
