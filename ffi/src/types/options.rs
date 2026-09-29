@@ -464,8 +464,8 @@ pub struct ClientOptions {
     ///
     /// Each consumer opens its cache in a fresh subdirectory and removes it on
     /// drop, so clients can share the directory. Falls back to
-    /// `PROSODY_STATE_CACHE_DIR`, then `<temp>/prosody/keyed-state`. Must not
-    /// be an empty string when set.
+    /// `PROSODY_STATE_CACHE_DIR`, then `prosody/keyed-state` in the system
+    /// temporary directory. Must not be an empty string when set.
     #[uniffi(default = None)]
     pub state_cache_dir: Option<String>,
 
