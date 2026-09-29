@@ -19,9 +19,9 @@ crate-type = ["cdylib"]
 arc-swap.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-mimalloc = { workspace = true, features = ["local_dynamic_tls"] }
 opentelemetry.workspace = true
 prosody.workspace = true
+rustfs-mimalloc = { workspace = true, features = ["local_dynamic_tls"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }

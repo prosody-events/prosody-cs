@@ -42,7 +42,7 @@
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
 
-use mimalloc::MiMalloc;
+use rustfs_mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
