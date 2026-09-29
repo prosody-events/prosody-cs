@@ -54,7 +54,7 @@ public sealed partial class ClientOptions
     public StateReadCache? StateReadCache { get; set; }
 
     /// <summary>
-    /// Subsystem under which published JSON collections are advertised.
+    /// Subsystem under which published JSON and set collections are advertised.
     /// Uses <c>PROSODY_SUBSYSTEM</c> when omitted. Published collections require it.
     /// </summary>
     public string? Subsystem { get; set; }

@@ -1523,7 +1523,7 @@ Each definition exposes its validated `Name`.
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
-Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
+Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
 
 `IValueState<T> where T : notnull`:
 

@@ -223,7 +223,7 @@ variable applies, then the default.
 | `StateMemtableSize` / `PROSODY_STATE_MEMTABLE_SIZE` | Bytes of in-memory writes the local keyed-state cache holds for each assigned partition before it flushes them to disk; memory use scales with the number of assigned partitions. | storage-engine default of 64 MiB |
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy. Use `StateReadCache.For(ttl)`, `StateReadCache.Disabled`, or the environment value `none`. | 5s |
-| `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON collections whose definitions set `published: true`. | (none) |
+| `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON and set collections whose definitions set `published: true`. | (none) |
 
 Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` / `Set` and the `Message*` variants).
 The [API reference](README.md#api-reference) documents these factories. Their parameters map to these fields:
