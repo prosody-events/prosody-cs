@@ -1,3 +1,4 @@
+using Prosody.Configuration;
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
 using Native = Prosody.Native;
@@ -272,6 +273,32 @@ public sealed class StateQueryTests
         );
 
         Assert.Equal(PositionQuery.ToNative(query), handle.LastQuery);
+    }
+
+    /// <summary>
+    /// A zero query limit and a read cache with both a TTL and <c>disabled</c> are caller mistakes.
+    /// The native layer must classify them transient, so a rethrow retries and loses no message.
+    /// </summary>
+    [Fact]
+    public async Task NativeCallerMistakes_AreTransient()
+    {
+        using var client = await Native.ProsodyClient.ProsodyClientAsync(
+            new ClientOptions
+            {
+                Mock = true,
+                BootstrapServers = [TestDefaults.BootstrapServers],
+                GroupId = "state-query-tests",
+                SubscribedTopics = ["state-query-tests"],
+            }.ToNative()
+        );
+        using var deque = await client.PublishedDeque("orders", "history", cacheTtl: null, cacheDisabled: false);
+
+        await Assert.ThrowsAsync<Native.FfiException.TransientState>(() =>
+            client.PublishedValue("orders", "current", TimeSpan.FromSeconds(1), cacheDisabled: true)
+        );
+        Assert.Throws<Native.FfiException.TransientState>(() =>
+            deque.Values("user-1", new Native.PositionQuery(Native.ScanDirection.Forward, null, null, null, 0))
+        );
     }
 
     private static MapState<int> Map(FakeMapStateHandle handle) => new(handle, TestJson.TypeInfo<int>());

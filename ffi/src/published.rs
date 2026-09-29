@@ -392,14 +392,14 @@ impl PublishedDequeHandle {
 
 /// Chooses the read cache for a published reader.
 ///
-/// Returns a permanent state error when the caller sets both a TTL and
-/// `disabled`.
+/// Returns a transient state error when the caller sets both a TTL and
+/// `disabled`. That is a caller mistake, so it is not permanent.
 pub(crate) fn read_cache(
     ttl: Option<Duration>,
     disabled: bool,
 ) -> Result<ErasedReadCache, FfiError> {
     match (ttl, disabled) {
-        (Some(_), true) => Err(FfiError::PermanentState(
+        (Some(_), true) => Err(FfiError::TransientState(
             "read cache cannot set both a TTL and disabled".to_owned(),
         )),
         (None, true) => Ok(ErasedReadCache::Disabled),
