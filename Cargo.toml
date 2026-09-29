@@ -15,7 +15,7 @@ prosody = { version = "0.6.0", features = [
 ] }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
-tokio = { version = "1.52", features = ["rt-multi-thread", "sync"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "sync"] }
 tokio-util = "0.7"
 tracing = { version = "0.1", features = ["log-always"] }
 tracing-opentelemetry = "0.34"
