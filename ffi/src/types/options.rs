@@ -113,13 +113,11 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub idempotence_cache_size: Option<u32>,
 
-    /// Version string for cache-busting deduplication hashes.
+    /// Version string for deduplication hashes.
     ///
-    /// Changing this value invalidates all previously recorded dedup entries,
-    /// causing messages to be reprocessed.
-    ///
-    /// Falls back to `PROSODY_IDEMPOTENCE_VERSION` environment variable if
-    /// unset.
+    /// A new value invalidates every recorded dedup entry, so Prosody
+    /// processes those messages again. Falls back to
+    /// `PROSODY_IDEMPOTENCE_VERSION` if unset.
     ///
     /// **Default:** `"1"`
     #[uniffi(default = None)]
@@ -393,15 +391,11 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub cassandra_keyspace: Option<String>,
 
-    /// Cassandra datacenter for query routing.
-    ///
-    /// Used for datacenter-aware load balancing.
+    /// Cassandra datacenter for datacenter-aware load balancing.
     #[uniffi(default = None)]
     pub cassandra_datacenter: Option<String>,
 
-    /// Cassandra rack for query routing.
-    ///
-    /// Used for rack-aware load balancing within a datacenter.
+    /// Cassandra rack for rack-aware load balancing within a datacenter.
     #[uniffi(default = None)]
     pub cassandra_rack: Option<String>,
 
