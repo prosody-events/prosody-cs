@@ -14,6 +14,13 @@ public sealed class PublishedMap<TValue>
         (_handle, _typeInfo) = (handle, typeInfo);
 
     /// <summary>Reads one entry for a user key.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="mapKey">The map key.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>The value, or an absent <see cref="StateValue{T}"/> when none is stored.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<StateValue<TValue>> GetAsync(string key, string mapKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -29,6 +36,13 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Reads several entries for a user key in one batch.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="mapKeys">The map keys to read. The call enumerates them once, before it dispatches.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>One result for each map key, in the requested order.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(
         string key,
         IEnumerable<string> mapKeys,
@@ -49,6 +63,13 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Reports whether one entry exists for a user key.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="mapKey">The map key.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns><see langword="true"/> when an entry exists for <paramref name="mapKey"/>.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<bool> ContainsKeyAsync(string key, string mapKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -60,6 +81,13 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Tests several entries for a user key in one batch. <c>result[i]</c> answers the i-th map key.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="mapKeys">The map keys to read. The call enumerates them once, before it dispatches.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>One result for each requested item, in the requested order.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<IReadOnlyList<bool>> ContainsManyAsync(
         string key,
         IEnumerable<string> mapKeys,
@@ -76,6 +104,12 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Determines whether the map for a user key is empty.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns><see langword="true"/> when the map for <paramref name="key"/> is empty.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -83,6 +117,13 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Enumerates keys without reading values.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="direction">The scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public IAsyncEnumerable<string> EnumerateKeysAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -90,6 +131,13 @@ public sealed class PublishedMap<TValue>
     ) => EnumerateKeysAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>Enumerates the keys that <paramref name="query"/> selects without reading values.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="query">The keys or positions to select, and the scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
     public IAsyncEnumerable<string> EnumerateKeysAsync(
         string key,
@@ -111,6 +159,13 @@ public sealed class PublishedMap<TValue>
     }
 
     /// <summary>Enumerates entries in key order.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="direction">The scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -118,6 +173,13 @@ public sealed class PublishedMap<TValue>
     ) => EnumerateAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>Enumerates the entries that <paramref name="query"/> selects.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="query">The keys or positions to select, and the scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         string key,
@@ -126,6 +188,13 @@ public sealed class PublishedMap<TValue>
     ) => Entries(key, query, item => StateInterop.JsonMapEntry(item, _typeInfo), cancellationToken);
 
     /// <summary>Enumerates values in key order.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="direction">The scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public IAsyncEnumerable<TValue> EnumerateValuesAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -133,6 +202,13 @@ public sealed class PublishedMap<TValue>
     ) => EnumerateValuesAsync(key, new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>Enumerates the values of the entries that <paramref name="query"/> selects.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="query">The keys or positions to select, and the scan order.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
     public IAsyncEnumerable<TValue> EnumerateValuesAsync(
         string key,

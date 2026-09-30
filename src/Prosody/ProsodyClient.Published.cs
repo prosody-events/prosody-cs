@@ -7,6 +7,14 @@ namespace Prosody;
 public sealed partial class ProsodyClient
 {
     /// <summary>Opens a read-only published value collection from the same descriptor used by its owner.</summary>
+    /// <param name="subsystem">The subsystem that publishes the collection.</param>
+    /// <param name="definition">The same definition that the owner registers.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A read-only handle for the published collection.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="subsystem"/> is empty.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public async Task<PublishedValue<T>> StateAsync<T>(
         string subsystem,
         ValueStateDefinition<T> definition,
@@ -20,6 +28,14 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Opens a read-only published map collection from the same descriptor used by its owner.</summary>
+    /// <param name="subsystem">The subsystem that publishes the collection.</param>
+    /// <param name="definition">The same definition that the owner registers.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A read-only handle for the published collection.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="subsystem"/> is empty.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public async Task<PublishedMap<TValue>> StateAsync<TValue>(
         string subsystem,
         MapStateDefinition<TValue> definition,
@@ -33,6 +49,14 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Opens a read-only published deque collection from the same descriptor used by its owner.</summary>
+    /// <param name="subsystem">The subsystem that publishes the collection.</param>
+    /// <param name="definition">The same definition that the owner registers.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A read-only handle for the published collection.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="subsystem"/> is empty.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public async Task<PublishedDeque<T>> StateAsync<T>(
         string subsystem,
         DequeStateDefinition<T> definition,
@@ -46,6 +70,14 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Opens a read-only published set collection from the same descriptor used by its owner.</summary>
+    /// <param name="subsystem">The subsystem that publishes the collection.</param>
+    /// <param name="definition">The same definition that the owner registers.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>A read-only handle for the published collection.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="subsystem"/> is empty.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public async Task<PublishedSet> StateAsync(
         string subsystem,
         SetStateDefinition definition,
