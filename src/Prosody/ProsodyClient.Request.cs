@@ -215,7 +215,7 @@ public sealed partial class ProsodyClient
     {
         try
         {
-            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType)!);
+            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {

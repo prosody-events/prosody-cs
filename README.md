@@ -1501,7 +1501,7 @@ Enum representing the operating mode:
 ### Requests
 
 - `Outcome<T>`: A `Success<T>` or `Failure<T>` result for one subsystem.
-- `Success<T>`: Contains the response in `Value`.
+- `Success<T>`: Contains the response in `Value`. A JSON `null` response is a success with a `null` value, so use a nullable `T`, such as `RequestAsync<Order, Order?>`, when a subsystem can respond with `null`.
 - `Failure<T>`: Contains a `ResponseError` in `Error`.
 - `ResponseError`: Base record with a `Message` property.
 - `HandlerError`, `TimeoutError`, `FormatMismatchError`, and `MalformedResponseError`: The possible response errors.
