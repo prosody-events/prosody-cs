@@ -4,6 +4,7 @@
 //! direction first because core reads start and end edges in query order.
 
 use std::num::NonZeroUsize;
+use std::ops::Bound;
 
 use prosody::state::{DequeQuery, ErasedKeyQuery};
 
@@ -25,10 +26,20 @@ pub enum KeyEdge {
     },
 }
 
+/// An ascending half-open range of keys.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct KeyRange {
+    /// The first key in the range, or `None` for no lower bound.
+    pub start: Option<String>,
+    /// The key after the range, or `None` for no upper bound.
+    pub end: Option<String>,
+}
+
 /// Settings for a map entries, map keys, or set members query.
 ///
 /// `start` and `end` are in query order: a backward query starts at the high
-/// end. Every setting narrows the selection.
+/// end. `range` is ascending and applies in either direction. Every setting
+/// narrows the selection.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct KeyQuery {
     /// The iteration order.
@@ -39,6 +50,8 @@ pub struct KeyQuery {
     pub start: Option<KeyEdge>,
     /// The last key in query order.
     pub end: Option<KeyEdge>,
+    /// Keeps keys within this ascending range.
+    pub range: Option<KeyRange>,
     /// The maximum number of returned items. Must be positive.
     pub limit: Option<u32>,
 }
@@ -103,6 +116,12 @@ impl TryFrom<KeyQuery> for ErasedKeyQuery {
             Some(KeyEdge::Exclusive { key }) => core.before(key),
             None => core,
         };
+        if let Some(KeyRange { start, end }) = query.range {
+            core = core.range((
+                start.map_or(Bound::Unbounded, Bound::Included),
+                end.map_or(Bound::Unbounded, Bound::Excluded),
+            ));
+        }
         Ok(match query.limit {
             Some(limit) => core.limit(positive(limit)?),
             None => core,

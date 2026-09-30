@@ -736,6 +736,7 @@ Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque
 
 - `From` and `To` are inclusive. `After` and `Before` are exclusive. Set at most one start and one end.
 - Bounds are in iteration order. A `ScanDirection.Backward` query starts at the high end.
+- `KeyQuery.Range` accepts an ascending `KeyRange` of keys, such as `new KeyRange("a", "m")`. The start is inclusive and the end is exclusive. A `null` start or end leaves that side open. It applies in either direction. A descending range throws. Keys sort in the order of their UTF-8 bytes.
 - `PositionQuery.Range` accepts an ascending `System.Range` of positions, such as `2..5` or `3..`. It applies in either direction. Use positions that count from the front; only `^0` is allowed, as the end. A descending range such as `5..2` throws, as in .NET slicing.
 - Every option narrows the selection. `Limit` must be positive.
 - To read the last N elements of a deque, use a reverse query with `Limit = N`: `new PositionQuery { Direction = ScanDirection.Backward, Limit = N }`.
@@ -1581,7 +1582,9 @@ Published JSON and set collections use the same definition for owned and read-on
 - `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
 - `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
 
-`KeyQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `string? Prefix`, `string? From`, `string? After`, `string? To`, `string? Before`, `int? Limit`. A non-positive `Limit` throws `ArgumentOutOfRangeException`. Both `From` and `After`, or both `To` and `Before`, throw `ArgumentException` when the query is used.
+`KeyQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `string? Prefix`, `string? From`, `string? After`, `string? To`, `string? Before`, `KeyRange? Range`, `int? Limit`. A non-positive `Limit` or a descending `Range` throws `ArgumentOutOfRangeException`. Both `From` and `After`, or both `To` and `Before`, throw `ArgumentException` when the query is used.
+
+`KeyRange(string? Start, string? End)` (a `readonly record struct`): an ascending key range that includes `Start` and excludes `End`. A `null` side is open.
 
 `PositionQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `int? From`, `int? After`, `int? To`, `int? Before`, `Range? Range`, `int? Limit`. A negative position, a descending range, or a from-end index other than an end of `^0` throws `ArgumentOutOfRangeException`. The pairs follow the `KeyQuery` rules.
 

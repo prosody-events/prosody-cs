@@ -21,6 +21,7 @@ public sealed class StateQueryTests
                 Prefix = "user:",
                 From = "user:9",
                 To = "user:1",
+                Range = new KeyRange("user:2", "user:8"),
                 Limit = 3,
             }
         );
@@ -34,6 +35,7 @@ public sealed class StateQueryTests
                         "user:",
                         new Native.KeyEdge.Inclusive("user:9"),
                         new Native.KeyEdge.Inclusive("user:1"),
+                        new Native.KeyRange("user:2", "user:8"),
                         3
                     ),
                     inclusive
@@ -45,6 +47,7 @@ public sealed class StateQueryTests
                         null,
                         new Native.KeyEdge.Exclusive("b"),
                         new Native.KeyEdge.Exclusive("d"),
+                        null,
                         null
                     ),
                     exclusive
@@ -59,6 +62,37 @@ public sealed class StateQueryTests
             () => Assert.Throws<ArgumentException>(() => KeyQuery.ToNative(new KeyQuery { From = "a", After = "a" })),
             () => Assert.Throws<ArgumentException>(() => KeyQuery.ToNative(new KeyQuery { To = "z", Before = "z" }))
         );
+    }
+
+    /// <summary>
+    /// Key ranges in every open or closed form translate unchanged. The last row is ascending by
+    /// Unicode scalar value but descending by UTF-16 code unit.
+    /// </summary>
+    [Theory]
+    [InlineData("a", "m")]
+    [InlineData("a", null)]
+    [InlineData(null, "m")]
+    [InlineData(null, null)]
+    [InlineData("k", "k")]
+    [InlineData("\uE000", "\U0001F600")]
+    public void KeyQuery_TranslatesRangeForms(string? start, string? end)
+    {
+        Assert.Equal(
+            new Native.KeyRange(start, end),
+            KeyQuery.ToNative(new KeyQuery { Range = new KeyRange(start, end) }).Range
+        );
+    }
+
+    [Theory]
+    [InlineData("m", "a")]
+    [InlineData("\U0001F600", "\uE000")]
+    public void KeyQuery_RejectsADescendingRange(string start, string end)
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new KeyQuery { Range = new KeyRange(start, end) }
+        );
+
+        Assert.Equal("Range", exception.ParamName);
     }
 
     [Theory]
@@ -243,7 +277,7 @@ public sealed class StateQueryTests
         Assert.Multiple(
             () =>
                 Assert.Equal(
-                    new Native.KeyQuery(Native.ScanDirection.Backward, null, null, null, null),
+                    new Native.KeyQuery(Native.ScanDirection.Backward, null, null, null, null, null),
                     map.EntriesQuery
                 ),
             () =>

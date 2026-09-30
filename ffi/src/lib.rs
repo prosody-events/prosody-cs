@@ -104,7 +104,7 @@ pub use message_deque::MessageDequeStateHandle;
 pub use published::{
     PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
 };
-pub use query::{KeyEdge, KeyQuery, PositionEdge, PositionQuery, PositionRange};
+pub use query::{KeyEdge, KeyQuery, KeyRange, PositionEdge, PositionQuery, PositionRange};
 pub use set::SetStateHandle;
 pub use state::{ScanDirection, StoreOutcome};
 pub use timer::Timer;

@@ -19,6 +19,7 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
         public int[] Values { get; init; } = [];
         public string[] Entries { get; init; } = [];
         public int[] Positions { get; init; } = [];
+        public string[][] KeyRanges { get; init; } = [];
         public bool SetEmpty { get; init; }
         public bool SetContains { get; init; }
         public bool[] SetPresence { get; init; } = [];
@@ -61,6 +62,26 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
                 await deque.PushBackAsync(12, ct);
 
                 var memberPage = await ToListAsync(set.EnumerateAsync(new KeyQuery { After = "a", Limit = 2 }, ct));
+                string[][] keyRanges =
+                [
+                    await ToListAsync(map.EnumerateKeysAsync(new KeyQuery { Range = new KeyRange("k2", "k5") }, ct)),
+                    await ToListAsync(
+                        map.EnumerateKeysAsync(Backward(new KeyQuery { Range = new KeyRange("k2", "k5") }), ct)
+                    ),
+                    await ToListAsync(set.EnumerateAsync(new KeyQuery { Range = new KeyRange("b", null) }, ct)),
+                    await ToListAsync(
+                        set.EnumerateAsync(Backward(new KeyQuery { Range = new KeyRange("b", null) }), ct)
+                    ),
+                    await ToListAsync(
+                        map.EnumerateKeysAsync(new KeyQuery { Range = new KeyRange("k2", null), Before = "k4" }, ct)
+                    ),
+                    await ToListAsync(
+                        map.EnumerateKeysAsync(
+                            Backward(new KeyQuery { Range = new KeyRange("k2", null), After = "k4" }),
+                            ct
+                        )
+                    ),
+                ];
                 await set.RemoveAsync("b", ct);
 
                 var observation = new QueryObservation
@@ -86,6 +107,7 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
                     Positions = await ToListAsync(
                         deque.EnumerateAsync(new PositionQuery { Direction = ScanDirection.Backward, Range = 1.. }, ct)
                     ),
+                    KeyRanges = keyRanges,
                     SetEmpty = setEmpty,
                     SetContains = await set.ContainsAsync("c", ct),
                     SetPresence = [.. await set.ContainsManyAsync(["a", "z"], ct)],
@@ -117,6 +139,12 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
             () => Assert.Equal([2, 3], obs.Values),
             () => Assert.Equal(["other"], obs.Entries),
             () => Assert.Equal([12, 11], obs.Positions),
+            () => Assert.Equal(["k2", "k3", "k4"], obs.KeyRanges[0]),
+            () => Assert.Equal(["k4", "k3", "k2"], obs.KeyRanges[1]),
+            () => Assert.Equal(["b", "c", "d"], obs.KeyRanges[2]),
+            () => Assert.Equal(["d", "c", "b"], obs.KeyRanges[3]),
+            () => Assert.Equal(["k2", "k3"], obs.KeyRanges[4]),
+            () => Assert.Equal(["k3", "k2"], obs.KeyRanges[5]),
             () => Assert.True(obs.SetEmpty),
             () => Assert.True(obs.SetContains),
             () => Assert.Equal([true, false], obs.SetPresence),
@@ -158,6 +186,8 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
 
         Assert.Equal([new Demand(DemandKind.Normal, 0), new Demand(DemandKind.Failure, 1)], observed);
     }
+
+    private static KeyQuery Backward(KeyQuery query) => query with { Direction = ScanDirection.Backward };
 
     private static async IAsyncEnumerable<string> Keys<T>(IAsyncEnumerable<KeyValuePair<string, T>> entries)
     {
