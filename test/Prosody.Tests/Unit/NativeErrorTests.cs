@@ -56,11 +56,23 @@ public sealed class NativeErrorTests
         Assert.IsType(expected, NativeErrors.Translate(error), exactMatch: true);
     }
 
-    [Fact]
-    public async Task InvalidConsumerOptionFailsSubscribeWithInvalidOperationException()
+    public static TheoryData<string> InvalidConsumerOptions() =>
+        [nameof(ClientOptions.MaxUncommitted), nameof(ClientOptions.StatisticsInterval)];
+
+    [Theory]
+    [MemberData(nameof(InvalidConsumerOptions))]
+    public async Task InvalidConsumerOptionFailsSubscribeWithInvalidOperationException(string option)
     {
         var options = MockOptions;
-        options.MaxUncommitted = 0;
+        switch (option)
+        {
+            case nameof(ClientOptions.MaxUncommitted):
+                options.MaxUncommitted = 0;
+                break;
+            default:
+                options.StatisticsInterval = TimeSpan.FromHours(25);
+                break;
+        }
         await using var client = await ProsodyClient.CreateAsync(options);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>

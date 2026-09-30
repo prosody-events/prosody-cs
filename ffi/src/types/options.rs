@@ -96,9 +96,8 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_concurrency: Option<u32>,
 
-    /// Maximum uncommitted messages before pausing consumption.
-    ///
-    /// Prevents unbounded memory growth when processing lags behind ingestion.
+    /// Maximum uncommitted messages before pausing consumption. The bound
+    /// stops memory growth when processing lags behind ingestion.
     ///
     /// **Default:** `64`
     #[uniffi(default = None)]
@@ -125,10 +124,8 @@ pub struct ClientOptions {
 
     /// TTL for deduplication records in Cassandra.
     ///
-    /// Must be at least 1 minute. Records expire automatically after this
-    /// duration.
-    ///
-    /// Falls back to `PROSODY_IDEMPOTENCE_TTL` environment variable if unset.
+    /// Records expire automatically after this duration. Falls back to
+    /// `PROSODY_IDEMPOTENCE_TTL` environment variable if unset.
     ///
     /// **Default:** 7 days
     #[uniffi(default = None)]
@@ -152,31 +149,32 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub stall_threshold: Option<Duration>,
 
-    /// Grace period for in-flight work during shutdown.
-    ///
-    /// After this timeout, remaining handlers are cancelled and uncommitted
-    /// work is abandoned.
+    /// Grace period for in-flight work during shutdown. After this timeout,
+    /// remaining handlers are cancelled and uncommitted work is abandoned.
     ///
     /// **Default:** 30 seconds
     #[uniffi(default = None)]
     pub shutdown_timeout: Option<Duration>,
 
-    /// Interval between Kafka poll operations.
-    ///
-    /// Lower values reduce latency; higher values reduce CPU usage.
+    /// Interval between Kafka poll operations. Lower values reduce latency;
+    /// higher values reduce CPU usage.
     ///
     /// **Default:** 100ms
     #[uniffi(default = None)]
     pub poll_interval: Option<Duration>,
 
-    /// Interval between offset commits to Kafka.
-    ///
-    /// More frequent commits reduce duplicate processing on restart but
-    /// increase broker load.
+    /// Interval between offset commits to Kafka. More frequent commits reduce
+    /// duplicate processing on restart but increase broker load.
     ///
     /// **Default:** 1 second
     #[uniffi(default = None)]
     pub commit_interval: Option<Duration>,
+
+    /// Interval between librdkafka statistics reports.
+    ///
+    /// **Default:** 5 seconds
+    #[uniffi(default = None)]
+    pub statistics_interval: Option<Duration>,
 
     /// HTTP port for health check endpoints (`/livez`, `/readyz`).
     ///

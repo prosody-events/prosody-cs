@@ -190,6 +190,12 @@ public sealed partial class ClientOptions
     public TimeSpan? CommitInterval { get; set; }
 
     /// <summary>
+    /// How often librdkafka reports client statistics. Prosody accepts 1 millisecond through 24 hours.
+    /// Default: 5 seconds.
+    /// </summary>
+    public TimeSpan? StatisticsInterval { get; set; }
+
+    /// <summary>
     /// HTTP port for health check probes (<c>/livez</c>, <c>/readyz</c>).
     /// </summary>
     /// <remarks>

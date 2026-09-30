@@ -134,6 +134,10 @@ fn build_consumer_config(
         builder.commit_interval(commit_interval);
     }
 
+    if let Some(statistics_interval) = options.statistics_interval {
+        builder.statistics_interval(statistics_interval);
+    }
+
     if let Some(probe_port) = options.probe_port {
         builder.probe_port((probe_port != 0).then_some(probe_port));
     }

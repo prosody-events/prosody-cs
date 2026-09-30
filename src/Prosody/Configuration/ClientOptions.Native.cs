@@ -68,6 +68,7 @@ public sealed partial class ClientOptions
             ShutdownTimeout: Durations.ToNative(ShutdownTimeout),
             PollInterval: Durations.ToNative(PollInterval),
             CommitInterval: Durations.ToNative(CommitInterval),
+            StatisticsInterval: Durations.ToNative(StatisticsInterval),
             ProbePort: ProbePort,
             SlabSize: Durations.ToNative(SlabSize),
             SendTimeout: Durations.ToNative(SendTimeout),
