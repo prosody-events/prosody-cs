@@ -1383,7 +1383,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `WithMaxRetries(uint maxRetries)`: Set max retry attempts
 - `WithFailureTopic(string topic)`: Set dead letter topic
 - `WithProbePort(ushort port)`: Set health check probe port
-- `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery. Pipeline mode ignores it and retries a send until it succeeds.
+- `WithSendTimeout(TimeSpan timeout)`: Set max time to wait for message delivery
 - `Configure(Action<ClientOptions> configure)`: Set any option on `ClientOptions` directly
 - `ConfigureJsonOptions(Action<JsonSerializerOptions> configure)`: Override JSON serialization options (runs after defaults are applied)
 - `WithStateCollections(params StateDefinition[] definitions)`: Register keyed-state collections before subscribe

@@ -233,8 +233,8 @@ public sealed partial class ClientOptions
     // ========================================================================
 
     /// <summary>
-    /// Give up sending after this long. Pipeline mode ignores this option and retries a send until it
-    /// succeeds. Low-latency and best-effort modes use it. Default: 1 second.
+    /// Give up sending after this long.
+    /// Default: 1 second.
     /// </summary>
     public TimeSpan? SendTimeout { get; set; }
 
