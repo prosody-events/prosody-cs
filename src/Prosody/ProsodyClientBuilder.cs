@@ -255,8 +255,11 @@ public sealed class ProsodyClientBuilder
     /// <summary>
     /// Sets the maximum time to wait for message delivery acknowledgment.
     /// Messages not acknowledged within this duration are considered failed.
+    /// Pipeline mode ignores this option and retries a send until it succeeds.
     /// </summary>
-    /// <param name="timeout">The send timeout. Default: 1 second.</param>
+    /// <param name="timeout">
+    /// The send timeout for low-latency and best-effort modes. Default: 1 second.
+    /// </param>
     /// <returns>This builder for chaining.</returns>
     public ProsodyClientBuilder WithSendTimeout(TimeSpan timeout)
     {

@@ -195,11 +195,10 @@ pub struct ClientOptions {
     pub slab_size: Option<Duration>,
 
     // Producer options
-    /// Maximum time to wait for message delivery acknowledgment.
+    /// Maximum time to wait for message delivery acknowledgment. Pipeline
+    /// mode ignores it and retries a send until it succeeds.
     ///
-    /// Messages not acknowledged within this duration are considered failed.
-    ///
-    /// **Default:** 1 second
+    /// **Default:** 1 second in low-latency and best-effort modes
     #[uniffi(default = None)]
     pub send_timeout: Option<Duration>,
 
