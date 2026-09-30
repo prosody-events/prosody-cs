@@ -103,7 +103,8 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
-    /// Global shared cache capacity across all partitions for deduplication.
+    /// Capacity of the producer idempotence cache and of the consumer
+    /// deduplication cache, which all partitions share.
     ///
     /// Must be greater than `0`. Falls back to `PROSODY_IDEMPOTENCE_CACHE_SIZE`
     /// if unset.

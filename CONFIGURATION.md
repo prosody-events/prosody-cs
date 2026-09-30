@@ -120,7 +120,7 @@ Set `Subsystem` to make this client answer requests. Without it, the client cons
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks; use `0` or the environment value `none` to disable | 8000 |
 | `StatisticsInterval` / `PROSODY_STATISTICS_INTERVAL` | How often librdkafka reports client statistics; must be between 1ms and 24h | 5s |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
-| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for message deduplication. Must be at least 1. | 8192 |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Capacity of the producer idempotence cache and of the consumer deduplication cache. Must be at least 1. | 8192 |
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |

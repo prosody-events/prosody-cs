@@ -48,7 +48,7 @@ impl From<SpanRelation> for ProsodySpanRelation {
 /// Creates a producer configuration builder from client options.
 ///
 /// Configures Kafka producer settings including bootstrap servers, mock mode,
-/// source system identifier, and send timeout.
+/// source system identifier, send timeout, and the idempotence cache size.
 #[must_use]
 pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBuilder {
     let mut builder = ProducerConfigurationBuilder::default();
@@ -67,6 +67,10 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 
     if let Some(timeout) = options.send_timeout {
         builder.send_timeout(Some(timeout));
+    }
+
+    if let Some(size) = options.idempotence_cache_size {
+        builder.idempotence_cache_size(size as usize);
     }
 
     builder

@@ -478,7 +478,8 @@ the same process. For cross-restart deduplication, a Cassandra-backed persistent
 configured.
 
 Deduplication is always active. `IdempotenceCacheSize` must be greater than `0`; a value of `0` (via either the
-option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The cache capacity can be tuned:
+option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The same value sizes the producer
+idempotence cache, which skips a send whose event ID the client already sent. The cache capacity can be tuned:
 
 ```csharp
 await using var client = await ProsodyClientBuilder.Create()
