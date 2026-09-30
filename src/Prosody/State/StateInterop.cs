@@ -12,22 +12,25 @@ internal static class StateInterop
 {
     /// <summary>
     /// Runs one asynchronous native state operation with <see cref="NativeErrors.RunAsync(Func{Task}, string?)"/>.
-    /// A cancelled token gives a cancelled task and starts no operation. A started native operation
-    /// always runs to completion, so no later operation races it on the same context.
+    /// A cancelled token faults the task with <see cref="OperationCanceledException"/> and starts no
+    /// operation. A started native operation always runs to completion, so no later operation races it
+    /// on the same context.
     /// </summary>
-    internal static Task RunAsync(Func<Task> operation, CancellationToken cancellationToken) =>
-        cancellationToken.IsCancellationRequested
-            ? Task.FromCanceled(cancellationToken)
-            : NativeErrors.RunAsync(operation);
+    internal static async Task RunAsync(Func<Task> operation, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await NativeErrors.RunAsync(operation).ConfigureAwait(false);
+    }
 
     /// <summary>Runs one asynchronous native state operation that produces a value, like <see cref="RunAsync(Func{Task}, CancellationToken)"/>.</summary>
-    internal static Task<TResult> RunAsync<TResult>(
+    internal static async Task<TResult> RunAsync<TResult>(
         Func<Task<TResult>> operation,
         CancellationToken cancellationToken
-    ) =>
-        cancellationToken.IsCancellationRequested
-            ? Task.FromCanceled<TResult>(cancellationToken)
-            : NativeErrors.RunAsync(operation);
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await NativeErrors.RunAsync(operation).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Runs one native commit or rollback with a fresh carrier and converts its outcome.
