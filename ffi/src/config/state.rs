@@ -43,21 +43,21 @@ pub(super) fn build_keyed_state_config(
     if let Some(size) = &options.state_owned_cache_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("stateOwnedCacheSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("StateOwnedCacheSize: {error}")))?;
         builder.owned_cache_size(Some(size));
     }
 
     if let Some(size) = &options.state_memtable_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("stateMemtableSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("StateMemtableSize: {error}")))?;
         builder.memtable_size(Some(size));
     }
 
     if let Some(size) = &options.state_read_cache_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("stateReadCacheSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("StateReadCacheSize: {error}")))?;
         builder.read_cache_size(Some(size));
     }
 
@@ -67,7 +67,7 @@ pub(super) fn build_keyed_state_config(
     ) {
         (Some(_), true) => {
             return Err(FfiError::InvalidOperation(
-                "stateReadCacheTtl and stateReadCacheDisabled cannot both be set".to_owned(),
+                "StateReadCache cannot set both a TTL and Disabled".to_owned(),
             ));
         }
         (Some(ttl), false) => {
@@ -120,7 +120,7 @@ fn register_state_collection(
 ) -> Result<(), FfiError> {
     let ttl = collection
         .ttl
-        .map(|ttl| whole_seconds(ttl, &format!("stateCollections[{index}].ttl")))
+        .map(|ttl| whole_seconds(ttl, &format!("StateCollections[{index}] ttl")))
         .transpose()?;
     let capacity = checked_capacity(collection, index)?;
     let keyset_limit = collection.keyset_limit;
@@ -161,7 +161,7 @@ fn register_state_collection(
         }
         (StateKind::Set, StatePayload::Message) => {
             return Err(FfiError::InvalidOperation(format!(
-                "stateCollections[{index}].payload: a set stores no message payload"
+                "StateCollections[{index}] payload: a set stores no message payload"
             )));
         }
     }
@@ -185,7 +185,7 @@ fn checked_capacity(
         && !matches!(collection.kind, StateKind::Map | StateKind::Set)
     {
         return Err(FfiError::InvalidOperation(format!(
-            "stateCollections[{index}].keysetLimit: only valid for map and set collections"
+            "StateCollections[{index}] keysetLimit: only valid for map and set collections"
         )));
     }
 
@@ -194,14 +194,14 @@ fn checked_capacity(
     };
     if collection.kind != StateKind::Deque {
         return Err(FfiError::InvalidOperation(format!(
-            "stateCollections[{index}].capacity: only valid for deque collections"
+            "StateCollections[{index}] capacity: only valid for deque collections"
         )));
     }
     NonZeroUsize::new(capacity as usize)
         .map(Some)
         .ok_or_else(|| {
             FfiError::InvalidOperation(format!(
-                "stateCollections[{index}].capacity: must be a positive integer"
+                "StateCollections[{index}] capacity: must be a positive integer"
             ))
         })
 }

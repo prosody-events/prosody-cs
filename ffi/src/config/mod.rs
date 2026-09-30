@@ -195,15 +195,15 @@ fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiEr
 
     if let Some(value) = &options.peer_bind_address {
         builder.bind_address(
-            value.parse::<SocketAddr>().map_err(|error| {
-                FfiError::InvalidOperation(format!("peer_bind_address: {error}"))
-            })?,
+            value
+                .parse::<SocketAddr>()
+                .map_err(|error| FfiError::InvalidOperation(format!("PeerBindAddress: {error}")))?,
         );
     }
 
     if let Some(value) = &options.peer_advertised_connect {
         builder.advertised_connect(PeerEndpoint::try_from(value.clone()).map_err(|error| {
-            FfiError::InvalidOperation(format!("peer_advertised_connect: {error}"))
+            FfiError::InvalidOperation(format!("PeerAdvertisedConnect: {error}"))
         })?);
     }
 
@@ -212,9 +212,11 @@ fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiEr
     }
 
     if let Some(value) = options.peer_cache_capacity {
-        builder.peer_cache_capacity(usize::try_from(value).map_err(|error| {
-            FfiError::InvalidOperation(format!("peer_cache_capacity: {error}"))
-        })?);
+        builder.peer_cache_capacity(
+            usize::try_from(value).map_err(|error| {
+                FfiError::InvalidOperation(format!("PeerCacheCapacity: {error}"))
+            })?,
+        );
     }
 
     if let Some(value) = options.peer_registration_ttl {
