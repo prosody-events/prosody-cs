@@ -35,6 +35,27 @@ public sealed class PublishedStateTests
         );
     }
 
+    private static readonly int[] FrontIndexes = [0, 1, 2];
+
+    private static readonly Index[] BackIndexes = [^0, ^1, ^2, ^3];
+
+    [Fact]
+    public async Task DequeIndexCountsFromEitherEnd()
+    {
+        var state = new PublishedDeque<string>(new PublishedDequeHandle(), TestJson.TypeInfo<string>());
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var front = FrontIndexes.Select(index => state.GetAsync("user-1", index, cancellationToken));
+        var back = BackIndexes.Select(index => state.GetAsync("user-1", index, cancellationToken));
+        var values = await Task.WhenAll(front.Concat(back));
+
+        Assert.Equal(
+            ["front", "back", null, null, "back", "front", null],
+            values.Select(value => value.HasValue ? value.Value : null)
+        );
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => state.GetAsync("user-1", -1, cancellationToken));
+    }
+
     [Fact]
     public async Task MapEmptinessAndBatchPresenceUseTheTypedNativeOperations()
     {
@@ -151,7 +172,14 @@ public sealed class PublishedStateTests
     private sealed class PublishedDequeHandle : Native.IPublishedDequeHandle
     {
         public Task<byte[]?> Get(string key, ulong index, Dictionary<string, string> carrier) =>
-            Task.FromResult<byte[]?>(null);
+            Task.FromResult<byte[]?>(
+                index switch
+                {
+                    0 => "\"front\""u8.ToArray(),
+                    1 => "\"back\""u8.ToArray(),
+                    _ => null,
+                }
+            );
 
         public Task<bool> IsEmpty(string key, Dictionary<string, string> carrier) => Task.FromResult(false);
 

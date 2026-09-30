@@ -19,15 +19,13 @@ public sealed class PublishedDeque<T>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>The element, or an absent <see cref="StateValue{T}"/> when the index is past the end.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
     /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
     public Task<StateValue<T>> GetAsync(string key, int index, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        if (index < 0)
-        {
-            throw new TransientStateException($"Deque index must be non-negative, got {index}.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
         return StateInterop.RunAsync(
             async () =>
                 StateInterop.JsonToValue(
@@ -37,6 +35,33 @@ public sealed class PublishedDeque<T>
             cancellationToken
         );
     }
+
+    /// <summary>
+    /// Reads one element for a user key. The index can count from the back: <c>GetAsync(key, ^1)</c>
+    /// reads the back element.
+    /// </summary>
+    /// <remarks>
+    /// A from-end index reads the count, then the element. An owner write between the two reads can
+    /// move the element that the index selects.
+    /// </remarks>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="index">The index. A from-end index counts back from the end.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns>
+    /// The element, or an absent <see cref="StateValue{T}"/> when the index is out of range. The index
+    /// <c>^0</c> is out of range.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
+    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    public Task<StateValue<T>> GetAsync(string key, Index index, CancellationToken cancellationToken = default) =>
+        index.IsFromEnd
+            ? StateInterop.GetFromEndAsync(
+                index.Value,
+                () => CountAsync(key, cancellationToken),
+                position => GetAsync(key, position, cancellationToken)
+            )
+            : GetAsync(key, index.Value, cancellationToken);
 
     /// <summary>Counts the elements for a user key.</summary>
     /// <param name="key">The user key that owns the collection.</param>

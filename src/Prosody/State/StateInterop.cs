@@ -63,6 +63,21 @@ internal static class StateInterop
     internal static int? PositiveLimit(int? value, string property) =>
         value is <= 0 ? throw new ArgumentOutOfRangeException(property, value, $"{property} must be positive.") : value;
 
+    /// <summary>
+    /// Reads the deque element <paramref name="fromEnd"/> places before the end. The position is the
+    /// count minus <paramref name="fromEnd"/>. A position before the front reads absent.
+    /// </summary>
+    internal static async Task<StateValue<T>> GetFromEndAsync<T>(
+        int fromEnd,
+        Func<Task<int>> count,
+        Func<int, Task<StateValue<T>>> get
+    )
+        where T : notnull
+    {
+        var position = await count().ConfigureAwait(false) - fromEnd;
+        return position < 0 ? StateValue<T>.None : await get(position).ConfigureAwait(false);
+    }
+
     /// <summary>Maps a native store outcome to the public enum.</summary>
     internal static StoreOutcome ToPublic(Native.StoreOutcome outcome) =>
         outcome switch

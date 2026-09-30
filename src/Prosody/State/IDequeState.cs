@@ -49,10 +49,31 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     Task ClearAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Reads the element at <paramref name="index"/> (front-relative, zero-based).</summary>
-    /// <param name="index">The zero-based index from the front. A negative index is a caller mistake (transient).</param>
+    /// <param name="index">The zero-based index from the front.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
     /// <returns>The element, or an absent <see cref="StateValue{T}"/> when the index is out of range.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
     Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the element at <paramref name="index"/>, which can count from the back:
+    /// <c>GetAsync(^1)</c> reads the back element.
+    /// </summary>
+    /// <remarks>A from-end index reads the count, then the element.</remarks>
+    /// <param name="index">The index. A from-end index counts back from the end.</param>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>
+    /// The element, or an absent <see cref="StateValue{T}"/> when the index is out of range. The
+    /// index <c>^0</c> is out of range.
+    /// </returns>
+    Task<StateValue<T>> GetAsync(Index index, CancellationToken cancellationToken = default) =>
+        index.IsFromEnd
+            ? StateInterop.GetFromEndAsync(
+                index.Value,
+                () => CountAsync(cancellationToken),
+                position => GetAsync(position, cancellationToken)
+            )
+            : GetAsync(index.Value, cancellationToken);
 
     /// <summary>
     /// Reads the front element without a length round trip — exactly

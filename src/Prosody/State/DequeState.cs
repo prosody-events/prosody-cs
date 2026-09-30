@@ -76,10 +76,7 @@ internal sealed class DequeState<T> : IDequeState<T>
 
     public Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
-        if (index < 0)
-        {
-            throw new TransientStateException($"Deque index must be non-negative, got {index}.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         return StateInterop.RunAsync(
             async () =>

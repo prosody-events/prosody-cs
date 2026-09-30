@@ -76,10 +76,7 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
 
     public Task<StateValue<Message<TPayload>>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
-        if (index < 0)
-        {
-            throw new TransientStateException($"Deque index must be non-negative, got {index}.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         return StateInterop.RunAsync(
             async () =>

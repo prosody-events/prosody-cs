@@ -364,13 +364,15 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
         );
     }
 
+    private static readonly int[] FrontIndexes = [1, 2];
+
+    private static readonly Index[] BackIndexes = [^0, ^1, ^2, ^3];
+
     [Fact(Timeout = 60_000)]
-    public async Task Deque_GetNegativeIndex_ThrowsTransient()
+    public async Task Deque_GetIndex_CountsFromEitherEnd_RejectsNegative()
     {
-        // A negative index is a caller mistake: it must classify TRANSIENT (recovered from the
-        // exception TYPE, not the message) so a data-dependent handler bug retries rather than
-        // committing the offset and silently losing the message. Asserting the exact "transient"
-        // discriminant also pins that it is NOT misclassified permanent.
+        // A negative int index is a caller mistake. ArgumentOutOfRangeException does not implement
+        // IPermanentError, so the handler bridge classifies it transient.
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var observations = new MessageChannel<string>();
 
@@ -381,22 +383,34 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
                 if (msg.Payload?.Sequence == 1)
                 {
                     await deque.PushBackAsync("a", ct);
+                    await deque.PushBackAsync("b", ct);
                     return;
+                }
+
+                var reads = new List<string>();
+                foreach (var index in FrontIndexes)
+                {
+                    var value = await deque.GetAsync(index, ct);
+                    reads.Add(value.HasValue ? value.Value : "-");
+                }
+
+                foreach (var index in BackIndexes)
+                {
+                    var value = await deque.GetAsync(index, ct);
+                    reads.Add(value.HasValue ? value.Value : "-");
                 }
 
                 try
                 {
                     await deque.GetAsync(-1, ct);
-                    observations.Send("no-throw");
+                    reads.Add("no-throw");
                 }
-                catch (PermanentStateException)
+                catch (ArgumentOutOfRangeException)
                 {
-                    observations.Send("permanent");
+                    reads.Add("out-of-range");
                 }
-                catch (TransientStateException)
-                {
-                    observations.Send("transient");
-                }
+
+                observations.Send(string.Join(',', reads));
             }
         );
 
@@ -406,6 +420,6 @@ public sealed class StateDequeCollectionTests(IntegrationTestFixture fixture) : 
             TestContext.Current.CancellationToken
         );
 
-        Assert.Equal("transient", obs);
+        Assert.Equal("b,-,-,b,a,-,out-of-range", obs);
     }
 }

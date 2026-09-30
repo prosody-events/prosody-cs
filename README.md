@@ -1524,7 +1524,7 @@ Each definition exposes its validated `Name`.
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
-Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
+Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync` (an `Index` such as `^1` counts from the back), `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
 
 `IValueState<T> where T : notnull`:
 
@@ -1561,7 +1561,8 @@ Published JSON and set collections use the same definition for owned and read-on
 - `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default)`
-- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`: A negative index throws `ArgumentOutOfRangeException`.
+- `Task<StateValue<T>> GetAsync(Index index, CancellationToken cancellationToken = default)`: `GetAsync(^1)` reads the back element.
 - `Task<int> CountAsync(CancellationToken cancellationToken = default)`
 - `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
