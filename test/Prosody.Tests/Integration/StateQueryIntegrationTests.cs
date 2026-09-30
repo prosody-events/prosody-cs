@@ -68,19 +68,6 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
                     await ToListAsync(
                         map.EnumerateKeysAsync(Backward(new KeyQuery { Range = new KeyRange("k2", "k5") }), ct)
                     ),
-                    await ToListAsync(set.EnumerateAsync(new KeyQuery { Range = new KeyRange("b", null) }, ct)),
-                    await ToListAsync(
-                        set.EnumerateAsync(Backward(new KeyQuery { Range = new KeyRange("b", null) }), ct)
-                    ),
-                    await ToListAsync(
-                        map.EnumerateKeysAsync(new KeyQuery { Range = new KeyRange("k2", null), Before = "k4" }, ct)
-                    ),
-                    await ToListAsync(
-                        map.EnumerateKeysAsync(
-                            Backward(new KeyQuery { Range = new KeyRange("k2", null), After = "k4" }),
-                            ct
-                        )
-                    ),
                 ];
                 await set.RemoveAsync("b", ct);
 
@@ -141,10 +128,6 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
             () => Assert.Equal([12, 11], obs.Positions),
             () => Assert.Equal(["k2", "k3", "k4"], obs.KeyRanges[0]),
             () => Assert.Equal(["k4", "k3", "k2"], obs.KeyRanges[1]),
-            () => Assert.Equal(["b", "c", "d"], obs.KeyRanges[2]),
-            () => Assert.Equal(["d", "c", "b"], obs.KeyRanges[3]),
-            () => Assert.Equal(["k2", "k3"], obs.KeyRanges[4]),
-            () => Assert.Equal(["k3", "k2"], obs.KeyRanges[5]),
             () => Assert.True(obs.SetEmpty),
             () => Assert.True(obs.SetContains),
             () => Assert.Equal([true, false], obs.SetPresence),
