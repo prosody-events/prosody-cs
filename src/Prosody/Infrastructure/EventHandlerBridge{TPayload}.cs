@@ -183,6 +183,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var offset = message.Offset();
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
         var bytes = message.Payload();
+        var sourceSystem = message.SourceSystem();
+        var responseRequested = message.ResponseRequested();
 
         return HandleMessageAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
@@ -194,7 +196,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             bytes,
             context.OnCancel,
             carrier,
-            message
+            message,
+            sourceSystem,
+            responseRequested
         );
     }
 
@@ -210,7 +214,9 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             message.Key(),
             message.Partition(),
             message.Offset(),
-            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero)
+            new DateTimeOffset(message.Timestamp(), TimeSpan.Zero),
+            message.SourceSystem(),
+            message.ResponseRequested()
         );
         return EventHandlerBridge.InvokeHandlerAsync(
             ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
@@ -255,13 +261,25 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         byte[] payload,
         Func<Task> onCancel,
         Dictionary<string, string> carrier,
-        Native.Message? nativeMessage = null
+        Native.Message? nativeMessage = null,
+        string? sourceSystem = null,
+        bool responseRequested = false
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             async ct =>
             {
                 var deserialized = EventHandlerBridge.DeserializePayload(payload, _payloadTypeInfo);
-                var msg = new Message<TPayload>(topic, key, partition, offset, timestamp, deserialized, nativeMessage);
+                var msg = new Message<TPayload>(
+                    topic,
+                    key,
+                    partition,
+                    offset,
+                    timestamp,
+                    deserialized,
+                    nativeMessage,
+                    sourceSystem,
+                    responseRequested
+                );
                 return await _onMessage(prosodyContext, msg, ct).ConfigureAwait(false);
             },
             _isMessagePermanent,

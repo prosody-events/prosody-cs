@@ -1459,10 +1459,12 @@ Represents a Kafka message with the following properties:
 - `Timestamp` (DateTimeOffset): The timestamp when the message was created or sent.
 - `Key` (string): The message key.
 - `T? Payload`: The deserialized payload (deserialized once before the handler is invoked).
+- `SourceSystem` (string?): The source system that produced the message, or `null` when its headers name none.
+- `ResponseRequested` (bool): `true` when the sender waits for a response. Skip the work that only a response needs when it is `false`.
 
 ### ExciseMessage
 
-An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, and `Key` properties. It has no `Payload` property.
+An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, `Key`, `SourceSystem`, and `ResponseRequested` properties. It has no `Payload` property.
 
 ### ProsodyContext
 

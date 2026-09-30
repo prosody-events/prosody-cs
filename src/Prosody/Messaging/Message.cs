@@ -21,7 +21,9 @@ public sealed class Message<T>
         long offset,
         DateTimeOffset timestamp,
         T? payload,
-        Native.Message? nativeHandle
+        Native.Message? nativeHandle,
+        string? sourceSystem = null,
+        bool responseRequested = false
     )
     {
         ArgumentNullException.ThrowIfNull(topic);
@@ -34,6 +36,8 @@ public sealed class Message<T>
         Timestamp = timestamp;
         Payload = payload;
         NativeHandle = nativeHandle;
+        SourceSystem = sourceSystem;
+        ResponseRequested = responseRequested;
     }
 
     /// <summary>
@@ -66,6 +70,18 @@ public sealed class Message<T>
     /// Gets the message timestamp (UTC).
     /// </summary>
     public DateTimeOffset Timestamp { get; }
+
+    /// <summary>
+    /// Gets the source system that produced the message, or <see langword="null"/> when its headers
+    /// name none.
+    /// </summary>
+    public string? SourceSystem { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the sender waits for a response to this message. A handler can
+    /// skip the work that only a response needs when this value is <see langword="false"/>.
+    /// </summary>
+    public bool ResponseRequested { get; }
 
     /// <summary>
     /// Gets the deserialized JSON payload.

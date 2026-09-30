@@ -26,7 +26,9 @@ internal static class MessageInterop
             native.Offset(),
             new DateTimeOffset(native.Timestamp(), TimeSpan.Zero),
             payload,
-            native
+            native,
+            native.SourceSystem(),
+            native.ResponseRequested()
         );
     }
 

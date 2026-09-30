@@ -90,6 +90,19 @@ impl Message {
     pub fn payload(&self) -> Vec<u8> {
         self.inner.payload().bytes.clone()
     }
+
+    /// The source system that produced this message, when its headers name
+    /// one.
+    #[must_use]
+    pub fn source_system(&self) -> Option<String> {
+        self.inner.source_system().map(ToString::to_string)
+    }
+
+    /// Whether the sender waits for a response to this message.
+    #[must_use]
+    pub fn response_requested(&self) -> bool {
+        self.inner.response_requested()
+    }
 }
 
 impl From<ConsumerMessage<BinaryPayload>> for Message {
@@ -134,5 +147,18 @@ impl ExciseMessage {
     #[must_use]
     pub fn key(&self) -> String {
         self.inner.key().to_string()
+    }
+
+    /// The source system that produced this record, when its headers name
+    /// one.
+    #[must_use]
+    pub fn source_system(&self) -> Option<String> {
+        self.inner.source_system().map(ToString::to_string)
+    }
+
+    /// Whether the sender waits for a response to this record.
+    #[must_use]
+    pub fn response_requested(&self) -> bool {
+        self.inner.response_requested()
     }
 }
