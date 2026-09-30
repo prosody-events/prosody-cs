@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
+using Prosody.Errors;
+using Prosody.Infrastructure;
 using Prosody.Logging;
 using Prosody.State;
 
@@ -50,6 +52,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when a duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Thrown when Prosody cannot connect to Kafka or Cassandra.</exception>
     /// <remarks>
     /// When no <c>TypeInfoResolver</c> is set via <see cref="ClientOptions.ConfigureJsonOptions"/>,
     /// this constructor auto-installs <c>DefaultJsonTypeInfoResolver</c>, which uses reflection metadata.
@@ -73,8 +76,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     internal static async Task<ProsodyClient> FromValidatedOptionsAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        var native = options.ToNative();
         return new ProsodyClient(
-            await Native.ProsodyClient.ProsodyClientAsync(options.ToNative()).ConfigureAwait(false),
+            await NativeErrors.RunAsync(() => Native.ProsodyClient.ProsodyClientAsync(native)).ConfigureAwait(false),
             BuildJsonOptions(options),
             RegisteredStateDefinitions(options)
         );
@@ -107,9 +111,10 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// Shuts down all client services.
     /// Concurrent and repeated calls await the same shutdown operation.
     /// </summary>
+    /// <exception cref="ProsodyException">A client service failed to shut down.</exception>
     public Task ShutdownAsync() => _shutdown.Value;
 
-    private Task ShutdownCoreAsync() => _native.Shutdown();
+    private Task ShutdownCoreAsync() => NativeErrors.RunAsync(_native.Shutdown);
 
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
@@ -118,7 +123,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         {
             await ShutdownAsync().ConfigureAwait(false);
         }
-        catch (Native.FfiException error)
+        catch (ProsodyException error)
         {
             LogHelper.LogShutdownFailed(ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
         }
@@ -134,7 +139,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
             {
                 ProsodyLogging.FlushTelemetry();
             }
-            catch (Native.FfiException)
+            catch (ProsodyException)
             {
                 // Telemetry flush is best-effort during disposal.
             }

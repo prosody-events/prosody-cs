@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Infrastructure;
 using Prosody.Messaging;
 
 namespace Prosody.State;
@@ -103,7 +104,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => StateInterop.RunSync(() => _handle.Keys(native)),
+            () => NativeErrors.Run(() => _handle.Keys(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static key => key,
@@ -156,7 +157,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IMessageMapCursor, Native.MessageMapEntry, TItem>(
-            () => StateInterop.RunSync(() => _handle.Entries(native)),
+            () => NativeErrors.Run(() => _handle.Entries(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             transform,

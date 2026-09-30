@@ -1,8 +1,8 @@
 //! The keyed-state configuration and the registration of each declared
 //! collection.
 //!
-//! Every error here is [`FfiError::PermanentState`]. A configuration mistake
-//! cannot succeed on retry.
+//! Every error here is [`FfiError::InvalidOperation`], because the options
+//! are invalid.
 
 use prosody::ByteSize;
 use prosody::codec::{JsonBinaryCodec, JsonBinaryMessageCodec};
@@ -30,7 +30,7 @@ use crate::types::{ClientOptions, StateCollectionConfig, StateKind, StatePayload
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped.
+/// Returns [`FfiError::InvalidOperation`] if a host value cannot be mapped.
 pub(super) fn build_keyed_state_config(
     options: &ClientOptions,
 ) -> Result<KeyedStateConfiguration, FfiError> {
@@ -43,21 +43,21 @@ pub(super) fn build_keyed_state_config(
     if let Some(size) = &options.state_owned_cache_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::PermanentState(format!("stateOwnedCacheSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("stateOwnedCacheSize: {error}")))?;
         builder.owned_cache_size(Some(size));
     }
 
     if let Some(size) = &options.state_memtable_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::PermanentState(format!("stateMemtableSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("stateMemtableSize: {error}")))?;
         builder.memtable_size(Some(size));
     }
 
     if let Some(size) = &options.state_read_cache_size {
         let size = size
             .parse::<ByteSize>()
-            .map_err(|error| FfiError::PermanentState(format!("stateReadCacheSize: {error}")))?;
+            .map_err(|error| FfiError::InvalidOperation(format!("stateReadCacheSize: {error}")))?;
         builder.read_cache_size(Some(size));
     }
 
@@ -66,7 +66,7 @@ pub(super) fn build_keyed_state_config(
         options.state_read_cache_disabled == Some(true),
     ) {
         (Some(_), true) => {
-            return Err(FfiError::PermanentState(
+            return Err(FfiError::InvalidOperation(
                 "stateReadCacheTtl and stateReadCacheDisabled cannot both be set".to_owned(),
             ));
         }
@@ -82,13 +82,13 @@ pub(super) fn build_keyed_state_config(
     if let Some(subsystem) = &options.subsystem {
         builder.subsystem(Some(
             SubsystemName::try_new(subsystem.clone())
-                .map_err(|error| FfiError::PermanentState(error.to_string()))?,
+                .map_err(|error| FfiError::InvalidOperation(error.to_string()))?,
         ));
     }
 
     let mut keyed = builder
         .build()
-        .map_err(|error| FfiError::PermanentState(error.to_string()))?;
+        .map_err(|error| FfiError::InvalidOperation(error.to_string()))?;
 
     if let Some(collections) = &options.state_collections {
         for (index, collection) in collections.iter().enumerate() {
@@ -111,7 +111,7 @@ pub(super) fn build_keyed_state_config(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a host value cannot be mapped into
+/// Returns [`FfiError::InvalidOperation`] if a host value cannot be mapped into
 /// its Prosody type.
 fn register_state_collection(
     keyed: &mut KeyedStateConfiguration,
@@ -160,7 +160,7 @@ fn register_state_collection(
             let _ = keyed.register(with_capacity(descriptor, capacity));
         }
         (StateKind::Set, StatePayload::Message) => {
-            return Err(FfiError::PermanentState(format!(
+            return Err(FfiError::InvalidOperation(format!(
                 "stateCollections[{index}].payload: a set stores no message payload"
             )));
         }
@@ -176,7 +176,7 @@ fn register_state_collection(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a bound does not suit the kind.
+/// Returns [`FfiError::InvalidOperation`] if a bound does not suit the kind.
 fn checked_capacity(
     collection: &StateCollectionConfig,
     index: usize,
@@ -184,7 +184,7 @@ fn checked_capacity(
     if collection.keyset_limit.is_some()
         && !matches!(collection.kind, StateKind::Map | StateKind::Set)
     {
-        return Err(FfiError::PermanentState(format!(
+        return Err(FfiError::InvalidOperation(format!(
             "stateCollections[{index}].keysetLimit: only valid for map and set collections"
         )));
     }
@@ -193,14 +193,14 @@ fn checked_capacity(
         return Ok(None);
     };
     if collection.kind != StateKind::Deque {
-        return Err(FfiError::PermanentState(format!(
+        return Err(FfiError::InvalidOperation(format!(
             "stateCollections[{index}].capacity: only valid for deque collections"
         )));
     }
     NonZeroUsize::new(capacity as usize)
         .map(Some)
         .ok_or_else(|| {
-            FfiError::PermanentState(format!(
+            FfiError::InvalidOperation(format!(
                 "stateCollections[{index}].capacity: must be a positive integer"
             ))
         })
@@ -214,16 +214,16 @@ fn checked_capacity(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if the duration cannot be represented
+/// Returns [`FfiError::InvalidOperation`] if the duration cannot be represented
 /// as whole `u32` seconds.
 fn whole_seconds(duration: Duration, field: &str) -> Result<u32, FfiError> {
     if duration.subsec_nanos() != 0 {
-        return Err(FfiError::PermanentState(format!(
+        return Err(FfiError::InvalidOperation(format!(
             "{field}: must be a whole number of seconds"
         )));
     }
     u32::try_from(duration.as_secs())
-        .map_err(|_| FfiError::PermanentState(format!("{field}: exceeds the u32 seconds range")))
+        .map_err(|_| FfiError::InvalidOperation(format!("{field}: exceeds the u32 seconds range")))
 }
 
 /// Applies the shared descriptor options: TTL, commit mode, and publication.

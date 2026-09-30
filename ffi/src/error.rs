@@ -7,6 +7,12 @@
 //!
 //! # Error Classification
 //!
+//! The C# layer maps each [`FfiError`] variant to one public exception type.
+//! A caller mistake arrives as [`FfiError::InvalidArgument`] or
+//! [`FfiError::InvalidOperation`]. A keyed-state failure arrives as
+//! [`FfiError::PermanentState`] or [`FfiError::TransientState`]. Every other
+//! variant is a broker or runtime failure.
+//!
 //! [`CsHandlerError`] implements [`ClassifyError`] to distinguish transient
 //! errors (which should be retried) from permanent errors (which should not).
 
@@ -57,17 +63,16 @@ pub enum FfiError {
     #[error("unexpected callback error: {0:#}")]
     UnexpectedCallback(#[from] uniffi::UnexpectedUniFFICallbackError),
 
+    /// The admin client configuration is invalid, such as an empty server
+    /// list.
+    #[error("admin configuration failed: {0:#}")]
+    AdminConfiguration(#[from] ValidationErrors),
+
     /// A Kafka admin operation failed.
     ///
     /// Wraps errors from topic creation, deletion, and metadata operations.
     #[error("admin operation failed: {0:#}")]
     Admin(#[from] ProsodyAdminClientError),
-
-    /// Configuration validation failed.
-    ///
-    /// One or more configuration values did not pass validation rules.
-    #[error("configuration validation failed: {0:#}")]
-    Validation(#[from] ValidationErrors),
 
     /// A telemetry emitter configuration builder could not be finalized.
     ///
@@ -105,25 +110,33 @@ pub enum FfiError {
     #[error("topic configuration failed: {0:#}")]
     TopicConfiguration(#[from] TopicConfigurationBuilderError),
 
-    /// A high-level client operation failed.
+    /// A high-level client operation failed at the broker or at run time.
     ///
-    /// Wraps errors from the main Prosody client API.
+    /// The conversion from [`HighLevelClientError`] routes configuration and
+    /// call-order errors to [`InvalidOperation`](Self::InvalidOperation).
     #[error("client operation failed: {0:#}")]
-    Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+    Client(HighLevelClientError<Codec>),
 
-    /// A request failed before it returned subsystem results.
+    /// Kafka did not accept a request.
+    ///
+    /// The conversion from [`RequestError`] routes invalid arguments to
+    /// [`InvalidArgument`](Self::InvalidArgument).
     #[error("request failed: {0:#}")]
-    Request(#[from] RequestError<BinaryCodecError<JsonExtractError>>),
+    Request(RequestError<Codec>),
 
-    /// Construction of the backend-erased FFI client failed.
-    #[error("client construction failed: {0:#}")]
-    ClientBuild(#[from] ErasedClientBuildError<BinaryCodecError<JsonExtractError>>),
+    /// The caller passed an argument that Prosody cannot accept.
+    #[error("{0}")]
+    InvalidArgument(String),
+
+    /// The options are invalid, or the call does not suit the client state.
+    #[error("{0}")]
+    InvalidOperation(String),
 
     /// A producer operation failed.
     ///
     /// Occurs when publishing messages to Kafka fails.
     #[error("producer operation failed: {0:#}")]
-    Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
+    Producer(#[from] ProducerError<Codec>),
 
     /// An event context operation failed.
     ///
@@ -158,6 +171,59 @@ pub enum FfiError {
     TransientState(String),
 }
 
+/// The codec error type of every client operation.
+type Codec = BinaryCodecError<JsonExtractError>;
+
+/// Routes configuration and call-order errors to
+/// [`FfiError::InvalidOperation`]. A state reader error keeps its category.
+impl From<HighLevelClientError<Codec>> for FfiError {
+    fn from(error: HighLevelClientError<Codec>) -> Self {
+        match error {
+            HighLevelClientError::StateReader(error) => error.into(),
+            HighLevelClientError::ProducerConfiguration(_)
+            | HighLevelClientError::SchedulerConfiguration(_)
+            | HighLevelClientError::ConsumerConfiguration(_)
+            | HighLevelClientError::StateRegistration(_)
+            | HighLevelClientError::AlreadySubscribed
+            | HighLevelClientError::UnconfiguredConsumer
+            | HighLevelClientError::NotSubscribed
+            | HighLevelClientError::Closed => Self::InvalidOperation(error.to_string()),
+            error @ (HighLevelClientError::Producer(_)
+            | HighLevelClientError::Consumer(_)
+            | HighLevelClientError::ShutdownFailed(_)
+            | HighLevelClientError::TopicsNotFound(_)
+            | HighLevelClientError::TelemetryEmitter(_)) => Self::Client(error),
+        }
+    }
+}
+
+/// Routes invalid request arguments to [`FfiError::InvalidArgument`].
+impl From<RequestError<Codec>> for FfiError {
+    fn from(error: RequestError<Codec>) -> Self {
+        match error {
+            RequestError::NoSubsystems
+            | RequestError::DuplicateSubsystem { .. }
+            | RequestError::ReservedHeader { .. }
+            | RequestError::DeadlineOutOfRange => Self::InvalidArgument(error.to_string()),
+            RequestError::ShuttingDown => Self::InvalidOperation(error.to_string()),
+            error @ RequestError::Produce(_) => Self::Request(error),
+        }
+    }
+}
+
+/// Routes configuration errors to [`FfiError::InvalidOperation`].
+impl From<ErasedClientBuildError<Codec>> for FfiError {
+    fn from(error: ErasedClientBuildError<Codec>) -> Self {
+        match error {
+            ErasedClientBuildError::Client(error) => error.into(),
+            error @ (ErasedClientBuildError::MockConfiguration(_)
+            | ErasedClientBuildError::CassandraConfiguration(_)) => {
+                Self::InvalidOperation(error.to_string())
+            }
+        }
+    }
+}
+
 /// Recovers the state-error category structurally from [`ErasedStateError`].
 ///
 /// The category is read from [`ErasedStateError::category`] — never by parsing
@@ -182,8 +248,8 @@ impl From<ErasedStateError> for FfiError {
 }
 
 /// Classifies a failure to open a published reader as permanent.
-impl From<ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>> for FfiError {
-    fn from(error: ErasedReaderBuildError<BinaryCodecError<JsonExtractError>>) -> Self {
+impl From<ErasedReaderBuildError<Codec>> for FfiError {
+    fn from(error: ErasedReaderBuildError<Codec>) -> Self {
         Self::PermanentState(error.to_string())
     }
 }

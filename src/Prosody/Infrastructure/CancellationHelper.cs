@@ -5,7 +5,8 @@ namespace Prosody.Infrastructure;
 /// </summary>
 /// <remarks>
 /// Only the token's registration triggers the signal. So a native cancellation always means the caller's
-/// token fired, and it surfaces as the standard <see cref="OperationCanceledException"/>.
+/// token fired, and it surfaces as the standard <see cref="OperationCanceledException"/>. Every other
+/// native failure goes through <see cref="NativeErrors.Translate"/>.
 /// </remarks>
 internal static class CancellationHelper
 {
@@ -25,6 +26,10 @@ internal static class CancellationHelper
         catch (Native.FfiException.Cancelled error)
         {
             throw new OperationCanceledException(cancelledMessage, error, cancellationToken);
+        }
+        catch (Native.FfiException error)
+        {
+            throw NativeErrors.Translate(error);
         }
         finally
         {
@@ -48,6 +53,10 @@ internal static class CancellationHelper
         catch (Native.FfiException.Cancelled error)
         {
             throw new OperationCanceledException(cancelledMessage, error, cancellationToken);
+        }
+        catch (Native.FfiException error)
+        {
+            throw NativeErrors.Translate(error);
         }
         finally
         {

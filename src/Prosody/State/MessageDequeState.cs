@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Infrastructure;
 using Prosody.Messaging;
 
 namespace Prosody.State;
@@ -113,7 +114,7 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
         cancellationToken.ThrowIfCancellationRequested();
         var native = PositionQuery.ToNative(query);
         return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
-            () => StateInterop.RunSync(() => _handle.Values(native)),
+            () => NativeErrors.Run(() => _handle.Values(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             message => MessageInterop.FromNative(message, _typeInfo),

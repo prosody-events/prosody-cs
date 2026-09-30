@@ -5,27 +5,14 @@ using Prosody.Infrastructure;
 namespace Prosody.State;
 
 /// <summary>
-/// Internal glue between the public keyed-state surface and the generated native handles: error
-/// translation, carrier construction, cancellation-honoring dispatch, and JSON item marshaling.
+/// Internal glue between the public keyed-state surface and the generated native handles: carrier
+/// construction, cancellation-honoring dispatch, and JSON item marshaling.
 /// </summary>
 internal static class StateInterop
 {
     /// <summary>
-    /// Translates a native state failure into the matching public state exception, recovering the
-    /// category from the generated exception <b>type</b>. An untagged native error passes through
-    /// unchanged (it is not a categorized state error).
-    /// </summary>
-    internal static Exception Translate(Native.FfiException error) =>
-        error switch
-        {
-            Native.FfiException.PermanentState permanent => new PermanentStateException(permanent.Message, permanent),
-            Native.FfiException.TransientState transient => new TransientStateException(transient.Message, transient),
-            _ => error,
-        };
-
-    /// <summary>
     /// Runs one asynchronous native state operation, honoring cancellation at entry and translating a
-    /// categorized failure. An already-dispatched native op is awaited to completion and never
+    /// failure with <see cref="NativeErrors.Translate"/>. An already-dispatched native op is awaited to completion and never
     /// abandoned, so no further op races it on the same context.
     /// </summary>
     internal static async Task RunAsync(Func<Task> operation, CancellationToken cancellationToken)
@@ -37,7 +24,7 @@ internal static class StateInterop
         }
         catch (Native.FfiException ex)
         {
-            throw Translate(ex);
+            throw NativeErrors.Translate(ex);
         }
     }
 
@@ -57,7 +44,7 @@ internal static class StateInterop
         }
         catch (Native.FfiException ex)
         {
-            throw Translate(ex);
+            throw NativeErrors.Translate(ex);
         }
     }
 
@@ -84,22 +71,6 @@ internal static class StateInterop
             Native.StoreOutcome.NoOp => StoreOutcome.NoOp,
             _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown native store outcome."),
         };
-
-    /// <summary>
-    /// Runs one synchronous native call (a handle vend or a scan open), translating a categorized
-    /// failure into the matching public state exception.
-    /// </summary>
-    internal static TResult RunSync<TResult>(Func<TResult> operation)
-    {
-        try
-        {
-            return operation();
-        }
-        catch (Native.FfiException ex)
-        {
-            throw Translate(ex);
-        }
-    }
 
     /// <summary>
     /// Maps a public scan direction to the native enum. An out-of-range value is a caller mistake

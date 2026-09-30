@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Infrastructure;
 
 namespace Prosody.State;
 
@@ -103,7 +104,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => StateInterop.RunSync(() => _handle.Keys(native)),
+            () => NativeErrors.Run(() => _handle.Keys(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static key => key,
@@ -151,7 +152,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IJsonMapCursor, Native.JsonMapEntry, TItem>(
-            () => StateInterop.RunSync(() => _handle.Entries(native)),
+            () => NativeErrors.Run(() => _handle.Entries(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             transform,

@@ -80,10 +80,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns [`FfiError::Client`] if:
-    /// - Kafka bootstrap servers are unreachable
-    /// - Configuration options are invalid
-    /// - Cassandra connection fails (when persistence is enabled)
+    /// Returns [`FfiError::InvalidOperation`] if the options are invalid, and
+    /// [`FfiError::Client`] if Kafka or Cassandra is not available.
     #[uniffi::constructor]
     pub async fn new(options: ClientOptions) -> Result<Self, FfiError> {
         run(async move {
@@ -197,8 +195,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns [`FfiError::Client`] if the consumer fails to start or
-    /// topic subscription fails.
+    /// Returns [`FfiError::InvalidOperation`] if the consumer is already
+    /// subscribed, and [`FfiError::Client`] if the consumer fails to start.
     pub async fn subscribe(
         self: Arc<Self>,
         handler: Arc<dyn EventHandler>,
@@ -220,7 +218,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns [`FfiError::Client`] if the consumer fails to stop cleanly.
+    /// Returns [`FfiError::InvalidOperation`] if the consumer is not
+    /// subscribed, and [`FfiError::Client`] if it fails to stop cleanly.
     pub async fn unsubscribe(self: Arc<Self>) -> Result<(), FfiError> {
         run(async move {
             self.client.unsubscribe().await?;

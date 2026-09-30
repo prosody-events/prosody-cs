@@ -180,22 +180,22 @@ fn build_consumer_config(
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::PermanentState`] if a peer option cannot be parsed or
+/// Returns [`FfiError::InvalidOperation`] if a peer option cannot be parsed or
 /// the configuration fails validation.
 fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiError> {
     let mut builder = PeerConfiguration::builder();
 
     if let Some(value) = &options.peer_bind_address {
         builder.bind_address(
-            value
-                .parse::<SocketAddr>()
-                .map_err(|error| FfiError::PermanentState(format!("peer_bind_address: {error}")))?,
+            value.parse::<SocketAddr>().map_err(|error| {
+                FfiError::InvalidOperation(format!("peer_bind_address: {error}"))
+            })?,
         );
     }
 
     if let Some(value) = &options.peer_advertised_connect {
         builder.advertised_connect(PeerEndpoint::try_from(value.clone()).map_err(|error| {
-            FfiError::PermanentState(format!("peer_advertised_connect: {error}"))
+            FfiError::InvalidOperation(format!("peer_advertised_connect: {error}"))
         })?);
     }
 
@@ -204,11 +204,9 @@ fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiEr
     }
 
     if let Some(value) = options.peer_cache_capacity {
-        builder.peer_cache_capacity(
-            usize::try_from(value).map_err(|error| {
-                FfiError::PermanentState(format!("peer_cache_capacity: {error}"))
-            })?,
-        );
+        builder.peer_cache_capacity(usize::try_from(value).map_err(|error| {
+            FfiError::InvalidOperation(format!("peer_cache_capacity: {error}"))
+        })?);
     }
 
     if let Some(value) = options.peer_registration_ttl {
@@ -217,7 +215,7 @@ fn build_peer_config(options: &ClientOptions) -> Result<PeerConfiguration, FfiEr
 
     builder
         .build()
-        .map_err(|error| FfiError::PermanentState(error.to_string()))
+        .map_err(|error| FfiError::InvalidOperation(error.to_string()))
 }
 
 /// Creates a telemetry emitter configuration builder from client options.
@@ -248,10 +246,11 @@ fn build_telemetry_emitter_config(options: &ClientOptions) -> TelemetryEmitterCo
 ///
 /// Returns an [`FfiError`] if any eagerly-finalized configuration fails
 /// validation: the Kafka loader tuning ([`FfiError::LoaderConfig`]), the
-/// deduplication cache capacity ([`FfiError::Validation`]), the telemetry
+/// telemetry
 /// emitter configuration ([`FfiError::TelemetryConfig`], e.g. when an
 /// environment variable such as `PROSODY_TELEMETRY_ENABLED` is invalid), or the
-/// keyed-state or peer configuration ([`FfiError::PermanentState`]).
+/// deduplication, keyed-state, or peer configuration
+/// ([`FfiError::InvalidOperation`]).
 pub fn build_consumer_builders(options: &ClientOptions) -> Result<ConsumerBuilders, FfiError> {
     Ok(ConsumerBuilders {
         consumer: build_consumer_config(options)?,

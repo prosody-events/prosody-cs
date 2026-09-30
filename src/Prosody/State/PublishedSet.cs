@@ -1,3 +1,5 @@
+using Prosody.Infrastructure;
+
 namespace Prosody.State;
 
 /// <summary>Read-only access to a published set collection.</summary>
@@ -62,7 +64,7 @@ public sealed class PublishedSet
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => StateInterop.RunSync(() => _handle.Keys(key, native)),
+            () => NativeErrors.Run(() => _handle.Keys(key, native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static member => member,

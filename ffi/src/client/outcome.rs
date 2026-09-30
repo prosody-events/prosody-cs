@@ -11,13 +11,13 @@ use crate::handler::NativeRequestResult;
 
 /// Parses the subsystem names that a request targets.
 ///
-/// Returns a permanent state error for the first invalid name.
+/// Returns an invalid argument error for the first invalid name.
 pub(super) fn subsystem_names(names: Vec<String>) -> Result<Vec<SubsystemName>, FfiError> {
     names
         .into_iter()
         .map(SubsystemName::try_new)
         .collect::<Result<_, _>>()
-        .map_err(|error| FfiError::PermanentState(error.to_string()))
+        .map_err(|error| FfiError::InvalidArgument(error.to_string()))
 }
 
 /// Converts each subsystem outcome to its FFI result, keyed by subsystem name.

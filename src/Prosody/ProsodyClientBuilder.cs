@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Prosody.Configuration;
+using Prosody.Errors;
 using Prosody.State;
 
 namespace Prosody;
@@ -346,6 +347,9 @@ public sealed class ProsodyClientBuilder
     /// Creates a new <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
     /// <returns>A new <see cref="ProsodyClient"/> instance.</returns>
+    /// <exception cref="InvalidOperationException">The options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Prosody cannot connect to Kafka or Cassandra.</exception>
     /// <remarks>
     /// <para>
     /// This method validates configuration, connects to Kafka, and allocates resources.

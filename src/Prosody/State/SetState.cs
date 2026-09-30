@@ -1,3 +1,5 @@
+using Prosody.Infrastructure;
+
 namespace Prosody.State;
 
 /// <summary>
@@ -57,7 +59,7 @@ internal sealed class SetState : ISetState
         cancellationToken.ThrowIfCancellationRequested();
         var native = KeyQuery.ToNative(query);
         return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => StateInterop.RunSync(() => _handle.Keys(native)),
+            () => NativeErrors.Run(() => _handle.Keys(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             static member => member,

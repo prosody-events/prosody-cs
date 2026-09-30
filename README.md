@@ -267,7 +267,7 @@ Kafka decouples producers from consumers, so a send does not return consumer res
 
 Send a request from a handler or other application code. The Prosody client does not need an active subscription. The result dictionary uses canonical subsystem names as keys. Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
-Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. The request throws an exception for request-level failures, such as invalid input, a Kafka send failure, or shutdown. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
+Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. A request-level failure throws: `ArgumentException` for invalid input, `InvalidOperationException` after shutdown, and `ProsodyException` when Kafka does not accept the request. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
 
 Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
 
@@ -1608,6 +1608,11 @@ Errors:
 - `NullValueException : TransientStateException`: Reports a rejected `null` write. Use `ClearAsync` or `RemoveAsync` to delete data.
 - `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
+
+Client errors:
+
+- `ProsodyException`: Reports a broker or runtime failure. A handler that rethrows it retries the event.
+- A caller mistake throws `ArgumentException` or `InvalidOperationException`. A second `SubscribeAsync` is an example.
 
 Handler error classification:
 

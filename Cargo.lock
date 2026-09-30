@@ -2268,7 +2268,6 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uniffi",
- "validator",
 ]
 
 [[package]]

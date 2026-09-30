@@ -9,7 +9,6 @@ use prosody::consumer::middleware::scheduler::SchedulerConfigurationBuilder;
 use prosody::consumer::middleware::timeout::TimeoutConfigurationBuilder;
 use prosody::consumer::middleware::topic::FailureTopicConfigurationBuilder;
 use std::num::NonZeroUsize;
-use validator::{ValidationError, ValidationErrors};
 
 use crate::error::FfiError;
 use crate::types::ClientOptions;
@@ -171,8 +170,8 @@ pub(super) fn build_timeout_config(options: &ClientOptions) -> TimeoutConfigurat
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::Validation`] if `idempotence_cache_size` is zero. The
-/// core API models the cache capacity as a non-zero value.
+/// Returns [`FfiError::InvalidOperation`] if `idempotence_cache_size` is zero.
+/// The core API models the cache capacity as a non-zero value.
 pub(super) fn build_dedup_config(
     options: &ClientOptions,
 ) -> Result<DeduplicationConfigurationBuilder, FfiError> {
@@ -180,12 +179,7 @@ pub(super) fn build_dedup_config(
 
     if let Some(cache_capacity) = options.idempotence_cache_size {
         let cache_capacity = NonZeroUsize::new(cache_capacity as usize).ok_or_else(|| {
-            let mut errors = ValidationErrors::new();
-            errors.add(
-                "idempotence_cache_size",
-                ValidationError::new("idempotence_cache_size_must_be_non_zero"),
-            );
-            FfiError::Validation(errors)
+            FfiError::InvalidOperation("IdempotenceCacheSize must not be zero".to_owned())
         })?;
         builder.cache_capacity(cache_capacity);
     }

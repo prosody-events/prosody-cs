@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
 using Prosody.State;
@@ -19,8 +20,13 @@ public sealed partial class ProsodyClient
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
     /// A request-level failure throws instead of returning a partial dictionary.
     /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
+    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
@@ -48,8 +54,13 @@ public sealed partial class ProsodyClient
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
     /// A request-level failure throws instead of returning a partial dictionary.
     /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
+    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
@@ -72,6 +83,18 @@ public sealed partial class ProsodyClient
     }
 
     /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// A request-level failure throws instead of returning a partial dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
+    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
@@ -91,6 +114,18 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
+    /// <remarks>
+    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
+    /// A request-level failure throws instead of returning a partial dictionary.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
+    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
+    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
         string topic,
         string key,
@@ -116,7 +151,6 @@ public sealed partial class ProsodyClient
         return await CompleteRequestAsync(
                 responseType,
                 signal => _native.RequestExcise(request, signal),
-                nameof(subsystems),
                 cancellationToken
             )
             .ConfigureAwait(false);
@@ -144,33 +178,19 @@ public sealed partial class ProsodyClient
             Durations.ToNative(timeout),
             StateInterop.CreateCarrier()
         );
-        return await CompleteRequestAsync(
-                responseType,
-                signal => _native.Request(request, signal),
-                nameof(subsystems),
-                cancellationToken
-            )
+        return await CompleteRequestAsync(responseType, signal => _native.Request(request, signal), cancellationToken)
             .ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
         JsonTypeInfo<TResponse> responseType,
         Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
-        string subsystemParameterName,
         CancellationToken cancellationToken
     )
     {
-        Dictionary<string, Native.NativeRequestResult> nativeResults;
-        try
-        {
-            nativeResults = await CancellationHelper
-                .RunAsync(send, "The request was cancelled.", cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (Native.FfiException.PermanentState ex)
-        {
-            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
-        }
+        var nativeResults = await CancellationHelper
+            .RunAsync(send, "The request was cancelled.", cancellationToken)
+            .ConfigureAwait(false);
 
         var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
         foreach (var (subsystem, result) in nativeResults)

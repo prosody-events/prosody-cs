@@ -120,7 +120,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
                     {
                         _finished = true;
                         await CloseQuietlyAsync().ConfigureAwait(false);
-                        throw StateInterop.Translate(ex);
+                        throw NativeErrors.Translate(ex);
                     }
 
                     if (pulled is null)
@@ -196,7 +196,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             }
             catch (Native.FfiException ex)
             {
-                throw StateInterop.Translate(ex);
+                throw NativeErrors.Translate(ex);
             }
         }
     }
