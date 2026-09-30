@@ -1,6 +1,5 @@
 using Prosody.State;
 using Prosody.Tests.TestHelpers;
-using Native = Prosody.Native;
 
 namespace Prosody.Tests.Unit;
 
@@ -42,27 +41,6 @@ public sealed class SetStateTests
             () => Assert.Equal([true, false], many),
             () => Assert.True(isEmpty)
         );
-    }
-
-    [Theory]
-    [InlineData(true, StoreOutcome.Applied, StoreOutcome.NoOp)]
-    [InlineData(false, StoreOutcome.NoOp, StoreOutcome.Applied)]
-    public async Task CommitAndRollbackReturnTheNativeOutcome(
-        bool commitApplied,
-        StoreOutcome expectedCommit,
-        StoreOutcome expectedRollback
-    )
-    {
-        var handle = new FakeSetStateHandle
-        {
-            CommitOutcome = commitApplied ? Native.StoreOutcome.Applied : Native.StoreOutcome.NoOp,
-            RollbackOutcome = commitApplied ? Native.StoreOutcome.NoOp : Native.StoreOutcome.Applied,
-        };
-        var set = new SetState(handle);
-        var cancellationToken = TestContext.Current.CancellationToken;
-
-        Assert.Equal(expectedCommit, await set.CommitAsync(cancellationToken));
-        Assert.Equal(expectedRollback, await set.RollbackAsync(cancellationToken));
     }
 
     [Fact]

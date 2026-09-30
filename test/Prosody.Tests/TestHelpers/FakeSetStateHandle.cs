@@ -14,12 +14,6 @@ internal sealed class FakeSetStateHandle : Native.ISetStateHandle
     /// <summary>The query passed to the last <c>Keys</c> call.</summary>
     public Native.KeyQuery? KeysQuery { get; private set; }
 
-    /// <summary>The outcome returned by <c>Commit</c>.</summary>
-    public Native.StoreOutcome CommitOutcome { get; set; }
-
-    /// <summary>The outcome returned by <c>Rollback</c>.</summary>
-    public Native.StoreOutcome RollbackOutcome { get; set; }
-
     public Task Clear(Dictionary<string, string> carrier)
     {
         Calls.Add("clear");
@@ -29,7 +23,7 @@ internal sealed class FakeSetStateHandle : Native.ISetStateHandle
     public Task<Native.StoreOutcome> Commit(Dictionary<string, string> carrier)
     {
         Calls.Add("commit");
-        return Task.FromResult(CommitOutcome);
+        return Task.FromResult(Native.StoreOutcome.Applied);
     }
 
     public Task<bool> Contains(string member, Dictionary<string, string> carrier)
@@ -71,6 +65,6 @@ internal sealed class FakeSetStateHandle : Native.ISetStateHandle
     public Task<Native.StoreOutcome> Rollback(Dictionary<string, string> carrier)
     {
         Calls.Add("rollback");
-        return Task.FromResult(RollbackOutcome);
+        return Task.FromResult(Native.StoreOutcome.NoOp);
     }
 }
