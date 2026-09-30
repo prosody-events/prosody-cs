@@ -79,10 +79,6 @@ public abstract record StateDefinition
 
     internal StateReadCache? ReadCache { get; }
 
-    internal TimeSpan? ReadCacheTtl => ReadCache?.Ttl;
-
-    internal bool ReadCacheDisabled => ReadCache?.IsDisabled ?? false;
-
     /// <summary>
     /// Declares a single-value JSON collection.
     /// </summary>

@@ -39,8 +39,7 @@ public sealed partial class ClientOptions
             StateOwnedCacheSize = StateOwnedCacheSize,
             StateMemtableSize = StateMemtableSize,
             StateReadCacheSize = StateReadCacheSize,
-            StateReadCacheTtl = StateReadCache?.Ttl,
-            StateReadCacheDisabled = StateReadCache?.IsDisabled,
+            StateReadCache = StateReadCache?.Policy,
             Subsystem = Subsystem,
         };
 

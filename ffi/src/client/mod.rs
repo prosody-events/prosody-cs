@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use tracing::field::Empty;
 use tracing::{Instrument, info_span};
@@ -18,13 +17,15 @@ use crate::handler::{
 use crate::logging::ensure_tracing_initialized;
 use crate::published::{
     PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
-    deque_handle, map_handle, read_cache, set_handle, value_handle,
+    deque_handle, map_handle, set_handle, value_handle,
 };
 use crate::runtime::run;
 use crate::state::with_parent;
-use crate::types::{ClientOptions, ConsumerState, EventMetadata};
+use crate::types::{ClientOptions, ConsumerState, EventMetadata, ReadCache};
 use prosody::codec::BinaryPayload;
-use prosody::high_level::erased::{ErasedConsumerState, SharedHighLevelClient, new_erased};
+use prosody::high_level::erased::{
+    ErasedConsumerState, ErasedReadCache, SharedHighLevelClient, new_erased,
+};
 use prosody::propagator::new_propagator;
 
 mod outcome;
@@ -117,11 +118,10 @@ impl ProsodyClient {
         self: Arc<Self>,
         subsystem: String,
         name: String,
-        cache_ttl: Option<Duration>,
-        cache_disabled: bool,
+        cache: Option<ReadCache>,
     ) -> Result<Arc<PublishedValueHandle>, FfiError> {
         run(async move {
-            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let cache = cache.map_or(ErasedReadCache::Inherit, Into::into);
             let reader = self.client.value_state(subsystem, name, cache).await?;
             Ok(value_handle(reader))
         })
@@ -138,11 +138,10 @@ impl ProsodyClient {
         self: Arc<Self>,
         subsystem: String,
         name: String,
-        cache_ttl: Option<Duration>,
-        cache_disabled: bool,
+        cache: Option<ReadCache>,
     ) -> Result<Arc<PublishedMapHandle>, FfiError> {
         run(async move {
-            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let cache = cache.map_or(ErasedReadCache::Inherit, Into::into);
             let reader = self.client.map_state(subsystem, name, cache).await?;
             Ok(map_handle(reader))
         })
@@ -159,11 +158,10 @@ impl ProsodyClient {
         self: Arc<Self>,
         subsystem: String,
         name: String,
-        cache_ttl: Option<Duration>,
-        cache_disabled: bool,
+        cache: Option<ReadCache>,
     ) -> Result<Arc<PublishedSetHandle>, FfiError> {
         run(async move {
-            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let cache = cache.map_or(ErasedReadCache::Inherit, Into::into);
             let reader = self.client.set_state(subsystem, name, cache).await?;
             Ok(set_handle(reader))
         })
@@ -180,11 +178,10 @@ impl ProsodyClient {
         self: Arc<Self>,
         subsystem: String,
         name: String,
-        cache_ttl: Option<Duration>,
-        cache_disabled: bool,
+        cache: Option<ReadCache>,
     ) -> Result<Arc<PublishedDequeHandle>, FfiError> {
         run(async move {
-            let cache = read_cache(cache_ttl, cache_disabled)?;
+            let cache = cache.map_or(ErasedReadCache::Inherit, Into::into);
             let reader = self.client.deque_state(subsystem, name, cache).await?;
             Ok(deque_handle(reader))
         })

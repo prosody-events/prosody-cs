@@ -318,10 +318,8 @@ public sealed class ClientOptionsTests
         var uncached = new ClientOptions { StateReadCache = StateReadCache.Disabled }.ToNative();
 
         Assert.Multiple(
-            () => Assert.Equal(TimeSpan.FromSeconds(2), cached.StateReadCacheTtl),
-            () => Assert.False(cached.StateReadCacheDisabled),
-            () => Assert.Null(uncached.StateReadCacheTtl),
-            () => Assert.True(uncached.StateReadCacheDisabled)
+            () => Assert.Equal(new Native.ReadCache.Ttl(TimeSpan.FromSeconds(2)), cached.StateReadCache),
+            () => Assert.Equal(new Native.ReadCache.Disabled(), uncached.StateReadCache)
         );
     }
 

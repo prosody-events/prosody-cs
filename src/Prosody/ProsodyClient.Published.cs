@@ -94,14 +94,14 @@ public sealed partial class ProsodyClient
     private static Task<THandle> OpenPublishedAsync<THandle>(
         string subsystem,
         StateDefinition definition,
-        Func<string, string, TimeSpan?, bool, Task<THandle>> open,
+        Func<string, string, Native.ReadCache?, Task<THandle>> open,
         CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(subsystem);
         ArgumentNullException.ThrowIfNull(definition);
         return StateInterop.RunAsync(
-            () => open(subsystem, definition.Name, definition.ReadCacheTtl, definition.ReadCacheDisabled),
+            () => open(subsystem, definition.Name, definition.ReadCache?.Policy),
             cancellationToken
         );
     }

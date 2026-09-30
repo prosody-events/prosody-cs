@@ -2,12 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
 use prosody::high_level::erased::{
-    ErasedReadCache, SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
+    SharedDequeReader, SharedMapReader, SharedSetReader, SharedValueReader,
 };
 use prosody::propagator::new_propagator;
 
@@ -387,24 +386,6 @@ impl PublishedDequeHandle {
                 .stream(),
             propagator: Arc::clone(&self.propagator),
         }))
-    }
-}
-
-/// Chooses the read cache for a published reader.
-///
-/// Returns a transient state error when the caller sets both a TTL and
-/// `disabled`. That is a caller mistake, so it is not permanent.
-pub(crate) fn read_cache(
-    ttl: Option<Duration>,
-    disabled: bool,
-) -> Result<ErasedReadCache, FfiError> {
-    match (ttl, disabled) {
-        (Some(_), true) => Err(FfiError::TransientState(
-            "read cache cannot set both a TTL and disabled".to_owned(),
-        )),
-        (None, true) => Ok(ErasedReadCache::Disabled),
-        (Some(ttl), false) => Ok(ErasedReadCache::Ttl(ttl)),
-        (None, false) => Ok(ErasedReadCache::Inherit),
     }
 }
 

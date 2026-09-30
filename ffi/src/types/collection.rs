@@ -3,6 +3,8 @@
 
 use std::time::Duration;
 
+use prosody::high_level::erased::ErasedReadCache;
+
 /// The kind of a keyed-state collection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum StateKind {
@@ -24,6 +26,27 @@ pub enum StatePayload {
     Json,
     /// The full Kafka message the handler received.
     Message,
+}
+
+/// The read cache policy of a published collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum ReadCache {
+    /// Bypasses the read cache.
+    Disabled,
+    /// Caches each read for `ttl`.
+    Ttl {
+        /// The cache duration.
+        ttl: Duration,
+    },
+}
+
+impl From<ReadCache> for ErasedReadCache {
+    fn from(cache: ReadCache) -> Self {
+        match cache {
+            ReadCache::Disabled => Self::Disabled,
+            ReadCache::Ttl { ttl } => Self::Ttl(ttl),
+        }
+    }
 }
 
 /// Declares one keyed-state collection to register before subscribe.

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::{ClientMode, SpanRelation, StateCollectionConfig};
+use super::{ClientMode, ReadCache, SpanRelation, StateCollectionConfig};
 
 /// Configuration options for the Prosody client.
 ///
@@ -276,13 +276,9 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub state_read_cache_size: Option<String>,
 
-    /// Default published-state read cache TTL.
+    /// Default published-state read cache policy.
     #[uniffi(default = None)]
-    pub state_read_cache_ttl: Option<Duration>,
-
-    /// Bypasses the published-state read cache when true.
-    #[uniffi(default = None)]
-    pub state_read_cache_disabled: Option<bool>,
+    pub state_read_cache: Option<ReadCache>,
 
     /// Subsystem under which published collections are advertised.
     #[uniffi(default = None)]

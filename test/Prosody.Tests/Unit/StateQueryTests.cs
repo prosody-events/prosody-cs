@@ -310,11 +310,11 @@ public sealed class StateQueryTests
     }
 
     /// <summary>
-    /// A zero query limit and a read cache with both a TTL and <c>disabled</c> are caller mistakes.
-    /// The native layer must classify them transient, so a rethrow retries and loses no message.
+    /// A zero query limit is a caller mistake. The native layer must classify it transient, so a
+    /// rethrow retries and loses no message.
     /// </summary>
     [Fact]
-    public async Task NativeCallerMistakes_AreTransient()
+    public async Task NativeZeroLimit_IsTransient()
     {
         using var client = await Native.ProsodyClient.ProsodyClientAsync(
             new ClientOptions
@@ -325,11 +325,8 @@ public sealed class StateQueryTests
                 SubscribedTopics = ["state-query-tests"],
             }.ToNative()
         );
-        using var deque = await client.PublishedDeque("orders", "history", cacheTtl: null, cacheDisabled: false);
+        using var deque = await client.PublishedDeque("orders", "history", cache: null);
 
-        await Assert.ThrowsAsync<Native.FfiException.TransientState>(() =>
-            client.PublishedValue("orders", "current", TimeSpan.FromSeconds(1), cacheDisabled: true)
-        );
         Assert.Throws<Native.FfiException.TransientState>(() =>
             deque.Values("user-1", new Native.PositionQuery(Native.ScanDirection.Forward, null, null, null, 0))
         );

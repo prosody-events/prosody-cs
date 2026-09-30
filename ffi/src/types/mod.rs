@@ -11,7 +11,7 @@
 mod collection;
 mod options;
 
-pub use collection::{StateCollectionConfig, StateKind, StatePayload};
+pub use collection::{ReadCache, StateCollectionConfig, StateKind, StatePayload};
 pub use options::ClientOptions;
 
 /// Controls how a new span relates to a propagated OpenTelemetry context.

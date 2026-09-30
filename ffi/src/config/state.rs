@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::error::FfiError;
-use crate::types::{ClientOptions, StateCollectionConfig, StateKind, StatePayload};
+use crate::types::{ClientOptions, ReadCache, StateCollectionConfig, StateKind, StatePayload};
 
 /// Builds the keyed-state configuration from client options.
 ///
@@ -61,22 +61,14 @@ pub(super) fn build_keyed_state_config(
         builder.read_cache_size(Some(size));
     }
 
-    match (
-        options.state_read_cache_ttl,
-        options.state_read_cache_disabled == Some(true),
-    ) {
-        (Some(_), true) => {
-            return Err(FfiError::InvalidOperation(
-                "StateReadCache cannot set both a TTL and Disabled".to_owned(),
-            ));
-        }
-        (Some(ttl), false) => {
-            builder.read_cache_ttl(Some(ttl));
-        }
-        (None, true) => {
+    match options.state_read_cache {
+        Some(ReadCache::Disabled) => {
             builder.read_cache_ttl(None);
         }
-        (None, false) => {}
+        Some(ReadCache::Ttl { ttl }) => {
+            builder.read_cache_ttl(Some(ttl));
+        }
+        None => {}
     }
 
     if let Some(subsystem) = &options.subsystem {

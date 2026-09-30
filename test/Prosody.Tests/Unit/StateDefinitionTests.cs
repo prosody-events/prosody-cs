@@ -54,8 +54,7 @@ public sealed class StateDefinitionTests
 
         Assert.Multiple(
             () => Assert.True(definition.ToNative().Published),
-            () => Assert.Equal(TimeSpan.FromSeconds(2), definition.ReadCacheTtl),
-            () => Assert.False(definition.ReadCacheDisabled)
+            () => Assert.Equal(new Native.ReadCache.Ttl(TimeSpan.FromSeconds(2)), definition.ReadCache?.Policy)
         );
     }
 
@@ -63,8 +62,8 @@ public sealed class StateDefinitionTests
     public void ReadCache_ZeroTtl_IsPassedToProsody()
     {
         Assert.Equal(
-            TimeSpan.Zero,
-            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ReadCacheTtl
+            new Native.ReadCache.Ttl(TimeSpan.Zero),
+            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ReadCache?.Policy
         );
     }
 
