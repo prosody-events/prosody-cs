@@ -53,7 +53,9 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
         private readonly Func<TCursor, Dictionary<string, string>, Task<TNative[]?>> _nextChunk;
         private readonly Func<TCursor, Task> _close;
         private readonly Func<TNative, T> _transform;
+#pragma warning disable CA2213 // The gate allocates no wait handle, and a move queued behind DisposeAsync still releases it
         private readonly SemaphoreSlim _gate = new(1, 1);
+#pragma warning restore CA2213
         private readonly CancellationTokenSource? _linkedCts;
         private readonly CancellationToken _cancellationToken;
         private TNative[] _chunk = [];
