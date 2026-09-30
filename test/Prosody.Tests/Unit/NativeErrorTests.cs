@@ -57,6 +57,18 @@ public sealed class NativeErrorTests
     }
 
     [Fact]
+    public async Task InvalidConsumerOptionFailsSubscribeWithInvalidOperationException()
+    {
+        var options = MockOptions;
+        options.MaxUncommitted = 0;
+        await using var client = await ProsodyClient.CreateAsync(options);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            client.SubscribeAsync(new LambdaHandler<JsonElement>())
+        );
+    }
+
+    [Fact]
     public async Task LifecycleMistakesThrowInvalidOperationException()
     {
         var invalidSize = MockOptions;

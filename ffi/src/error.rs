@@ -21,8 +21,9 @@ use std::ffi::NulError;
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
 use prosody::cassandra::config::CassandraConfigurationBuilderError;
 use prosody::codec::{BinaryCodecError, JsonExtractError};
-use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
+use prosody::consumer::middleware::defer::DeferInitError;
+use prosody::consumer::{ConsumerConfigurationBuilderError, ConsumerError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
 use prosody::high_level::erased::{ErasedClientBuildError, ErasedReaderBuildError};
@@ -188,6 +189,9 @@ impl From<HighLevelClientError<Codec>> for FfiError {
             | HighLevelClientError::UnconfiguredConsumer
             | HighLevelClientError::NotSubscribed
             | HighLevelClientError::Closed => Self::InvalidOperation(error.to_string()),
+            HighLevelClientError::Consumer(ref consumer) if consumer_configuration(consumer) => {
+                Self::InvalidOperation(error.to_string())
+            }
             error @ (HighLevelClientError::Producer(_)
             | HighLevelClientError::Consumer(_)
             | HighLevelClientError::ShutdownFailed(_)
@@ -195,6 +199,20 @@ impl From<HighLevelClientError<Codec>> for FfiError {
             | HighLevelClientError::TelemetryEmitter(_)) => Self::Client(error),
         }
     }
+}
+
+/// Reports whether a consumer start failed because an option is invalid.
+fn consumer_configuration(error: &ConsumerError) -> bool {
+    matches!(
+        error,
+        ConsumerError::Configuration(_)
+            | ConsumerError::AllowedEventsPattern(_)
+            | ConsumerError::InvalidSlabSize(_)
+            | ConsumerError::Scheduler(_)
+            | ConsumerError::Timeout(_)
+            | ConsumerError::Monopolization(_)
+            | ConsumerError::Defer(DeferInitError::Validation(_))
+    )
 }
 
 /// Routes invalid request arguments to [`FfiError::InvalidArgument`].
