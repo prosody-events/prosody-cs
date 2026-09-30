@@ -22,16 +22,12 @@ internal static class StateTestSupport
     public static readonly ValueStateDefinition<RichState> Rich = StateDefinition.Value<RichState>("rich");
 
     /// <summary>
-    /// A deque collection of a bare scalar (scalar/array round-trip pin). Read back by a fresh client
-    /// after a consumer restart so the item travels the full serialize/durable/recover/deserialize
-    /// path rather than being served from an in-session materialized cell.
+    /// A deque collection of a bare scalar. A fresh client reads it back after a consumer restart, so
+    /// each stored item travels the full serialize and recover path.
     /// </summary>
     public static readonly DequeStateDefinition<int> ScalarDeque = StateDefinition.Deque<int>("scalarDeque");
 
-    /// <summary>
-    /// A deque collection of a bare array (scalar/array round-trip pin). Exercised the same way as
-    /// <see cref="ScalarDeque"/>.
-    /// </summary>
+    /// <summary>A deque collection of a bare array, read back like <see cref="ScalarDeque"/>.</summary>
     public static readonly DequeStateDefinition<int[]> ArrayDeque = StateDefinition.Deque<int[]>("arrayDeque");
 
     /// <summary>A string-keyed ordered-map collection of an integer value.</summary>
