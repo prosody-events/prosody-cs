@@ -80,10 +80,7 @@ impl JsonDequeCursor {
 
     /// Closes the cursor.
     pub async fn close(self: Arc<Self>) {
-        run(async move {
-            self.cursor.close().await;
-        })
-        .await;
+        run(async move { self.cursor.close().await }).await;
     }
 }
 
@@ -131,10 +128,7 @@ impl JsonMapCursor {
 
     /// Closes the cursor.
     pub async fn close(self: Arc<Self>) {
-        run(async move {
-            self.cursor.close().await;
-        })
-        .await;
+        run(async move { self.cursor.close().await }).await;
     }
 }
 
@@ -172,10 +166,7 @@ impl MessageDequeCursor {
 
     /// Closes the cursor.
     pub async fn close(self: Arc<Self>) {
-        run(async move {
-            self.cursor.close().await;
-        })
-        .await;
+        run(async move { self.cursor.close().await }).await;
     }
 }
 
@@ -223,10 +214,7 @@ impl MessageMapCursor {
 
     /// Closes the cursor.
     pub async fn close(self: Arc<Self>) {
-        run(async move {
-            self.cursor.close().await;
-        })
-        .await;
+        run(async move { self.cursor.close().await }).await;
     }
 }
 
@@ -263,9 +251,6 @@ impl KeyCursor {
 
     /// Closes the cursor.
     pub async fn close(self: Arc<Self>) {
-        run(async move {
-            self.cursor.close().await;
-        })
-        .await;
+        run(async move { self.cursor.close().await }).await;
     }
 }
