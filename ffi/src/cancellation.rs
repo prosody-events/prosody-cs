@@ -12,7 +12,6 @@ use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::FfiError;
-use crate::runtime::run;
 
 /// A thread-safe signal for cooperative cancellation of async operations.
 ///
@@ -42,23 +41,13 @@ impl CancellationSignal {
         }
     }
 
-    /// Signals cancellation, waking any tasks awaiting
-    /// [`cancelled`](Self::cancelled).
+    /// Signals cancellation, which stops every operation that `cancellable`
+    /// runs with this signal.
     ///
     /// This method is idempotent: calling it multiple times has no additional
     /// effect after the first call.
     pub fn cancel(&self) {
         self.token.cancel();
-    }
-
-    /// Waits until cancellation is signaled.
-    ///
-    /// Returns immediately if [`cancel`](Self::cancel) has already been called.
-    pub async fn cancelled(self: Arc<Self>) {
-        run(async move {
-            self.token.cancelled().await;
-        })
-        .await;
     }
 }
 
