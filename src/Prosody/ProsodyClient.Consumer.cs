@@ -63,11 +63,7 @@ public sealed partial class ProsodyClient
     /// overload for explicit, zero-reflection error classification.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentNullException">The handler or classifier is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// The client is already subscribed, is shut down, or has no consumer configuration.
-    /// </exception>
-    /// <exception cref="ProsodyException">The consumer failed to start.</exception>
+    /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload}, IPermanentErrorClassifier)" path="/exception"/>
     [RequiresUnreferencedCode(
         "Reads PermanentErrorAttribute from handler methods via reflection. Use SubscribeAsync(handler, classifier) to avoid the reflection path."
     )]
@@ -78,11 +74,7 @@ public sealed partial class ProsodyClient
         SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions));
 
     /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
-    /// <exception cref="ArgumentNullException">The handler or classifier is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// The client is already subscribed, is shut down, or has no consumer configuration.
-    /// </exception>
-    /// <exception cref="ProsodyException">The consumer failed to start.</exception>
+    /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload}, IPermanentErrorClassifier)" path="/exception"/>
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
     [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
     public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler) =>
@@ -90,11 +82,7 @@ public sealed partial class ProsodyClient
 
     /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
     /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
-    /// <exception cref="ArgumentNullException">The handler or classifier is <see langword="null"/>.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// The client is already subscribed, is shut down, or has no consumer configuration.
-    /// </exception>
-    /// <exception cref="ProsodyException">The consumer failed to start.</exception>
+    /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload}, IPermanentErrorClassifier)" path="/exception"/>
     public Task SubscribeAsync<TPayload, TResponse>(
         IProsodyRequestHandler<TPayload, TResponse> handler,
         IPermanentErrorClassifier classifier

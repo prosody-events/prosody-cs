@@ -67,9 +67,7 @@ public sealed class PublishedDeque<T>
     /// <param name="key">The user key that owns the collection.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>The number of elements.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     public Task<int> CountAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -83,9 +81,7 @@ public sealed class PublishedDeque<T>
     /// <param name="key">The user key that owns the collection.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns><see langword="true"/> when the deque for <paramref name="key"/> is empty.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -96,9 +92,7 @@ public sealed class PublishedDeque<T>
     /// <param name="key">The user key that owns the collection.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>The front element, or an absent <see cref="StateValue{T}"/> when the deque is empty.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     public Task<StateValue<T>> PeekFrontAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -116,9 +110,7 @@ public sealed class PublishedDeque<T>
     /// <param name="key">The user key that owns the collection.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>The back element, or an absent <see cref="StateValue{T}"/> when the deque is empty.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     public Task<StateValue<T>> PeekBackAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -137,9 +129,7 @@ public sealed class PublishedDeque<T>
     /// <param name="direction">The scan order.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     public IAsyncEnumerable<T> EnumerateAsync(
         string key,
         ScanDirection direction = ScanDirection.Forward,
@@ -151,9 +141,7 @@ public sealed class PublishedDeque<T>
     /// <param name="query">The keys or positions to select, and the scan order.</param>
     /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
     /// <returns>A sequence that opens a new cursor for each enumeration.</returns>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="TransientStateException">The read failed, and a retry can succeed.</exception>
-    /// <exception cref="PermanentStateException">The read cannot succeed, for example after an identity mismatch.</exception>
+    /// <inheritdoc cref="GetAsync(string, Index, CancellationToken)" path="/exception"/>
     /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
     public IAsyncEnumerable<T> EnumerateAsync(
         string key,

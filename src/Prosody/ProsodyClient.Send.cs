@@ -43,10 +43,7 @@ public sealed partial class ProsodyClient
     /// contract the rest of the system requires.
     /// </para>
     /// </remarks>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="topic"/> contains a null character.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the client is shut down.</exception>
-    /// <exception cref="ProsodyException">Thrown when Kafka does not accept the message.</exception>
+    /// <inheritdoc cref="SendAsync{T}(string, string, T, JsonTypeInfo{T}, SendOptions, CancellationToken)" path="/exception"/>
     [RequiresUnreferencedCode(
         "Resolves JsonTypeInfo<T> from the client's options resolver, which may use DefaultJsonTypeInfoResolver (reflection-based). Use the SendAsync overload that accepts JsonTypeInfo<T> for trim-safe publishing."
     )]
@@ -80,10 +77,7 @@ public sealed partial class ProsodyClient
     /// <see cref="SendOptions.EventId"/> and <see cref="SendOptions.EventType"/> values.
     /// </para>
     /// </remarks>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="topic"/> contains a null character.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the client is shut down.</exception>
-    /// <exception cref="ProsodyException">Thrown when Kafka does not accept the message.</exception>
+    /// <inheritdoc cref="SendAsync{T}(string, string, T, JsonTypeInfo{T}, SendOptions, CancellationToken)" path="/exception"/>
     public Task SendAsync<T>(
         string topic,
         string key,
@@ -135,10 +129,7 @@ public sealed partial class ProsodyClient
     /// <param name="topic">The topic to send to.</param>
     /// <param name="key">The key to excise.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is cancelled before or during the send.</exception>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="topic"/> contains a null character.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the client is shut down.</exception>
-    /// <exception cref="ProsodyException">Thrown when Kafka does not accept the message.</exception>
+    /// <inheritdoc cref="SendAsync{T}(string, string, T, JsonTypeInfo{T}, SendOptions, CancellationToken)" path="/exception"/>
     public async Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(topic);

@@ -16,18 +16,9 @@ public sealed partial class ProsodyClient
         "Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.";
 
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">
-    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
-    /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
-    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     path="/remarks|/exception"/>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
@@ -83,18 +74,9 @@ public sealed partial class ProsodyClient
     }
 
     /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">
-    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
-    /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
-    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     path="/remarks|/exception"/>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
@@ -114,18 +96,9 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException">
-    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
-    /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
-    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     path="/remarks|/exception"/>
     public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
         string topic,
         string key,
