@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using Prosody.Errors;
@@ -7,46 +6,11 @@ using Prosody.Messaging;
 namespace Prosody.Infrastructure;
 
 /// <summary>
-/// Resolves <see cref="PermanentErrorAttribute"/> instances from handler methods,
-/// caching results per handler type to avoid repeated reflection.
+/// Resolves <see cref="PermanentErrorAttribute"/> instances from handler methods. Each bridge
+/// resolves them once, when it is built.
 /// </summary>
 internal static class PermanentErrorResolver
 {
-    /// <summary>
-    /// Cached attribute lookup keyed by (handler type, interface type, method name).
-    /// A <see langword="null"/> value means the method was inspected but had no attribute.
-    /// </summary>
-    private static readonly ConcurrentDictionary<
-        (Type HandlerType, Type InterfaceType, string MethodName),
-        PermanentErrorAttribute?
-    > PermanentErrorHandlerCache = new();
-
-    /// <summary>
-    /// Gets the <see cref="PermanentErrorAttribute"/> from a handler method, if present.
-    /// Results are cached so that repeated construction of bridges for the same handler type does not re-invoke reflection.
-    /// </summary>
-    /// <param name="handlerType">The handler implementation type.</param>
-    /// <param name="interfaceType">The implemented handler interface type.</param>
-    /// <param name="methodName">The method name to inspect.</param>
-    /// <returns>The attribute if found; otherwise, <see langword="null"/>.</returns>
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods via reflection.")]
-    [RequiresDynamicCode("GetInterfaceMap requires the handler type's methods to be preserved at runtime.")]
-    private static PermanentErrorAttribute? GetAttribute(
-        [DynamicallyAccessedMembers(
-            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
-        )]
-            Type handlerType,
-        [DynamicallyAccessedMembers(
-            DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods
-        )]
-            Type interfaceType,
-        string methodName
-    ) =>
-        PermanentErrorHandlerCache.GetOrAdd(
-            (handlerType, interfaceType, methodName),
-            static key => ResolveAttribute(key.HandlerType, key.InterfaceType, key.MethodName)
-        );
-
     /// <summary>
     /// Creates a classifier from the <see cref="PermanentErrorAttribute"/> on each handler method of
     /// <paramref name="handler"/>. A method without the attribute classifies every error as transient.
@@ -63,9 +27,9 @@ internal static class PermanentErrorResolver
         ArgumentNullException.ThrowIfNull(handler);
         var handlerType = handler.GetType();
         return new AttributeClassifier(
-            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnMessageAsync)),
-            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnExciseAsync)),
-            GetAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnTimerAsync))
+            ResolveAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnMessageAsync)),
+            ResolveAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnExciseAsync)),
+            ResolveAttribute(handlerType, interfaceType, nameof(IProsodyHandler<object>.OnTimerAsync))
         );
     }
 
@@ -91,19 +55,11 @@ internal static class PermanentErrorResolver
             interfaceType.GetMethods(),
             m => string.Equals(m.Name, methodName, StringComparison.Ordinal)
         );
-        if (interfaceMethod is not null)
-        {
-            var mapping = handlerType.GetInterfaceMap(interfaceType);
-            for (var i = 0; i < mapping.InterfaceMethods.Length; i++)
-            {
-                if (mapping.InterfaceMethods[i] == interfaceMethod)
-                {
-                    return mapping.TargetMethods[i].GetCustomAttribute<PermanentErrorAttribute>(inherit: true);
-                }
-            }
-        }
-
-        return null;
+        var mapping = handlerType.GetInterfaceMap(interfaceType);
+        var index = Array.IndexOf(mapping.InterfaceMethods, interfaceMethod);
+        return index < 0
+            ? null
+            : mapping.TargetMethods[index].GetCustomAttribute<PermanentErrorAttribute>(inherit: true);
     }
 
     /// <summary>Classifies an error by the <see cref="PermanentErrorAttribute"/> of the method that threw it.</summary>
