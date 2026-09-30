@@ -34,15 +34,18 @@ public sealed class EventHandlerBridgeCancellationTests
         Assert.True(cts.IsCancellationRequested);
     }
 
-    [Fact]
-    public async Task HandleMessageCancelsTokenWhileHandlerIsRunning()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HandleCancelsTokenWhileHandlerIsRunning(bool timer)
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var observedCancellation = false;
 
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: async (_, _, ct) =>
+        var handleTask = HandleAsync(
+            timer,
+            async ct =>
             {
                 handlerStarted.TrySetResult();
 
@@ -54,11 +57,9 @@ public sealed class EventHandlerBridgeCancellationTests
                 {
                     observedCancellation = true;
                 }
-            }
+            },
+            () => cancelTcs.Task
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var handleTask = HandleMessageAsync(bridge, onCancel: () => cancelTcs.Task);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
@@ -71,88 +72,25 @@ public sealed class EventHandlerBridgeCancellationTests
         );
     }
 
-    [Fact]
-    public async Task HandleTimerCancelsTokenWhileHandlerIsRunning()
-    {
-        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var observedCancellation = false;
-
-        var handler = new LambdaHandler<JsonElement>(
-            onTimer: async (_, _, ct) =>
-            {
-                handlerStarted.TrySetResult();
-
-                try
-                {
-                    await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    observedCancellation = true;
-                }
-            }
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var handleTask = HandleTimerAsync(bridge, onCancel: () => cancelTcs.Task);
-
-        await handlerStarted.Task;
-        cancelTcs.TrySetResult();
-
-        var result = await handleTask;
-
-        Assert.Multiple(
-            () => Assert.True(observedCancellation, "Handler should have observed cancellation via CancellationToken"),
-            () => Assert.Equal(NativeResultCode.Success, result.Code)
-        );
-    }
-
-    [Fact]
-    public async Task HandleMessageReturnsTransientErrorWhenHandlerPropagatesCancellation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HandleReturnsTransientErrorWhenHandlerPropagatesCancellation(bool timer)
     {
         var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: async (_, _, ct) =>
-            {
-                handlerStarted.TrySetResult();
-
-                // Let the OperationCanceledException propagate — simulates a handler that does not
-                // catch cancellation. This is classified as transient because the work is incomplete
-                // and Prosody should redeliver the message.
-                await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
-            }
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var handleTask = HandleMessageAsync(bridge, onCancel: () => cancelTcs.Task);
-
-        await handlerStarted.Task;
-        cancelTcs.TrySetResult();
-
-        var result = await handleTask;
-
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
-    }
-
-    [Fact]
-    public async Task HandleTimerReturnsTransientErrorWhenHandlerPropagatesCancellation()
-    {
-        var handlerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var handler = new LambdaHandler<JsonElement>(
-            onTimer: async (_, _, ct) =>
+        // The handler lets the OperationCanceledException propagate. The work is incomplete, so the
+        // bridge classifies the error transient and Prosody delivers the event again.
+        var handleTask = HandleAsync(
+            timer,
+            async ct =>
             {
                 handlerStarted.TrySetResult();
                 await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
-            }
+            },
+            () => cancelTcs.Task
         );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var handleTask = HandleTimerAsync(bridge, onCancel: () => cancelTcs.Task);
 
         await handlerStarted.Task;
         cancelTcs.TrySetResult();
@@ -240,45 +178,37 @@ public sealed class EventHandlerBridgeCancellationTests
         Assert.False(cts.IsCancellationRequested);
     }
 
-    [Fact]
-    public async Task HandleMessageCompletesWhenOnCancelFaults()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HandleCompletesWhenOnCancelFaults(bool timer)
     {
         var handlerCalled = false;
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: (_, _, _) =>
+
+        var result = await HandleAsync(
+            timer,
+            _ =>
             {
                 handlerCalled = true;
                 return Task.CompletedTask;
-            }
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleMessageAsync(
-            bridge,
-            onCancel: () => throw new InvalidOperationException("context torn down")
+            },
+            () => throw new InvalidOperationException("context torn down")
         );
 
         Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
     }
 
-    [Fact]
-    public async Task HandleTimerCompletesWhenOnCancelFaults()
+    /// <summary>Runs <paramref name="body"/> as the message or timer handler of a new bridge.</summary>
+    private static Task<Native.HandlerResult> HandleAsync(
+        bool timer,
+        Func<CancellationToken, Task> body,
+        Func<Task> onCancel
+    )
     {
-        var handlerCalled = false;
-        var handler = new LambdaHandler<JsonElement>(
-            onTimer: (_, _, _) =>
-            {
-                handlerCalled = true;
-                return Task.CompletedTask;
-            }
-        );
+        var handler = timer
+            ? new LambdaHandler<JsonElement>(onTimer: (_, _, ct) => body(ct))
+            : new LambdaHandler<JsonElement>(onMessage: (_, _, ct) => body(ct));
         var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleTimerAsync(
-            bridge,
-            onCancel: () => throw new InvalidOperationException("context torn down")
-        );
-
-        Assert.Multiple(() => Assert.True(handlerCalled), () => Assert.Equal(NativeResultCode.Success, result.Code));
+        return timer ? HandleTimerAsync(bridge, onCancel) : HandleMessageAsync(bridge, onCancel: onCancel);
     }
 }
