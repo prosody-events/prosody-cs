@@ -43,13 +43,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
             async () =>
             {
                 var items = await _handle.GetMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false);
-                var results = new StateValue<TValue>[items.Length];
-                for (var i = 0; i < items.Length; i++)
-                {
-                    results[i] = StateInterop.JsonToValue(items[i].Bytes, _typeInfo);
-                }
-
-                return results;
+                return Array.ConvertAll(items, item => StateInterop.JsonToValue(item.Bytes, _typeInfo));
             },
             cancellationToken
         );

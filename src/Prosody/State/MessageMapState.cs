@@ -43,13 +43,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
             async () =>
             {
                 var items = await _handle.GetMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false);
-                var results = new StateValue<Message<TPayload>>[items.Length];
-                for (var i = 0; i < items.Length; i++)
-                {
-                    results[i] = MessageInterop.MessageToValue(items[i], _typeInfo);
-                }
-
-                return results;
+                return Array.ConvertAll(items, item => MessageInterop.MessageToValue(item, _typeInfo));
             },
             cancellationToken
         );
