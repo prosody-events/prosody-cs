@@ -15,6 +15,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
 {
     private sealed record ErrorObservation
     {
+        public bool EqualCopiesBind { get; init; }
         public bool Threw { get; init; }
         public bool Permanent { get; init; }
         public bool Transient { get; init; }
@@ -39,7 +40,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task UnregisteredName_ThrowsPermanentAtVend()
+    public async Task EqualDefinitionsBind_UnregisteredName_ThrowsPermanentAtVend()
     {
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var observations = new MessageChannel<ErrorObservation>();
@@ -47,16 +48,23 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
         var handler = new TestProsodyHandler<TestPayload>(
             onMessage: (context, _, _) =>
             {
+                // A definition binds by value equality, so an equal copy returns the registered handle.
+                var backlog = context.State(StateTestSupport.Backlog);
+                var equalCopiesBind =
+                    ReferenceEquals(backlog, context.State(StateDefinition.Deque<string>("backlog")))
+                    && ReferenceEquals(backlog, context.State(StateTestSupport.Backlog with { }));
+
                 try
                 {
                     context.State(StateDefinition.Value<int>("never-registered-" + Guid.NewGuid().ToString("N")));
-                    observations.Send(new ErrorObservation { Threw = false });
+                    observations.Send(new ErrorObservation { EqualCopiesBind = equalCopiesBind, Threw = false });
                 }
                 catch (StateException ex)
                 {
                     observations.Send(
                         new ErrorObservation
                         {
+                            EqualCopiesBind = equalCopiesBind,
                             Threw = true,
                             Permanent = ex is PermanentStateException,
                             StateError = ex is StateException,
@@ -83,6 +91,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
         );
 
         Assert.Multiple(
+            () => Assert.True(obs.EqualCopiesBind),
             () => Assert.True(obs.Threw),
             () => Assert.True(obs.Permanent),
             () => Assert.True(obs.StateError),

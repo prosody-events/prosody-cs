@@ -83,7 +83,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ArgumentNullException.ThrowIfNull(classifier);
 
         _jsonOptions = jsonOptions;
-        _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>(ReferenceEqualityComparer.Instance);
+        _stateDefinitions = stateDefinitions ?? new HashSet<StateDefinition>();
         _payloadTypeInfo = StateInterop.ResolveTypeInfo<TPayload>(jsonOptions);
         _onMessage = onMessage;
         _onExcise = onExcise;

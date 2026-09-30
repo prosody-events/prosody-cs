@@ -7,9 +7,10 @@ namespace Prosody.State;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A definition is the single source of typing: the same object is registered via
+/// A definition is the single source of typing: it is registered via
 /// <see cref="ProsodyClientBuilder.WithStateCollections"/> and passed to a <c>State</c> overload on
-/// <c>ProsodyContext</c> to bind a typed handle. Construct definitions through the static factories
+/// <c>ProsodyContext</c> to bind a typed handle. Binding uses record equality, so an equal definition
+/// or a <c>with { }</c> copy binds the registered collection. Construct definitions through the static factories
 /// (<see cref="Value{T}"/>, <see cref="Map{TValue}"/>, <see cref="Deque{T}"/>, <see cref="Set"/>,
 /// <see cref="MessageValue{TPayload}"/>, <see cref="MessageMap{TPayload}"/>,
 /// <see cref="MessageDeque{TPayload}"/>).

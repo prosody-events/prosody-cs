@@ -272,8 +272,8 @@ public sealed class ProsodyClientBuilder
     /// <returns>This builder for chaining.</returns>
     /// <remarks>
     /// Registration is applied before the client subscribes. Each definition is the single source of
-    /// typing: pass the same object to a <c>State</c> overload on <c>ProsodyContext</c> in a handler
-    /// to bind a typed handle.
+    /// typing: pass it, or an equal definition, to a <c>State</c> overload on <c>ProsodyContext</c> in
+    /// a handler to bind a typed handle.
     /// </remarks>
     /// <example>
     /// <code>

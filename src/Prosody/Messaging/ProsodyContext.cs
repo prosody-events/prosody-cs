@@ -28,7 +28,7 @@ public sealed class ProsodyContext
         _native = native;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
-        _stateHandles = new Dictionary<StateDefinition, object>(ReferenceEqualityComparer.Instance);
+        _stateHandles = [];
     }
 
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
@@ -241,7 +241,7 @@ public sealed class ProsodyContext
         if (_stateDefinitions?.Contains(definition) != true)
         {
             throw new PermanentStateException(
-                $"State collection '{definition.Name}' must be bound with the definition object registered on the client."
+                $"State collection '{definition.Name}' must be bound with a definition equal to one registered on the client."
             );
         }
 

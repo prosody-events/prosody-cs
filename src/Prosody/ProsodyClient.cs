@@ -85,7 +85,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     private static HashSet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
-        new HashSet<StateDefinition>(options.StateCollections ?? [], ReferenceEqualityComparer.Instance);
+        [.. options.StateCollections ?? []];
 
     [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
     [RequiresDynamicCode(DefaultResolverAotWarning)]
