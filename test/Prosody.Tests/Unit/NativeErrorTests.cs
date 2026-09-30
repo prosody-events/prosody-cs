@@ -71,4 +71,20 @@ public sealed class NativeErrorTests
         await client.UnsubscribeAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(client.UnsubscribeAsync);
     }
+
+    [Fact]
+    public async Task PublishedReaderOpenKeepsTheCategory()
+    {
+        await using var client = await ProsodyClient.CreateAsync(MockOptions);
+        await using var unconfigured = await ProsodyClient.CreateAsync(
+            new ClientOptions { Mock = true, BootstrapServers = [TestDefaults.BootstrapServers], SourceSystem = "reader" }
+        );
+        var definition = StateDefinition.Value<int>("current", published: true);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await Assert.ThrowsAsync<ArgumentException>(() => client.StateAsync("", definition, cancellationToken));
+        await Assert.ThrowsAsync<TransientStateException>(() =>
+            unconfigured.StateAsync("orders", definition, cancellationToken)
+        );
+    }
 }

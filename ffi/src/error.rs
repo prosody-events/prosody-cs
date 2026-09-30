@@ -247,10 +247,22 @@ impl From<ErasedStateError> for FfiError {
     }
 }
 
-/// Classifies a failure to open a published reader as permanent.
+/// Classifies a failure to open a published reader.
+///
+/// An empty subsystem name is a caller mistake. A state reader error keeps
+/// the category that Prosody gives it. Any other client failure, such as a
+/// broker that is not available, is transient.
 impl From<ErasedReaderBuildError<Codec>> for FfiError {
     fn from(error: ErasedReaderBuildError<Codec>) -> Self {
-        Self::PermanentState(error.to_string())
+        match error {
+            ErasedReaderBuildError::InvalidSubsystem(error) => {
+                Self::InvalidArgument(error.to_string())
+            }
+            ErasedReaderBuildError::Client(HighLevelClientError::StateReader(error)) => {
+                error.into()
+            }
+            ErasedReaderBuildError::Client(error) => Self::TransientState(error.to_string()),
+        }
     }
 }
 

@@ -111,7 +111,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns a permanent state error when the descriptor cannot be resolved.
+    /// Returns [`FfiError::InvalidArgument`] for an empty subsystem name, and
+    /// a state error with the category that Prosody gives the failure.
     pub async fn published_value(
         self: Arc<Self>,
         subsystem: String,
@@ -131,7 +132,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns a permanent state error when the descriptor cannot be resolved.
+    /// Returns [`FfiError::InvalidArgument`] for an empty subsystem name, and
+    /// a state error with the category that Prosody gives the failure.
     pub async fn published_map(
         self: Arc<Self>,
         subsystem: String,
@@ -151,7 +153,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns a permanent state error when the descriptor cannot be resolved.
+    /// Returns [`FfiError::InvalidArgument`] for an empty subsystem name, and
+    /// a state error with the category that Prosody gives the failure.
     pub async fn published_set(
         self: Arc<Self>,
         subsystem: String,
@@ -171,7 +174,8 @@ impl ProsodyClient {
     ///
     /// # Errors
     ///
-    /// Returns a permanent state error when the descriptor cannot be resolved.
+    /// Returns [`FfiError::InvalidArgument`] for an empty subsystem name, and
+    /// a state error with the category that Prosody gives the failure.
     pub async fn published_deque(
         self: Arc<Self>,
         subsystem: String,
