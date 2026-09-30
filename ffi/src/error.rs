@@ -38,15 +38,7 @@ use prosody::tracing::TracingError;
 /// The codec error type of every client operation.
 type Codec = BinaryCodecError<JsonExtractError>;
 
-/// Primary error type for FFI boundary operations.
-///
-/// `UniFFI` generates a corresponding `FfiException` type in C#. The
-/// `flat_error` attribute serializes all variants to strings via their
-/// `Display` implementation, preserving error messages across the language
-/// boundary.
-///
-/// All variants support automatic conversion via [`From`] implementations,
-/// allowing use of the `?` operator in FFI functions.
+/// The error of every exported call, which C# receives as `FfiException`.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 #[uniffi(flat_error)]
 pub enum FfiError {
@@ -289,20 +281,7 @@ fn consumer_configuration(error: &ConsumerError) -> bool {
     )
 }
 
-/// Represents errors from C# event handler callbacks.
-///
-/// This type wraps errors that originate in C# code and cross back into Rust.
-/// Error messages from C# exceptions are preserved for logging and diagnostics.
-///
-/// # Error Classification
-///
-/// This type implements [`ClassifyError`] to support retry logic:
-/// - [`Transient`][Self::Transient] is classified as transient (retriable).
-/// - An [`Ffi`][Self::Ffi]-wrapped [`FfiError::PermanentState`] classifies as
-///   permanent (a config/deploy state error that escaped the handler and
-///   round-tripped back through the FFI boundary); all other [`Ffi`][Self::Ffi]
-///   variants are infrastructure failures and classify as transient.
-/// - [`Permanent`][Self::Permanent] errors should not be retried.
+/// An error that a C# event handler callback returns to Rust.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
     /// A transient error that may succeed on retry.
@@ -345,6 +324,7 @@ impl From<FfiError> for CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
+            // A permanent state error that escaped the handler stays permanent.
             Self::Ffi(error) if matches!(error.as_ref(), FfiError::PermanentState(_)) => {
                 ErrorCategory::Permanent
             }

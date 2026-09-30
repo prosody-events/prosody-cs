@@ -246,21 +246,11 @@ fn build_telemetry_emitter_config(options: &ClientOptions) -> TelemetryEmitterCo
     builder
 }
 
-/// Creates all consumer-related configuration builders from client options.
-///
-/// Aggregates the individual builder functions into a single
-/// [`ConsumerBuilders`] struct, which is the format expected by
-/// [`prosody::high_level::HighLevelClient::new`].
+/// Builds every consumer configuration from the client options.
 ///
 /// # Errors
 ///
-/// Returns an [`FfiError`] if any eagerly-finalized configuration fails
-/// validation: the Kafka loader tuning ([`FfiError::LoaderConfig`]), the
-/// telemetry
-/// emitter configuration ([`FfiError::TelemetryConfig`], e.g. when an
-/// environment variable such as `PROSODY_TELEMETRY_ENABLED` is invalid), or the
-/// deduplication, keyed-state, or peer configuration
-/// ([`FfiError::InvalidOperation`]).
+/// Returns an [`FfiError`] if a configuration fails validation.
 pub fn build_consumer_builders(options: &ClientOptions) -> Result<ConsumerBuilders, FfiError> {
     Ok(ConsumerBuilders {
         consumer: build_consumer_config(options)?,

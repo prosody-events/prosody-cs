@@ -50,14 +50,7 @@ impl From<CoreDemandType> for DemandType {
     }
 }
 
-/// Event context passed to message handlers during event processing.
-///
-/// This type wraps Prosody's [`BoxEventContext`]. Timer operations apply to
-/// the current message key and take an OpenTelemetry carrier for the parent
-/// span.
-///
-/// The `*_state` methods vend state handles. Vending checks the registration
-/// in core and opens no span, because each handle operation opens its own.
+/// The event context that a message or timer handler receives.
 #[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
@@ -224,6 +217,9 @@ impl Context {
         })
         .await
     }
+
+    // Vending checks the registration in core and opens no span, because each
+    // handle operation opens its own.
 
     /// Vends the state handle for the named JSON value collection.
     ///

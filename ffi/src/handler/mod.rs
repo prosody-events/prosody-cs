@@ -136,16 +136,7 @@ pub enum NativeRequestResult {
     },
 }
 
-/// Callback trait for handling Kafka messages and timers.
-///
-/// This trait defines the FFI boundary that enables Rust to invoke C#
-/// callbacks. An internal C# wrapper class implements this trait and bridges
-/// to the user-facing `IEventHandler` interface. Users never implement this
-/// trait directly.
-///
-/// Both methods receive a `carrier` map for distributed tracing context
-/// propagation (e.g., W3C Trace Context headers). The C# wrapper extracts
-/// these headers to continue the trace span across the FFI boundary.
+/// The callback interface that the internal C# handler bridge implements.
 #[uniffi::export(with_foreign)]
 #[async_trait::async_trait]
 pub trait EventHandler: Send + Sync {

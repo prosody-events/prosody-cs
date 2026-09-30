@@ -4,12 +4,7 @@ use std::time::Duration;
 
 use super::{ClientMode, ReadCache, SpanRelation, StateCollectionConfig};
 
-/// Configuration options for the Prosody client.
-///
-/// The C# `Prosody.Configuration.ClientOptions` class fills this record, and
-/// its docs are the full reference for each field. Every field is optional.
-/// `None` means "use the environment variable or library default". Comments
-/// group the fields by subsystem.
+/// The options that C# `ClientOptions` fills. `None` means the default.
 #[derive(Debug, Clone, Default, uniffi::Record)]
 pub struct ClientOptions {
     // Core options

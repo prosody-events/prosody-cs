@@ -72,7 +72,7 @@ public static class ProsodyLogging
     /// is disposed while the process keeps running — it forces the export that the
     /// batch span processor and periodic metric reader would otherwise defer to
     /// their timers. For a deterministic final export at process exit, prefer
-    /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes.
+    /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes. Do not call it from a handler.
     /// </remarks>
     /// <exception cref="ProsodyException">Thrown if the span or metric exporter fails to flush.</exception>
     public static void FlushTelemetry() => NativeErrors.Run(ProsodyFfiMethods.FlushTelemetry);
@@ -87,7 +87,7 @@ public static class ProsodyLogging
     /// sibling client. This runs automatically once via
     /// <see cref="AppDomain.ProcessExit"/> after logging is configured; call it
     /// directly only when managing process teardown yourself. Blocks until the
-    /// final export completes.
+    /// final export completes. Do not call it from a handler.
     /// </remarks>
     /// <exception cref="ProsodyException">Thrown if the span or metric pipeline fails to shut down.</exception>
     public static void ShutdownTelemetry() => NativeErrors.Run(ProsodyFfiMethods.ShutdownTelemetry);
