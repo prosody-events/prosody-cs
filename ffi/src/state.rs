@@ -87,7 +87,7 @@ pub(crate) fn into_bytes(payload: Option<BinaryPayload>) -> Option<Vec<u8>> {
 
 /// Wraps one resolved Kafka message for FFI.
 pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Arc<Message> {
-    Arc::new(Message::new(message))
+    Arc::new(message.into())
 }
 
 /// Converts an FFI deque index to the platform index type.

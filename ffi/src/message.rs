@@ -36,12 +36,6 @@ pub struct ExciseMessage {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Message {
-    /// Creates a new `Message` from a [`ConsumerMessage`].
-    #[must_use]
-    pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
-        Self { inner }
-    }
-
     /// Clones the wrapped consumer message for a keyed-state message write.
     ///
     /// [`ConsumerMessage`] is cheaply cloneable (it shares its value and
@@ -107,7 +101,7 @@ impl Message {
 
 impl From<ConsumerMessage<BinaryPayload>> for Message {
     fn from(inner: ConsumerMessage<BinaryPayload>) -> Self {
-        Self::new(inner)
+        Self { inner }
     }
 }
 
