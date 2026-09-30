@@ -49,6 +49,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when a duration option is negative.</exception>
     /// <remarks>
     /// When no <c>TypeInfoResolver</c> is set via <see cref="ClientOptions.ConfigureJsonOptions"/>,
     /// this constructor auto-installs <c>DefaultJsonTypeInfoResolver</c>, which uses reflection metadata.

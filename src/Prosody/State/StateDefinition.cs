@@ -1,3 +1,5 @@
+using Prosody.Infrastructure;
+
 namespace Prosody.State;
 
 /// <summary>
@@ -32,11 +34,6 @@ public abstract record StateDefinition
     )
     {
         ArgumentNullException.ThrowIfNull(name);
-        if (ttl is { Ticks: < 0 })
-        {
-            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "TTL must not be negative.");
-        }
-
         if (keysetLimit is < 0)
         {
             throw new ArgumentOutOfRangeException(
@@ -54,7 +51,7 @@ public abstract record StateDefinition
         Name = name;
         Kind = kind;
         Payload = payload;
-        Ttl = ttl;
+        Ttl = Durations.ToNative(ttl);
         ReadUncommitted = readUncommitted;
         KeysetLimit = keysetLimit;
         Capacity = capacity;

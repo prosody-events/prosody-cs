@@ -105,13 +105,12 @@ public sealed partial class ProsodyClient
         ArgumentNullException.ThrowIfNull(responseType);
         ArgumentNullException.ThrowIfNull(subsystems);
         cancellationToken.ThrowIfCancellationRequested();
-        ArgumentOutOfRangeException.ThrowIfLessThan(timeout, TimeSpan.Zero);
 
         var request = new Native.NativeExciseRequest(
             topic,
             key,
             [.. subsystems],
-            timeout,
+            Durations.ToNative(timeout),
             StateInterop.CreateCarrier()
         );
         return await CompleteRequestAsync(
@@ -134,8 +133,6 @@ public sealed partial class ProsodyClient
         CancellationToken cancellationToken
     )
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(timeout, TimeSpan.Zero);
-
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
         var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
         var request = new Native.NativeRequest(
@@ -144,7 +141,7 @@ public sealed partial class ProsodyClient
             encoded,
             new Native.EventMetadata(EventId: eventId, EventType: eventType),
             [.. subsystems],
-            timeout,
+            Durations.ToNative(timeout),
             StateInterop.CreateCarrier()
         );
         return await CompleteRequestAsync(

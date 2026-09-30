@@ -336,4 +336,32 @@ public sealed class ClientOptionsTests
             () => Assert.Null(unset.StateMemtableSize)
         );
     }
+
+    public static TheoryData<string> DurationOptions() =>
+        [
+            .. typeof(ClientOptions)
+                .GetProperties()
+                .Where(property => property.PropertyType == typeof(TimeSpan?))
+                .Select(property => property.Name),
+        ];
+
+    [Theory]
+    [MemberData(nameof(DurationOptions))]
+    public void ToNativeConvertsEachDurationAndRejectsNegative(string name)
+    {
+        var property = typeof(ClientOptions).GetProperty(name)!;
+        var valid = new ClientOptions();
+        property.SetValue(valid, TimeSpan.FromSeconds(3));
+        var negative = new ClientOptions();
+        property.SetValue(negative, TimeSpan.FromTicks(-1));
+
+        var native = valid.ToNative();
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => negative.ToNative());
+
+        Assert.Multiple(
+            () =>
+                Assert.Equal(TimeSpan.FromSeconds(3), typeof(Native.ClientOptions).GetProperty(name)!.GetValue(native)),
+            () => Assert.Equal(name, error.ParamName)
+        );
+    }
 }

@@ -1,3 +1,5 @@
+using Prosody.Infrastructure;
+
 namespace Prosody.Configuration;
 
 // This file owns the conversion of the options to the native options.
@@ -26,6 +28,7 @@ public sealed partial class ClientOptions
     /// <summary>
     /// Converts to the internal native options type.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
     internal Native.ClientOptions ToNative() =>
         ToNativeBase() with
         {
@@ -54,39 +57,39 @@ public sealed partial class ClientOptions
             PeerAdvertisedConnect: PeerAdvertisedConnect?.OriginalString,
             PeerNetworkName: PeerNetworkName,
             PeerCacheCapacity: PeerCacheCapacity,
-            PeerRegistrationTtl: PeerRegistrationTtl,
+            PeerRegistrationTtl: Durations.ToNative(PeerRegistrationTtl),
             MaxConcurrency: MaxConcurrency,
             MaxUncommitted: MaxUncommitted,
             IdempotenceCacheSize: IdempotenceCacheSize,
             IdempotenceVersion: IdempotenceVersion,
-            IdempotenceTtl: IdempotenceTtl,
-            Timeout: Timeout,
-            StallThreshold: StallThreshold,
-            ShutdownTimeout: ShutdownTimeout,
-            PollInterval: PollInterval,
-            CommitInterval: CommitInterval,
+            IdempotenceTtl: Durations.ToNative(IdempotenceTtl),
+            Timeout: Durations.ToNative(Timeout),
+            StallThreshold: Durations.ToNative(StallThreshold),
+            ShutdownTimeout: Durations.ToNative(ShutdownTimeout),
+            PollInterval: Durations.ToNative(PollInterval),
+            CommitInterval: Durations.ToNative(CommitInterval),
             ProbePort: ProbePort,
-            SlabSize: SlabSize,
-            SendTimeout: SendTimeout,
+            SlabSize: Durations.ToNative(SlabSize),
+            SendTimeout: Durations.ToNative(SendTimeout),
             MaxRetries: MaxRetries,
-            RetryBase: RetryBase,
-            MaxRetryDelay: MaxRetryDelay,
+            RetryBase: Durations.ToNative(RetryBase),
+            MaxRetryDelay: Durations.ToNative(MaxRetryDelay),
             FailureTopic: FailureTopic,
             DeferEnabled: DeferEnabled,
-            DeferBase: DeferBase,
-            DeferMaxDelay: DeferMaxDelay,
+            DeferBase: Durations.ToNative(DeferBase),
+            DeferMaxDelay: Durations.ToNative(DeferMaxDelay),
             DeferFailureThreshold: DeferFailureThreshold,
-            DeferFailureWindow: DeferFailureWindow,
+            DeferFailureWindow: Durations.ToNative(DeferFailureWindow),
             DeferStoreCacheSize: DeferStoreCacheSize,
             LoaderCacheSize: LoaderCacheSize,
-            LoaderSeekTimeout: LoaderSeekTimeout,
+            LoaderSeekTimeout: Durations.ToNative(LoaderSeekTimeout),
             LoaderDiscardThreshold: LoaderDiscardThreshold,
             MonopolizationEnabled: MonopolizationEnabled,
             MonopolizationThreshold: MonopolizationThreshold,
-            MonopolizationWindow: MonopolizationWindow,
+            MonopolizationWindow: Durations.ToNative(MonopolizationWindow),
             MonopolizationCacheSize: MonopolizationCacheSize,
             SchedulerFailureWeight: SchedulerFailureWeight,
-            SchedulerMaxWait: SchedulerMaxWait,
+            SchedulerMaxWait: Durations.ToNative(SchedulerMaxWait),
             SchedulerWaitWeight: SchedulerWaitWeight,
             SchedulerCacheSize: SchedulerCacheSize,
             CassandraNodes: CassandraNodes,
@@ -95,7 +98,7 @@ public sealed partial class ClientOptions
             CassandraRack: CassandraRack,
             CassandraUser: CassandraUser,
             CassandraPassword: CassandraPassword,
-            CassandraRetention: CassandraRetention,
+            CassandraRetention: Durations.ToNative(CassandraRetention),
             TelemetryTopic: TelemetryTopic,
             TelemetryEnabled: TelemetryEnabled,
             MessageSpans: ToNativeSpanRelation(MessageSpans),
