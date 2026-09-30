@@ -32,39 +32,8 @@ mod outcome;
 
 use outcome::{native_request_results, subsystem_names};
 
-/// Native Prosody client exposed to C# via `UniFFI`.
-///
-/// This is the low-level FFI client. C# wraps this in `Prosody.ProsodyClient`
-/// which provides typed JSON, `CancellationToken` support, and idiomatic
-/// properties.
-///
-/// # Lifecycle
-///
-/// ```text
-///       ┌──────────┐
-///       │  Created │
-///       └────┬─────┘
-///            │ new()
-///            ▼
-///       ┌──────────┐
-///       │   Idle   │◄────────────────┐
-///       └────┬─────┘                 │
-///            │ subscribe()           │ unsubscribe()
-///            ▼                       │
-///       ┌──────────┐                 │
-///       │Subscribed├─────────────────┘
-///       └────┬─────┘
-///            │ drop / dispose
-///            ▼
-///       ┌──────────┐
-///       │ Disposed │
-///       └──────────┘
-/// ```
-///
-/// # Thread Safety
-///
-/// This type is `Send + Sync` and can be safely shared across threads.
-/// The internal state is protected by atomic operations and async-aware locks.
+/// Native Prosody client. The C# `Prosody.ProsodyClient` class wraps it and
+/// documents the public API. The type is `Send + Sync`.
 #[derive(uniffi::Object)]
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
@@ -74,10 +43,7 @@ pub struct ProsodyClient {
 /// UniFFI-exported methods for [`ProsodyClient`].
 #[uniffi::export]
 impl ProsodyClient {
-    /// Creates a new client with the specified configuration.
-    ///
-    /// Initializes the tracing subsystem if not already initialized, then
-    /// builds and connects the underlying Kafka producer and consumer.
+    /// Creates a client and initializes tracing once for the process.
     ///
     /// # Errors
     ///
@@ -188,11 +154,7 @@ impl ProsodyClient {
         .await
     }
 
-    /// Subscribes to configured topics and begins consuming messages.
-    ///
-    /// The handler receives messages and timer events asynchronously until
-    /// [`unsubscribe`](Self::unsubscribe) is called. The consumer owns the
-    /// handler for that time.
+    /// Subscribes the handler. The consumer owns it until unsubscribe.
     ///
     /// # Errors
     ///
@@ -212,10 +174,7 @@ impl ProsodyClient {
         .await
     }
 
-    /// Stops consuming messages and unsubscribes from all topics.
-    ///
-    /// In-flight messages are allowed to complete before this method returns.
-    /// The consumer then releases the handler.
+    /// Stops the consumer after in-flight messages complete.
     ///
     /// # Errors
     ///
@@ -242,16 +201,7 @@ impl ProsodyClient {
         .await
     }
 
-    /// Sends a message to a Kafka topic.
-    ///
-    /// The payload bytes are forwarded to Kafka verbatim; this method does
-    /// not inspect or parse them. The caller supplies optional event metadata
-    /// (typically pulled from the typed object on the C# side before JSON
-    /// serialization), avoiding a JSON re-parse on the FFI boundary.
-    /// `event_id` participates in producer idempotence dedup when present;
-    /// `event_type` is carried for downstream consumers that filter on
-    /// `allowed_events`. OpenTelemetry tracing context is extracted from the
-    /// carrier to link the send operation with the parent span from C#.
+    /// Sends the payload bytes as they are, with the host event metadata.
     ///
     /// # Errors
     ///

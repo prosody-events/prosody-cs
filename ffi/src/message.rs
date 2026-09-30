@@ -12,13 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 
 /// A Kafka message received from a consumer.
 ///
-/// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
-/// through FFI-safe accessor methods. The payload bytes are copied verbatim
-/// from the wire by [`JsonBinaryMessageCodec`] when the message is decoded.
-/// Each accessor clones once into the FFI return buffer as required by
-/// `UniFFI`.
-///
-/// [`JsonBinaryMessageCodec`]: prosody::codec::JsonBinaryMessageCodec
+/// Each accessor clones its value once into the FFI return buffer.
 #[derive(uniffi::Object)]
 pub struct Message {
     /// The underlying prosody message.
