@@ -29,7 +29,7 @@ use prosody::telemetry::emitter::{
 use std::net::SocketAddr;
 
 use crate::error::FfiError;
-use crate::types::{ClientMode, ClientOptions, SendTimeout, SpanRelation};
+use crate::types::{ClientMode, ClientOptions, SpanRelation};
 use middleware::{
     build_dedup_config, build_defer_config, build_failure_topic_config,
     build_monopolization_config, build_retry_config, build_scheduler_config, build_timeout_config,
@@ -66,10 +66,7 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
     }
 
     if let Some(timeout) = options.send_timeout {
-        builder.send_timeout(match timeout {
-            SendTimeout::Limited { duration } => Some(duration),
-            SendTimeout::Unlimited => None,
-        });
+        builder.send_timeout(Some(timeout));
     }
 
     if let Some(size) = options.idempotence_cache_size {

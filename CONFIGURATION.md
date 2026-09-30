@@ -131,7 +131,7 @@ Set `Subsystem` to make this client answer requests. Without it, the client cons
 
 | Property / Environment Variable | Description | Default |
 |---|---|---|
-| `SendTimeout` / `PROSODY_SEND_TIMEOUT` | Give up sending after this long. `Timeout.InfiniteTimeSpan` (or the environment value `none`) retries a send until it succeeds. `null` uses the environment variable, then the default. | 1s |
+| `SendTimeout` / `PROSODY_SEND_TIMEOUT` | Give up sending after this long | 1s |
 
 ## Retry
 

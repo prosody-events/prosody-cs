@@ -341,29 +341,9 @@ public sealed class ClientOptionsTests
         [
             .. typeof(ClientOptions)
                 .GetProperties()
-                .Where(property =>
-                    property.PropertyType == typeof(TimeSpan?) && property.Name != nameof(ClientOptions.SendTimeout)
-                )
+                .Where(property => property.PropertyType == typeof(TimeSpan?))
                 .Select(property => property.Name),
         ];
-
-    [Fact]
-    public void ToNativeMapsInfiniteSendTimeoutToUnlimited()
-    {
-        var unset = new ClientOptions().ToNative();
-        var limited = new ClientOptions { SendTimeout = TimeSpan.FromSeconds(3) }.ToNative();
-        var unlimited = new ClientOptions { SendTimeout = Timeout.InfiniteTimeSpan }.ToNative();
-
-        Assert.Multiple(
-            () => Assert.Null(unset.SendTimeout),
-            () => Assert.Equal(new Native.SendTimeout.Limited(TimeSpan.FromSeconds(3)), limited.SendTimeout),
-            () => Assert.IsType<Native.SendTimeout.Unlimited>(unlimited.SendTimeout),
-            () =>
-                Assert.Throws<ArgumentOutOfRangeException>(() =>
-                    new ClientOptions { SendTimeout = TimeSpan.FromTicks(-1) }.ToNative()
-                )
-        );
-    }
 
     [Theory]
     [MemberData(nameof(DurationOptions))]

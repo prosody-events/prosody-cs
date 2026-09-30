@@ -1,6 +1,6 @@
 //! Records and enums that cross the FFI boundary to C#.
 //!
-//! Each type maps to an idiomatic C# type: [`Duration`]
+//! Each type maps to an idiomatic C# type: [`Duration`](std::time::Duration)
 //! becomes `TimeSpan`, `f64` becomes `double`, and an enum stays an enum. An
 //! optional field defaults to `None`, which means "use the environment
 //! variable or library default".
@@ -8,25 +8,11 @@
 //! - `options`: the [`ClientOptions`] record.
 //! - `collection`: the declaration of one keyed-state collection.
 
-use std::time::Duration;
-
 mod collection;
 mod options;
 
 pub use collection::{StateCollectionConfig, StateKind, StatePayload};
 pub use options::ClientOptions;
-
-/// How long the producer waits for a send to succeed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum SendTimeout {
-    /// The send fails after this duration.
-    Limited {
-        /// The time to wait for delivery acknowledgment.
-        duration: Duration,
-    },
-    /// The producer retries the send until it succeeds.
-    Unlimited,
-}
 
 /// Controls how a new span relates to a propagated OpenTelemetry context.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
