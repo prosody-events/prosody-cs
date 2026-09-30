@@ -83,7 +83,7 @@ public sealed class SetStateTests
                 .GetAsyncEnumerator(TestContext.Current.CancellationToken)
         );
         Assert.Throws<NotSupportedException>(() =>
-            new SetState(byDirection)
+            ((ISetState)new SetState(byDirection))
                 .EnumerateAsync(ScanDirection.Backward, TestContext.Current.CancellationToken)
                 .GetAsyncEnumerator(TestContext.Current.CancellationToken)
         );

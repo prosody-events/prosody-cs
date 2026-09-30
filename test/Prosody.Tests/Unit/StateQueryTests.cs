@@ -264,12 +264,12 @@ public sealed class StateQueryTests
         var deque = new FakeDequeStateHandle();
 
         Assert.Throws<NotSupportedException>(() =>
-            Map(map)
+            ((IMapState<int>)Map(map))
                 .EnumerateValuesAsync(ScanDirection.Backward, TestContext.Current.CancellationToken)
                 .GetAsyncEnumerator(TestContext.Current.CancellationToken)
         );
         Assert.Throws<NotSupportedException>(() =>
-            new DequeState<int>(deque, TestJson.TypeInfo<int>())
+            ((IDequeState<int>)new DequeState<int>(deque, TestJson.TypeInfo<int>()))
                 .EnumerateAsync(ScanDirection.Backward, TestContext.Current.CancellationToken)
                 .GetAsyncEnumerator(TestContext.Current.CancellationToken)
         );

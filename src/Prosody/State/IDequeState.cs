@@ -119,7 +119,7 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     IAsyncEnumerable<T> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateAsync(new PositionQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the live elements that <paramref name="query"/> selects. Valid only within the

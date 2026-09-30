@@ -59,7 +59,7 @@ public interface ISetState : IAsyncEnumerable<string>
     IAsyncEnumerable<string> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the members that <paramref name="query"/> selects. Valid only within the handler

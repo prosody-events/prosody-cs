@@ -87,18 +87,8 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateKeysAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
-
     public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
         StateInterop.Keys(_handle.Keys, query, cancellationToken);
-
-    public IAsyncEnumerable<KeyValuePair<string, Message<TPayload>>> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     public IAsyncEnumerable<KeyValuePair<string, Message<TPayload>>> EnumerateAsync(
         KeyQuery query,
@@ -111,18 +101,13 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         );
 
     public IAsyncEnumerable<Message<TPayload>> EnumerateValuesAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateValuesAsync(new KeyQuery { Direction = direction }, cancellationToken);
-
-    public IAsyncEnumerable<Message<TPayload>> EnumerateValuesAsync(
         KeyQuery query,
         CancellationToken cancellationToken = default
     ) => Entries(query, entry => MessageInterop.FromNative(entry.Message, _typeInfo), cancellationToken);
 
     public IAsyncEnumerator<KeyValuePair<string, Message<TPayload>>> GetAsyncEnumerator(
         CancellationToken cancellationToken = default
-    ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+    ) => EnumerateAsync(new KeyQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);

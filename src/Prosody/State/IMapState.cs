@@ -108,7 +108,7 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the live entry keys in key order, <b>skipping every value decode and the message
@@ -123,7 +123,7 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     IAsyncEnumerable<string> EnumerateKeysAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the live entries that <paramref name="query"/> selects. Valid only within the
@@ -158,7 +158,7 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     IAsyncEnumerable<TValue> EnumerateValuesAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateValuesAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the values of the live entries that <paramref name="query"/> selects. Valid only

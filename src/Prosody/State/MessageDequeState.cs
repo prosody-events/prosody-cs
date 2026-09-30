@@ -98,11 +98,6 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
         StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
 
     public IAsyncEnumerable<Message<TPayload>> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateAsync(new PositionQuery { Direction = direction }, cancellationToken);
-
-    public IAsyncEnumerable<Message<TPayload>> EnumerateAsync(
         PositionQuery query,
         CancellationToken cancellationToken = default
     )
@@ -120,7 +115,7 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     }
 
     public IAsyncEnumerator<Message<TPayload>> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
-        EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        EnumerateAsync(new PositionQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);

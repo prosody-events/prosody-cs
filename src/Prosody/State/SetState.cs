@@ -48,16 +48,11 @@ internal sealed class SetState : ISetState
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
-
     public IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
         StateInterop.Keys(_handle.Keys, query, cancellationToken);
 
     public IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
-        EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        EnumerateAsync(new KeyQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);

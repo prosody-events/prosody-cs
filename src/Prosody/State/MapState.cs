@@ -87,28 +87,13 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateKeysAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
-
     public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
         StateInterop.Keys(_handle.Keys, query, cancellationToken);
-
-    public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     public IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         KeyQuery query,
         CancellationToken cancellationToken = default
     ) => Entries(query, item => StateInterop.JsonMapEntry(item, _typeInfo), cancellationToken);
-
-    public IAsyncEnumerable<TValue> EnumerateValuesAsync(
-        ScanDirection direction = ScanDirection.Forward,
-        CancellationToken cancellationToken = default
-    ) => EnumerateValuesAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     public IAsyncEnumerable<TValue> EnumerateValuesAsync(
         KeyQuery query,
@@ -117,7 +102,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
 
     public IAsyncEnumerator<KeyValuePair<string, TValue>> GetAsyncEnumerator(
         CancellationToken cancellationToken = default
-    ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+    ) => EnumerateAsync(new KeyQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
     public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
