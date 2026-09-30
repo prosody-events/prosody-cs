@@ -36,15 +36,15 @@ Prosody serializes and deserializes payloads with these defaults:
 Override any option via `ConfigureJsonOptions`:
 
 ```csharp
-ProsodyClientBuilder.Create()
+await ProsodyClientBuilder.Create()
     .ConfigureJsonOptions(opts =>
         opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
-    .Build();
+    .BuildAsync();
 ```
 
 ## AOT / Trim-safe Usage
 
-By default, `new ProsodyClient(options)` and `ProsodyClientBuilder.Build()` install a `DefaultJsonTypeInfoResolver`,
+By default, `ProsodyClient.CreateAsync(options)` and `ProsodyClientBuilder.BuildAsync()` install a `DefaultJsonTypeInfoResolver`,
 which uses reflection. Both are annotated with `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`.
 
 To eliminate trim/AOT warnings, supply a source-generated context and use the trim-clean overloads:
@@ -55,9 +55,9 @@ To eliminate trim/AOT warnings, supply a source-generated context and use the tr
 internal partial class AppJsonContext : JsonSerializerContext { }
 
 // Register the source-gen context (replaces DefaultJsonTypeInfoResolver)
-ProsodyClientBuilder.Create()
+await ProsodyClientBuilder.Create()
     .ConfigureJsonOptions(opts => opts.TypeInfoResolverChain.Add(AppJsonContext.Default))
-    .Build();
+    .BuildAsync();
 
 // Trim-clean send: pass the JsonTypeInfo directly
 var typeInfo = AppJsonContext.Default.OrderCreated;
@@ -69,7 +69,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `SendAsync<T>(..., JsonTypeInfo<T>, ...)` | Fully trim-clean. |
 | `SendAsync<T>(..., JsonTypeInfo<T>, SendOptions, ...)` | Fully trim-clean; explicit metadata bypasses naming-policy assumptions. |
 | `SendAsync<T>(...)` (convenience) | Annotated; suppress `IL2026`/`IL3050` at call site if source-gen resolver is configured. |
-| `new ProsodyClient(options)` / `Build()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
+| `ProsodyClient.CreateAsync(options)` / `BuildAsync()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
 | `SubscribeAsync<TPayload>(handler, classifier)` | Zero reflection for error classification — opt-in when you want full explicit control. Full AOT safety also requires the client's `JsonSerializerOptions` to use a source-gen resolver (via `ConfigureJsonOptions`) for payload deserialization. |
 | `SubscribeAsync<TPayload>(handler)` | Annotated — reads `PermanentErrorAttribute` via `Type.GetInterfaceMap`. The BCL call is AOT-compatible, but the trimmer can't propagate DAM through an interface-typed parameter, so the method carries `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`. |
 

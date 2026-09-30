@@ -672,7 +672,7 @@ public async Task OnMessageAsync(
         return;
     }
 
-    await Notify(message.Key, [message]);
+    await NotifyAsync(message.Key, [message]);
     await windowState.SetAsync(true, cancellationToken);
     await context.ClearAndScheduleAsync(
         DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
@@ -688,7 +688,7 @@ public async Task OnTimerAsync(
     await foreach (var message in pendingState.WithCancellation(cancellationToken))
         batch.Add(message);
 
-    if (batch.Count > 0) await Notify(timer.Key, batch);
+    if (batch.Count > 0) await NotifyAsync(timer.Key, batch);
     await pendingState.ClearAsync(cancellationToken);
     await context.State(window).ClearAsync(cancellationToken);
 }
