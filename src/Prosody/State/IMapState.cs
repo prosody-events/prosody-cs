@@ -23,18 +23,18 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether a stored cell exists for <paramref name="key"/> — a cheap presence check
-    /// that reads the cell through this event's writes (an uncommitted <see cref="SetAsync"/> reads
+    /// Determines whether a stored entry exists for <paramref name="key"/> — a cheap presence check
+    /// that reads the entry through this event's writes (an uncommitted <see cref="SetAsync"/> reads
     /// <see langword="true"/>, <see cref="RemoveAsync"/> <see langword="false"/>,
     /// <see cref="ClearAsync"/> hides entries) <b>without decoding the value or running the message
     /// resolver</b>. Cheaper than <see cref="GetAsync"/>, but not free: a cache miss still touches the
     /// store, so it is async and fallible. For a message-backed map it can return
     /// <see langword="true"/> even when the referenced Kafka message can no longer be fetched —
-    /// presence is about the cell, not fetchability.
+    /// presence is about the entry, not fetchability.
     /// </summary>
     /// <param name="key">The map key.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns><see langword="true"/> when a live cell exists for <paramref name="key"/>.</returns>
+    /// <returns><see langword="true"/> when a live entry exists for <paramref name="key"/>.</returns>
     Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>

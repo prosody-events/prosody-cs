@@ -733,7 +733,7 @@ Map, set, and deque scans use `await foreach`. Map keys and set members are stri
 
 ### Query a collection
 
-Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque enumeration. A query selects a direction, bounds, and a limit. A `KeyQuery` can also select a key prefix. Prosody applies each option in storage, so a query reads only the selected cells.
+Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque enumeration. A query selects a direction, bounds, and a limit. A `KeyQuery` can also select a key prefix. Prosody applies each option in storage, so a query reads only the selected entries, members, or values.
 
 - `From` and `To` are inclusive. `After` and `Before` are exclusive. Set at most one start and one end.
 - Bounds are in iteration order. A `ScanDirection.Backward` query starts at the high end.
