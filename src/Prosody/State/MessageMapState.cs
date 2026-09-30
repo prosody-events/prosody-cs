@@ -98,19 +98,8 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         CancellationToken cancellationToken = default
     ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        cancellationToken.ThrowIfCancellationRequested();
-        var native = KeyQuery.ToNative(query);
-        return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => NativeErrors.Run(() => _handle.Keys(native)),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
-            static key => key,
-            cancellationToken
-        );
-    }
+    public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
+        StateInterop.Keys(_handle.Keys, query, cancellationToken);
 
     public IAsyncEnumerable<KeyValuePair<string, Message<TPayload>>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,

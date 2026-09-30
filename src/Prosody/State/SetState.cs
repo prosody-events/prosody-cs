@@ -53,19 +53,8 @@ internal sealed class SetState : ISetState
         CancellationToken cancellationToken = default
     ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        cancellationToken.ThrowIfCancellationRequested();
-        var native = KeyQuery.ToNative(query);
-        return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => NativeErrors.Run(() => _handle.Keys(native)),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
-            static member => member,
-            cancellationToken
-        );
-    }
+    public IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
+        StateInterop.Keys(_handle.Keys, query, cancellationToken);
 
     public IAsyncEnumerator<string> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
         EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);

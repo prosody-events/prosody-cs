@@ -94,15 +94,6 @@ public sealed class PublishedSet
     )
     {
         ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(query);
-        cancellationToken.ThrowIfCancellationRequested();
-        var native = KeyQuery.ToNative(query);
-        return new StateScanSequence<Native.IKeyCursor, string, string>(
-            () => NativeErrors.Run(() => _handle.Keys(key, native)),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
-            static member => member,
-            cancellationToken
-        );
+        return StateInterop.Keys(native => _handle.Keys(key, native), query, cancellationToken);
     }
 }

@@ -37,6 +37,25 @@ internal static class StateInterop
         CancellationToken cancellationToken
     ) => RunAsync(async () => ToPublic(await operation(CreateCarrier()).ConfigureAwait(false)), cancellationToken);
 
+    /// <summary>Opens a lazy scan of the keys that <paramref name="query"/> selects.</summary>
+    internal static IAsyncEnumerable<string> Keys(
+        Func<Native.KeyQuery, Native.IKeyCursor> open,
+        KeyQuery query,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IKeyCursor, string, string>(
+            () => NativeErrors.Run(() => open(native)),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            static key => key,
+            cancellationToken
+        );
+    }
+
     /// <summary>
     /// Validates a query limit. The exception names <paramref name="property"/>, the query property
     /// that received the value.
