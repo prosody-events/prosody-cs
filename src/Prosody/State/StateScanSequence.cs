@@ -59,6 +59,7 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
         private TNative[] _chunk = [];
         private int _offset;
         private bool _finished;
+        private bool _disposed;
 
         internal Enumerator(
             TCursor cursor,
@@ -153,11 +154,22 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             }
         }
 
+        /// <summary>
+        /// Closes the cursor once. A repeated call returns at once, and a move queued behind it returns
+        /// <see langword="false"/>. The gate is never disposed, because a queued move still releases it.
+        /// </summary>
         public async ValueTask DisposeAsync()
         {
             await _gate.WaitAsync().ConfigureAwait(false);
             try
             {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                _linkedCts?.Dispose();
                 if (!_finished)
                 {
                     _finished = true;
@@ -169,8 +181,6 @@ internal sealed class StateScanSequence<TCursor, TNative, T> : IAsyncEnumerable<
             finally
             {
                 _gate.Release();
-                _gate.Dispose();
-                _linkedCts?.Dispose();
             }
         }
 
