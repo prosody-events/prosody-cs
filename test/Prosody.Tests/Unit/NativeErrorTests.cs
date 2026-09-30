@@ -77,7 +77,12 @@ public sealed class NativeErrorTests
     {
         await using var client = await ProsodyClient.CreateAsync(MockOptions);
         await using var unconfigured = await ProsodyClient.CreateAsync(
-            new ClientOptions { Mock = true, BootstrapServers = [TestDefaults.BootstrapServers], SourceSystem = "reader" }
+            new ClientOptions
+            {
+                Mock = true,
+                BootstrapServers = [TestDefaults.BootstrapServers],
+                SourceSystem = "reader",
+            }
         );
         var definition = StateDefinition.Value<int>("current", published: true);
         var cancellationToken = TestContext.Current.CancellationToken;
