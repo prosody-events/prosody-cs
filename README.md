@@ -1292,9 +1292,20 @@ await admin.CreateTopicAsync(
     replicationFactor: 1
 );
 
+// Create a compacted topic that keeps messages for one day
+await admin.CreateTopicAsync(
+    name: "state-topic",
+    partitionCount: 4,
+    replicationFactor: 1,
+    cleanupPolicy: "compact",
+    retention: TimeSpan.FromDays(1)
+);
+
 // Delete a topic
 await admin.DeleteTopicAsync("test-topic");
 ```
+
+`cleanupPolicy` sets `cleanup.policy`, such as `delete`, `compact`, or `delete,compact`. `retention` sets `retention.ms`. When you omit them, the topic uses the cluster defaults.
 
 #### Configuration Parameters
 
@@ -1416,7 +1427,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 ### AdminClient
 
 - `AdminClient(params string[] bootstrapServers)`: Initialize a new AdminClient with the given configuration.
-- `Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor)`: Create a Kafka topic.
+- `Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor, string? cleanupPolicy = null, TimeSpan? retention = null)`: Create a Kafka topic.
 - `Task DeleteTopicAsync(string name)`: Delete an existing Kafka topic.
 - `void Dispose()`: Dispose of admin client resources.
 

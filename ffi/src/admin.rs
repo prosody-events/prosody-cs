@@ -5,6 +5,7 @@
 //! and run on the Tokio runtime.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::error::FfiError;
 use crate::runtime::run;
@@ -39,6 +40,8 @@ impl AdminClient {
 
     /// Creates a Kafka topic with the specified configuration.
     ///
+    /// A `None` cleanup policy or retention keeps the cluster default.
+    ///
     /// # Errors
     ///
     /// Returns [`FfiError`] if the topic configuration is invalid or
@@ -49,13 +52,22 @@ impl AdminClient {
         name: String,
         partition_count: u16,
         replication_factor: u16,
+        cleanup_policy: Option<String>,
+        retention: Option<Duration>,
     ) -> Result<(), FfiError> {
         run(async move {
-            let config = TopicConfiguration::builder()
+            let mut builder = TopicConfiguration::builder();
+            builder
                 .name(name)
                 .partition_count(partition_count)
-                .replication_factor(replication_factor)
-                .build()?;
+                .replication_factor(replication_factor);
+            if let Some(policy) = cleanup_policy {
+                builder.cleanup_policy(policy);
+            }
+            if let Some(retention) = retention {
+                builder.retention(retention);
+            }
+            let config = builder.build()?;
 
             self.client.create_topic(&config).await?;
 

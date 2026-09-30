@@ -28,12 +28,29 @@ public sealed class AdminClient : IDisposable
     /// <param name="name">The name of the topic to create.</param>
     /// <param name="partitionCount">Number of partitions for the topic.</param>
     /// <param name="replicationFactor">Replication factor for the topic.</param>
+    /// <param name="cleanupPolicy">
+    /// The <c>cleanup.policy</c> of the topic, such as <c>delete</c>, <c>compact</c>, or
+    /// <c>delete,compact</c>. <see langword="null"/> keeps the cluster default.
+    /// </param>
+    /// <param name="retention">
+    /// How long the topic keeps a message. <see langword="null"/> keeps the cluster default.
+    /// </param>
     /// <exception cref="ArgumentException">The topic configuration is invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="retention"/> is negative.</exception>
     /// <exception cref="ProsodyException">The broker rejected the topic, or it did not become ready.</exception>
-    public Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor)
+    public Task CreateTopicAsync(
+        string name,
+        ushort partitionCount,
+        ushort replicationFactor,
+        string? cleanupPolicy = null,
+        TimeSpan? retention = null
+    )
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return NativeErrors.RunAsync(() => _native.CreateTopic(name, partitionCount, replicationFactor));
+        var nativeRetention = Durations.ToNative(retention);
+        return NativeErrors.RunAsync(() =>
+            _native.CreateTopic(name, partitionCount, replicationFactor, cleanupPolicy, nativeRetention)
+        );
     }
 
     /// <summary>
