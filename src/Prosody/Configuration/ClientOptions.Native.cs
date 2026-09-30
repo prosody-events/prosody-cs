@@ -15,6 +15,19 @@ public sealed partial class ClientOptions
             _ => throw new InvalidOperationException($"Unknown span relation: {relation}"),
         };
 
+    /// <summary>
+    /// Maps <see cref="Timeout.InfiniteTimeSpan"/> to a send that never times out. Every other value
+    /// takes the normal duration conversion.
+    /// </summary>
+    private static Native.SendTimeout? ToNativeSendTimeout(TimeSpan? timeout) =>
+        timeout switch
+        {
+            null => null,
+            { } infinite when infinite == System.Threading.Timeout.InfiniteTimeSpan =>
+                new Native.SendTimeout.Unlimited(),
+            { } duration => new Native.SendTimeout.Limited(Durations.ToNative(duration, nameof(SendTimeout))),
+        };
+
     private Native.ClientMode? ToNativeMode() =>
         Mode switch
         {
@@ -71,7 +84,7 @@ public sealed partial class ClientOptions
             StatisticsInterval: Durations.ToNative(StatisticsInterval),
             ProbePort: ProbePort,
             SlabSize: Durations.ToNative(SlabSize),
-            SendTimeout: Durations.ToNative(SendTimeout),
+            SendTimeout: ToNativeSendTimeout(SendTimeout),
             MaxRetries: MaxRetries,
             RetryBase: Durations.ToNative(RetryBase),
             MaxRetryDelay: Durations.ToNative(MaxRetryDelay),

@@ -120,7 +120,8 @@ pub use set::SetStateHandle;
 pub use state::{ScanDirection, StoreOutcome};
 pub use timer::Timer;
 pub use types::{
-    ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,
+    ClientMode, ClientOptions, ConsumerState, SendTimeout, StateCollectionConfig, StateKind,
+    StatePayload,
 };
 pub use value::{JsonValueStateHandle, MessageValueStateHandle};
 

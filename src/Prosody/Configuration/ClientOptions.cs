@@ -233,8 +233,8 @@ public sealed partial class ClientOptions
     // ========================================================================
 
     /// <summary>
-    /// Give up sending after this long.
-    /// Default: 1 second.
+    /// Give up sending after this long. <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> retries a
+    /// send until it succeeds. <see langword="null"/> uses <c>PROSODY_SEND_TIMEOUT</c>, then 1 second.
     /// </summary>
     public TimeSpan? SendTimeout { get; set; }
 

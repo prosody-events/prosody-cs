@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use super::{ClientMode, SpanRelation, StateCollectionConfig};
+use super::{ClientMode, SendTimeout, SpanRelation, StateCollectionConfig};
 
 /// Configuration options for the Prosody client.
 ///
@@ -196,12 +196,11 @@ pub struct ClientOptions {
 
     // Producer options
     /// Maximum time to wait for message delivery acknowledgment.
-    ///
-    /// Messages not acknowledged within this duration are considered failed.
+    /// [`SendTimeout::Unlimited`] retries a send until it succeeds.
     ///
     /// **Default:** 1 second
     #[uniffi(default = None)]
-    pub send_timeout: Option<Duration>,
+    pub send_timeout: Option<SendTimeout>,
 
     // Retry options
     /// Low-latency retries before routing to the failure topic.
