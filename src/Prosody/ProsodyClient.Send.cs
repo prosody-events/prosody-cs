@@ -34,13 +34,11 @@ public sealed partial class ProsodyClient
     /// overload and pass a source-generated <see cref="JsonTypeInfo{T}"/> directly.
     /// </para>
     /// <para>
-    /// If <typeparamref name="T"/> exposes lowercase <c>id</c> or <c>type</c> string
-    /// properties (matched by <see cref="JsonPropertyNameAttribute"/> or by exact CLR
-    /// name), their values are forwarded as event metadata so the producer's idempotence
-    /// dedup and downstream <c>allowed_events</c> filtering see them without re-parsing
-    /// the JSON. PascalCase properties (<c>Id</c>, <c>Type</c>) must use
-    /// <c>[JsonPropertyName("id")]</c> to participate, matching the lowercase wire
-    /// contract the rest of the system requires.
+    /// A lowercase <c>id</c> or <c>type</c> string property of <typeparamref name="T"/> becomes
+    /// event metadata. The match uses <see cref="JsonPropertyNameAttribute"/> or the exact CLR name.
+    /// Producer deduplication and <c>allowed_events</c> filters then read the metadata without a
+    /// second JSON parse. A PascalCase property (<c>Id</c>, <c>Type</c>) needs
+    /// <c>[JsonPropertyName("id")]</c>, because the wire contract is lowercase.
     /// </para>
     /// </remarks>
     /// <inheritdoc cref="SendAsync{T}(string, string, T, JsonTypeInfo{T}, SendOptions, CancellationToken)" path="/exception"/>

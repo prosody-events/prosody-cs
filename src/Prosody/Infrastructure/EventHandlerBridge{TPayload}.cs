@@ -174,9 +174,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         Dictionary<string, string> carrier
     )
     {
-        // Eagerly capture all native fields before any async suspension — each accessor
-        // crosses the FFI boundary and the native message object cannot be accessed after
-        // the handler scope returns to Rust.
+        // Read every native field before the first await. Each accessor crosses the FFI boundary,
+        // and the native message is not valid after the handler scope returns to Rust.
         var topic = message.Topic();
         var key = message.Key();
         var partition = message.Partition();
