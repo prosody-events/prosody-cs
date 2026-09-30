@@ -20,7 +20,7 @@
 //!
 //! This crate serves as the FFI boundary layer. C# code wraps the generated
 //! bindings in idiomatic classes that provide:
-//! - Typed JSON payloads via `Send<T>()` and `GetPayload<T>()`
+//! - Typed JSON payloads via `SendAsync<T>()` and `Message<T>.Payload`
 //! - `CancellationToken` support on async methods
 //! - Properties instead of methods for simple accessors
 //!
@@ -32,15 +32,22 @@
 //! - [`client`]: Core [`ProsodyClient`] service implementation
 //! - [`config`]: Configuration conversion utilities for builder types
 //! - [`context`]: Event context for timer scheduling and cancellation checks
+//! - [`cursor`]: Typed cursors for keyed-state scans
 //! - [`error`]: Error types that cross the FFI boundary
 //! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
+//! - [`json_deque`]: JSON deque state handle
 //! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
+//! - [`map`]: JSON and message ordered-map state handles
 //! - [`message`]: Kafka message wrapper for C# consumption
+//! - [`message_deque`]: Kafka-message deque state handle
+//! - [`published`]: Read-only published-state handles
 //! - [`query`]: Keyed-state query settings
+//! - `runtime`: The one Tokio runtime of the native library
 //! - [`set`]: Set state handle
 //! - [`state`]: Shared keyed-state types and validation
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
+//! - [`value`]: JSON and message single-value state handles
 
 use rustfs_mimalloc::MiMalloc;
 
