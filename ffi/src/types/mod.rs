@@ -6,7 +6,8 @@
 //! variable or library default".
 //!
 //! - `options`: the [`ClientOptions`] record.
-//! - `collection`: the declaration of one keyed-state collection.
+//! - `collection`: the declaration of one keyed-state collection and the read
+//!   cache policy.
 
 mod collection;
 mod options;

@@ -35,6 +35,9 @@ use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
 
+/// The codec error type of every client operation.
+type Codec = BinaryCodecError<JsonExtractError>;
+
 /// Primary error type for FFI boundary operations.
 ///
 /// `UniFFI` generates a corresponding `FfiException` type in C#. The
@@ -171,9 +174,6 @@ pub enum FfiError {
     TransientState(String),
 }
 
-/// The codec error type of every client operation.
-type Codec = BinaryCodecError<JsonExtractError>;
-
 /// Routes configuration and call-order errors to
 /// [`FfiError::InvalidOperation`]. A state reader error keeps its category.
 impl From<HighLevelClientError<Codec>> for FfiError {
@@ -198,20 +198,6 @@ impl From<HighLevelClientError<Codec>> for FfiError {
             | HighLevelClientError::TelemetryEmitter(_)) => Self::Client(error),
         }
     }
-}
-
-/// Reports whether a consumer start failed because an option is invalid.
-fn consumer_configuration(error: &ConsumerError) -> bool {
-    matches!(
-        error,
-        ConsumerError::Configuration(_)
-            | ConsumerError::AllowedEventsPattern(_)
-            | ConsumerError::InvalidSlabSize(_)
-            | ConsumerError::Scheduler(_)
-            | ConsumerError::Timeout(_)
-            | ConsumerError::Monopolization(_)
-            | ConsumerError::Defer(DeferInitError::Validation(_))
-    )
 }
 
 /// Routes invalid request arguments to [`FfiError::InvalidArgument`].
@@ -287,6 +273,20 @@ impl From<StateReaderError> for FfiError {
             }
         }
     }
+}
+
+/// Reports whether a consumer start failed because an option is invalid.
+fn consumer_configuration(error: &ConsumerError) -> bool {
+    matches!(
+        error,
+        ConsumerError::Configuration(_)
+            | ConsumerError::AllowedEventsPattern(_)
+            | ConsumerError::InvalidSlabSize(_)
+            | ConsumerError::Scheduler(_)
+            | ConsumerError::Timeout(_)
+            | ConsumerError::Monopolization(_)
+            | ConsumerError::Defer(DeferInitError::Validation(_))
+    )
 }
 
 /// Represents errors from C# event handler callbacks.

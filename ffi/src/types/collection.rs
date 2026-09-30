@@ -1,5 +1,5 @@
-//! The declaration of a keyed-state collection: its kind, its payload, and
-//! its options.
+//! The declaration of a keyed-state collection and the read cache policy of
+//! a published collection.
 
 use std::time::Duration;
 
@@ -55,15 +55,6 @@ pub enum ReadCache {
     },
 }
 
-impl From<ReadCache> for ErasedReadCache {
-    fn from(cache: ReadCache) -> Self {
-        match cache {
-            ReadCache::Disabled => Self::Disabled,
-            ReadCache::Ttl { ttl } => Self::Ttl(ttl),
-        }
-    }
-}
-
 /// Declares one keyed-state collection to register before subscribe.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct StateCollectionConfig {
@@ -84,4 +75,13 @@ pub struct StateCollectionConfig {
     /// Whether owners advertise this collection for cross-group reads.
     #[uniffi(default = false)]
     pub published: bool,
+}
+
+impl From<ReadCache> for ErasedReadCache {
+    fn from(cache: ReadCache) -> Self {
+        match cache {
+            ReadCache::Disabled => Self::Disabled,
+            ReadCache::Ttl { ttl } => Self::Ttl(ttl),
+        }
+    }
 }
