@@ -48,7 +48,7 @@ aspirations — perform each one; do not merely agree with it:
    C# `--warnaserror` and format checks). `cargo doc` — zero warnings.
    `make format-check` passes.
 2. After any Rust API change, regenerate the bindings (`make bindgen`) and
-   commit the regenerated output with the change.
+   build. Git ignores the generated file, and CI generates it again.
 3. `make test 2>&1 | tee /tmp/test_output.log` — re-running slow suites is
    expensive; grep the file, not the pipe.
 4. Every new or converted test was proved falsifiable once: inject the
