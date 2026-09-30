@@ -15,12 +15,9 @@ public sealed record MapStateDefinition<TValue> : StateDefinition
     )
         : base(
             name,
-            Native.StateKind.Map,
-            Native.StatePayload.Json,
+            new Native.StateKind.Map(Native.StatePayload.Json, Bound(keysetLimit)),
             ttl,
             readUncommitted,
-            keysetLimit,
-            capacity: null,
             published,
             readCache
         ) { }

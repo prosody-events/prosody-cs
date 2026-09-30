@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Prosody.Infrastructure;
 
 namespace Prosody.State;
@@ -25,37 +26,17 @@ public abstract record StateDefinition
     private protected StateDefinition(
         string name,
         Native.StateKind kind,
-        Native.StatePayload payload,
         TimeSpan? ttl,
         bool? readUncommitted,
-        int? keysetLimit,
-        int? capacity,
         bool published = false,
         StateReadCache? readCache = null
     )
     {
         ArgumentNullException.ThrowIfNull(name);
-        if (keysetLimit is < 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(keysetLimit),
-                keysetLimit,
-                "Keyset limit must not be negative."
-            );
-        }
-
-        if (capacity is < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must not be negative.");
-        }
-
         Name = name;
         Kind = kind;
-        Payload = payload;
         Ttl = Durations.ToNative(ttl);
         ReadUncommitted = readUncommitted;
-        KeysetLimit = keysetLimit;
-        Capacity = capacity;
         Published = published;
         ReadCache = readCache;
     }
@@ -65,15 +46,9 @@ public abstract record StateDefinition
 
     internal Native.StateKind Kind { get; }
 
-    internal Native.StatePayload Payload { get; }
-
     internal TimeSpan? Ttl { get; }
 
     internal bool? ReadUncommitted { get; }
-
-    internal int? KeysetLimit { get; }
-
-    internal int? Capacity { get; }
 
     internal bool Published { get; }
 
@@ -212,15 +187,12 @@ public abstract record StateDefinition
         int? capacity = null
     ) => new(name, ttl, readUncommitted, capacity);
 
-    internal Native.StateCollectionConfig ToNative() =>
-        new(
-            Name,
-            Kind,
-            Payload,
-            Ttl,
-            ReadUncommitted,
-            KeysetLimit is { } k ? (uint)k : null,
-            Capacity is { } c ? (uint)c : null,
-            Published
-        );
+    internal Native.StateCollectionConfig ToNative() => new(Name, Kind, Ttl, ReadUncommitted, Published);
+
+    /// <summary>Returns a keyset limit or capacity as the unsigned native bound.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is negative.</exception>
+    private protected static uint? Bound(int? value, [CallerArgumentExpression(nameof(value))] string name = "") =>
+        value is < 0
+            ? throw new ArgumentOutOfRangeException(name, value, $"{name} must not be negative.")
+            : (uint?)value;
 }

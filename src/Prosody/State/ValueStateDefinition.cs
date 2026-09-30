@@ -12,15 +12,6 @@ public sealed record ValueStateDefinition<T> : StateDefinition
         bool published,
         StateReadCache? readCache
     )
-        : base(
-            name,
-            Native.StateKind.Value,
-            Native.StatePayload.Json,
-            ttl,
-            readUncommitted,
-            keysetLimit: null,
-            capacity: null,
-            published,
-            readCache
-        ) { }
+        : base(name, new Native.StateKind.Value(Native.StatePayload.Json), ttl, readUncommitted, published, readCache)
+    { }
 }

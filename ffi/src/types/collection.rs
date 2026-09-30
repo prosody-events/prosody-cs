@@ -5,18 +5,33 @@ use std::time::Duration;
 
 use prosody::high_level::erased::ErasedReadCache;
 
-/// The kind of a keyed-state collection.
+/// The kind of a keyed-state collection and the options of that kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum StateKind {
     /// A single-value collection.
-    Value,
+    Value {
+        /// The item payload.
+        payload: StatePayload,
+    },
     /// A `String`-keyed ordered map.
-    Map,
+    Map {
+        /// The item payload.
+        payload: StatePayload,
+        /// The optional ordered-scan keyset bound.
+        keyset_limit: Option<u32>,
+    },
     /// A deque.
-    Deque,
-    /// A presence-only ordered set of `String` members. Its payload must be
-    /// [`StatePayload::Json`] because a set stores no items.
-    Set,
+    Deque {
+        /// The item payload.
+        payload: StatePayload,
+        /// The optional window bound. Prosody applies it on push.
+        capacity: Option<u32>,
+    },
+    /// A presence-only ordered set of `String` members.
+    Set {
+        /// The optional ordered-scan keyset bound.
+        keyset_limit: Option<u32>,
+    },
 }
 
 /// The item payload of a keyed-state collection.
@@ -52,38 +67,19 @@ impl From<ReadCache> for ErasedReadCache {
 /// Declares one keyed-state collection to register before subscribe.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct StateCollectionConfig {
-    /// The collection name. Must be non-empty and unique within the client's
-    /// definition set.
+    /// The collection name.
     pub name: String,
 
-    /// The collection kind.
+    /// The collection kind and its options.
     pub kind: StateKind,
 
-    /// The item payload.
-    pub payload: StatePayload,
-
-    /// Optional per-write TTL. Must be a whole number of seconds of at least 1
-    /// (fractional and sub-second values are rejected). The Cassandra TTL limit
-    /// applies.
+    /// The optional per-write TTL in whole seconds.
     #[uniffi(default = None)]
     pub ttl: Option<Duration>,
 
-    /// Optional opt-out of transactional staging (read-uncommitted, at-least
-    /// once). Defaults to transactional.
+    /// Opts out of transactional staging when true.
     #[uniffi(default = None)]
     pub read_uncommitted: Option<bool>,
-
-    /// Optional map or set keyset bound (`0..=4096`; default 128 core-side;
-    /// `0` disables ordered-scan tracking). Invalid on value or deque
-    /// collections.
-    #[uniffi(default = None)]
-    pub keyset_limit: Option<u32>,
-
-    /// Optional deque-only capacity bound (positive). Runtime-only — never
-    /// persisted, not part of identity; enforced lazily on push. Invalid on
-    /// value, map, or set collections.
-    #[uniffi(default = None)]
-    pub capacity: Option<u32>,
 
     /// Whether owners advertise this collection for cross-group reads.
     #[uniffi(default = false)]

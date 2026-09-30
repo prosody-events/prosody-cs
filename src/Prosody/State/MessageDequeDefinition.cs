@@ -5,13 +5,5 @@ namespace Prosody.State;
 public sealed record MessageDequeDefinition<TPayload> : StateDefinition
 {
     internal MessageDequeDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? capacity)
-        : base(
-            name,
-            Native.StateKind.Deque,
-            Native.StatePayload.Message,
-            ttl,
-            readUncommitted,
-            keysetLimit: null,
-            capacity
-        ) { }
+        : base(name, new Native.StateKind.Deque(Native.StatePayload.Message, Bound(capacity)), ttl, readUncommitted) { }
 }

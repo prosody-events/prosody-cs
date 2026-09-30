@@ -114,88 +114,60 @@ fn register_state_collection(
         .ttl
         .map(|ttl| whole_seconds(ttl, &format!("StateCollections[{index}] ttl")))
         .transpose()?;
-    let capacity = checked_capacity(collection, index)?;
-    let keyset_limit = collection.keyset_limit;
     let name = collection.name.as_str();
 
-    match (collection.kind, collection.payload) {
-        (StateKind::Value, StatePayload::Json) => {
+    match collection.kind {
+        StateKind::Value {
+            payload: StatePayload::Json,
+        } => {
             let descriptor = value_state::<JsonBinaryCodec>(name);
             let _ = keyed.register(with_def(descriptor, ttl, collection));
         }
-        (StateKind::Map, StatePayload::Json) => {
+        StateKind::Value {
+            payload: StatePayload::Message,
+        } => {
+            let descriptor = message_state::<KafkaLoader<JsonBinaryMessageCodec>>(name);
+            let _ = keyed.register(with_def(descriptor, ttl, collection));
+        }
+        StateKind::Map {
+            payload: StatePayload::Json,
+            keyset_limit,
+        } => {
             let descriptor = map_state::<Utf8KeyCodec, JsonBinaryCodec>(name);
             let descriptor = with_def(descriptor, ttl, collection);
             let _ = keyed.register(with_keyset(descriptor, keyset_limit));
         }
-        (StateKind::Deque, StatePayload::Json) => {
-            let descriptor = with_def(deque_state::<JsonBinaryCodec>(name), ttl, collection);
-            let _ = keyed.register(with_capacity(descriptor, capacity));
-        }
-        (StateKind::Set, StatePayload::Json) => {
-            let descriptor = with_def(set_state::<Utf8KeyCodec>(name), ttl, collection);
-            let _ = keyed.register(with_set_keyset(descriptor, keyset_limit));
-        }
-        (StateKind::Value, StatePayload::Message) => {
-            let descriptor = message_state::<KafkaLoader<JsonBinaryMessageCodec>>(name);
-            let _ = keyed.register(with_def(descriptor, ttl, collection));
-        }
-        (StateKind::Map, StatePayload::Message) => {
+        StateKind::Map {
+            payload: StatePayload::Message,
+            keyset_limit,
+        } => {
             let descriptor =
                 message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryMessageCodec>>(name);
             let descriptor = with_def(descriptor, ttl, collection);
             let _ = keyed.register(with_keyset(descriptor, keyset_limit));
         }
-        (StateKind::Deque, StatePayload::Message) => {
+        StateKind::Deque {
+            payload: StatePayload::Json,
+            capacity,
+        } => {
+            let descriptor = with_def(deque_state::<JsonBinaryCodec>(name), ttl, collection);
+            let _ = keyed.register(with_capacity(descriptor, capacity, index)?);
+        }
+        StateKind::Deque {
+            payload: StatePayload::Message,
+            capacity,
+        } => {
             let descriptor = message_deque_state::<KafkaLoader<JsonBinaryMessageCodec>>(name);
             let descriptor = with_def(descriptor, ttl, collection);
-            let _ = keyed.register(with_capacity(descriptor, capacity));
+            let _ = keyed.register(with_capacity(descriptor, capacity, index)?);
         }
-        (StateKind::Set, StatePayload::Message) => {
-            return Err(FfiError::InvalidOperation(format!(
-                "StateCollections[{index}] payload: a set stores no message payload"
-            )));
+        StateKind::Set { keyset_limit } => {
+            let descriptor = with_def(set_state::<Utf8KeyCodec>(name), ttl, collection);
+            let _ = keyed.register(with_set_keyset(descriptor, keyset_limit));
         }
     }
 
     Ok(())
-}
-
-/// Checks that each optional bound suits the collection kind.
-///
-/// A keyset limit is valid only on a map or a set. A capacity is valid only on
-/// a deque and must be positive.
-///
-/// # Errors
-///
-/// Returns [`FfiError::InvalidOperation`] if a bound does not suit the kind.
-fn checked_capacity(
-    collection: &StateCollectionConfig,
-    index: usize,
-) -> Result<Option<NonZeroUsize>, FfiError> {
-    if collection.keyset_limit.is_some()
-        && !matches!(collection.kind, StateKind::Map | StateKind::Set)
-    {
-        return Err(FfiError::InvalidOperation(format!(
-            "StateCollections[{index}] keysetLimit: only valid for map and set collections"
-        )));
-    }
-
-    let Some(capacity) = collection.capacity else {
-        return Ok(None);
-    };
-    if collection.kind != StateKind::Deque {
-        return Err(FfiError::InvalidOperation(format!(
-            "StateCollections[{index}] capacity: only valid for deque collections"
-        )));
-    }
-    NonZeroUsize::new(capacity as usize)
-        .map(Some)
-        .ok_or_else(|| {
-            FfiError::InvalidOperation(format!(
-                "StateCollections[{index}] capacity: must be a positive integer"
-            ))
-        })
 }
 
 /// Converts a duration into the whole seconds that Prosody descriptors use.
@@ -256,12 +228,22 @@ fn with_set_keyset<KC>(
 }
 
 /// Applies the deque capacity bound when configured.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`] if the capacity is zero.
 fn with_capacity<T>(
     descriptor: DequeDescriptor<T>,
-    capacity: Option<NonZeroUsize>,
-) -> DequeDescriptor<T> {
-    match capacity {
-        Some(capacity) => descriptor.capacity(capacity),
-        None => descriptor,
-    }
+    capacity: Option<u32>,
+    index: usize,
+) -> Result<DequeDescriptor<T>, FfiError> {
+    let Some(capacity) = capacity else {
+        return Ok(descriptor);
+    };
+    let capacity = NonZeroUsize::new(capacity as usize).ok_or_else(|| {
+        FfiError::InvalidOperation(format!(
+            "StateCollections[{index}] capacity: must be a positive integer"
+        ))
+    })?;
+    Ok(descriptor.capacity(capacity))
 }

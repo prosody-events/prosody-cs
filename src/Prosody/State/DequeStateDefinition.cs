@@ -15,12 +15,9 @@ public sealed record DequeStateDefinition<T> : StateDefinition
     )
         : base(
             name,
-            Native.StateKind.Deque,
-            Native.StatePayload.Json,
+            new Native.StateKind.Deque(Native.StatePayload.Json, Bound(capacity)),
             ttl,
             readUncommitted,
-            keysetLimit: null,
-            capacity,
             published,
             readCache
         ) { }
