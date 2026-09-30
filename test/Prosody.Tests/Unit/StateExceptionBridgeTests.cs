@@ -39,17 +39,4 @@ public sealed class StateExceptionBridgeTests
 
         Assert.Equal(NativeResultCode.TransientError, result.Code);
     }
-
-    [Fact]
-    public async Task NullValueException_FromHandler_ClassifiesTransient()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new NullValueException("null write")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleMessageAsync(bridge);
-
-        Assert.Equal(NativeResultCode.TransientError, result.Code);
-    }
 }

@@ -71,8 +71,8 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     );
 
     /// <summary>
-    /// Inserts or overwrites <paramref name="key"/>. Writing <see langword="null"/> is a caller
-    /// mistake rejected with a <see cref="NullValueException"/> (transient) — use
+    /// Inserts or overwrites <paramref name="key"/>. A value that serializes to JSON
+    /// <see langword="null"/> fails with a <see cref="PermanentStateException"/>. Use
     /// <see cref="RemoveAsync"/> to delete an entry.
     /// </summary>
     /// <param name="key">The map key.</param>

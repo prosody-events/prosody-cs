@@ -268,8 +268,8 @@ impl Context {
     /// registered identity mismatches.
     pub fn value_state(&self, name: String) -> Result<Arc<JsonValueStateHandle>, FfiError> {
         let handle = self.inner.value_state(&name)?;
+        drop(name);
         Ok(Arc::new(JsonValueStateHandle {
-            name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
@@ -287,8 +287,8 @@ impl Context {
     /// registered identity mismatches.
     pub fn map_state(&self, name: String) -> Result<Arc<JsonMapStateHandle>, FfiError> {
         let handle = self.inner.map_state(&name)?;
+        drop(name);
         Ok(Arc::new(JsonMapStateHandle {
-            name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
@@ -324,8 +324,8 @@ impl Context {
     /// registered identity mismatches.
     pub fn deque_state(&self, name: String) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
         let handle = self.inner.deque_state(&name)?;
+        drop(name);
         Ok(Arc::new(JsonDequeStateHandle {
-            name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))

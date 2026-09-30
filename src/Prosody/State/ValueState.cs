@@ -30,7 +30,7 @@ internal sealed class ValueState<T> : IValueState<T>
 
     public Task SetAsync(T value, CancellationToken cancellationToken = default)
     {
-        var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "Use ClearAsync to delete instead.");
+        var bytes = StateInterop.SerializeJson(value, _typeInfo);
         return StateInterop.RunAsync(() => _handle.Set(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 

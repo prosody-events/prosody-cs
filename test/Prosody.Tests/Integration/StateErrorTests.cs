@@ -24,8 +24,8 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
 
     private sealed record NullWriteObservation
     {
-        public bool ValueTransient { get; init; }
-        public bool DequeTransient { get; init; }
+        public bool ValuePermanent { get; init; }
+        public bool DequePermanent { get; init; }
         public bool StoreIntact { get; init; }
     }
 
@@ -241,7 +241,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task NullWrite_Integration_RejectsTransient_StoreUntouched()
+    public async Task NullWrite_Integration_RejectsPermanent_StoreUntouched()
     {
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var v = Guid.NewGuid().ToString("N");
@@ -255,32 +255,33 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
                 await cart.SetAsync(new CartState { V = v }, ct);
                 await cart.CommitAsync(ct);
 
-                var valueTransient = false;
+                // Prosody rejects a JSON null write as permanent. The client adds no check.
+                var valuePermanent = false;
                 try
                 {
                     await cart.SetAsync(null!, ct);
                 }
-                catch (TransientStateException)
+                catch (PermanentStateException)
                 {
-                    valueTransient = true;
+                    valuePermanent = true;
                 }
 
-                var dequeTransient = false;
+                var dequePermanent = false;
                 try
                 {
                     await deque.PushBackAsync(null!, ct);
                 }
-                catch (TransientStateException)
+                catch (PermanentStateException)
                 {
-                    dequeTransient = true;
+                    dequePermanent = true;
                 }
 
                 var got = await cart.GetAsync(ct);
                 observations.Send(
                     new NullWriteObservation
                     {
-                        ValueTransient = valueTransient,
-                        DequeTransient = dequeTransient,
+                        ValuePermanent = valuePermanent,
+                        DequePermanent = dequePermanent,
                         StoreIntact = got.HasValue && got.Value.V == v,
                     }
                 );
@@ -301,8 +302,8 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
         );
 
         Assert.Multiple(
-            () => Assert.True(obs.ValueTransient),
-            () => Assert.True(obs.DequeTransient),
+            () => Assert.True(obs.ValuePermanent),
+            () => Assert.True(obs.DequePermanent),
             () => Assert.True(obs.StoreIntact)
         );
     }

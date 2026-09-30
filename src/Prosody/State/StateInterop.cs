@@ -113,35 +113,19 @@ internal static class StateInterop
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     /// <summary>
-    /// Serializes a JSON value to raw bytes, rejecting a <see langword="null"/> (or null-serializing)
-    /// value before it crosses the boundary. The remediation clause names the delete verb for the
-    /// collection (for example <c>ClearAsync</c> or <c>RemoveAsync</c>).
+    /// Serializes a value for a keyed-state write. A value with no JSON form is a caller mistake and
+    /// classifies transient. Prosody rejects a JSON <see langword="null"/> as permanent.
     /// </summary>
-    internal static byte[] SerializeJsonOrThrowNull<T>(T value, JsonTypeInfo<T> typeInfo, string remediation)
+    internal static byte[] SerializeJson<T>(T value, JsonTypeInfo<T> typeInfo)
     {
-        if (value is null)
-        {
-            throw new NullValueException(
-                $"Cannot write a null value: JSON null is not a storable value. {remediation}"
-            );
-        }
-
-        byte[] bytes;
         try
         {
-            bytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
+            return JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            throw new TransientStateException($"Cannot serialize the value for a keyed-state write. {remediation}", ex);
+            throw new TransientStateException("Cannot serialize the value for a keyed-state write.", ex);
         }
-
-        if (IsJsonNullToken(bytes))
-        {
-            throw new NullValueException($"Cannot write a value that serializes to JSON null. {remediation}");
-        }
-
-        return bytes;
     }
 
     /// <summary>Projects a native JSON map entry into a typed key-value pair.</summary>
@@ -156,11 +140,4 @@ internal static class StateInterop
         where T : notnull =>
         JsonSerializer.Deserialize(bytes.AsSpan(), typeInfo)
         ?? throw new TransientStateException("Stored keyed-state JSON deserialized to null.");
-
-    private static bool IsJsonNullToken(byte[] bytes) =>
-        bytes.Length == 4
-        && bytes[0] == (byte)'n'
-        && bytes[1] == (byte)'u'
-        && bytes[2] == (byte)'l'
-        && bytes[3] == (byte)'l';
 }

@@ -14,7 +14,7 @@ use crate::error::FfiError;
 use crate::message::Message;
 use crate::query::KeyQuery;
 use crate::runtime::run;
-use crate::state::{StoreOutcome, into_bytes, into_message, reject_null, traced};
+use crate::state::{StoreOutcome, into_bytes, into_message, traced};
 
 /// One optional JSON value from an ordered batch read.
 ///
@@ -30,7 +30,6 @@ pub struct JsonMapValue {
 /// A JSON ordered-map state handle for one event.
 #[derive(uniffi::Object)]
 pub struct JsonMapStateHandle {
-    pub(crate) name: String,
     pub(crate) state: BoxMapState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
@@ -137,7 +136,8 @@ impl JsonMapStateHandle {
     ///
     /// # Errors
     ///
-    /// Returns a state error if the document is `null` or the write fails.
+    /// Returns a permanent state error if the document is JSON `null`, and a
+    /// state error if the write fails.
     pub async fn set(
         self: Arc<Self>,
         key: String,
@@ -146,11 +146,6 @@ impl JsonMapStateHandle {
     ) -> Result<(), FfiError> {
         run(async move {
             let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-            reject_null(
-                &payload,
-                &self.name,
-                "; use RemoveAsync to remove the entry",
-            )?;
             traced(&self.propagator, carrier, self.state.set(key, payload)).await
         })
         .await

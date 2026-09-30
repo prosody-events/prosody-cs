@@ -39,10 +39,7 @@ internal static class MessageInterop
     /// </summary>
     internal static Native.Message ToNative<TPayload>(Message<TPayload> message)
     {
-        if (message is null)
-        {
-            throw new NullValueException("Cannot write a null message to a keyed-state collection.");
-        }
+        ArgumentNullException.ThrowIfNull(message);
 
         return message.NativeHandle
             ?? throw new TransientStateException(

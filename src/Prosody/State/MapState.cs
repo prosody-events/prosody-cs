@@ -58,7 +58,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     public Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "Use RemoveAsync to delete instead.");
+        var bytes = StateInterop.SerializeJson(value, _typeInfo);
         return StateInterop.RunAsync(() => _handle.Set(key, bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 

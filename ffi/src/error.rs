@@ -153,7 +153,8 @@ pub enum FfiError {
     ///
     /// Recovered structurally from the erased seam's
     /// [`ErasedCategory::Permanent`]: configuration or deployment mistakes
-    /// (unregistered name, identity mismatch, duplicate name, invalid TTL). The
+    /// (unregistered name, identity mismatch, duplicate name, invalid TTL) and
+    /// a JSON `null` write. The
     /// `flat_error` attribute generates a distinct `FfiException` subclass, so
     /// the C# layer recovers the category from the exception type, never by
     /// parsing the message.
@@ -163,11 +164,9 @@ pub enum FfiError {
     /// A transient keyed-state failure that may succeed on retry.
     ///
     /// Recovered structurally from the erased seam's
-    /// [`ErasedCategory::Transient`], and the classification every caller/input
-    /// mistake the glue detects folds into (null or unrepresentable writes,
-    /// invalid values or indices) so a data-dependent handler bug
-    /// retries rather than silently committing the offset and losing the
-    /// message.
+    /// [`ErasedCategory::Transient`]. A caller mistake that the glue detects,
+    /// such as an invalid index, also folds into this category, so the event
+    /// retries.
     #[error("transient state error: {0}")]
     TransientState(String),
 }
@@ -249,13 +248,8 @@ impl From<ErasedClientBuildError<Codec>> for FfiError {
 /// exhaustive over [`ErasedCategory`], which has no `Terminal`, so a state
 /// error is never surfaced as terminal.
 ///
-/// This fold forwards core's category verbatim, including cases core hard-codes
-/// as `Permanent` (e.g. `ErasedStateError::null_write`). Because this client
-/// requires every caller mistake (null or unrepresentable writes, wrong item
-/// shapes, invalid indices, invalid direction tokens) to classify transient,
-/// all such validation must be performed in the glue (`crate::state`) before a
-/// value crosses into core and reaches this conversion; the pre-checks there
-/// are what uphold that invariant, not this generic mapping.
+/// This fold forwards core's category verbatim. A JSON `null` write therefore
+/// surfaces as `Permanent`, the category that core gives it.
 impl From<ErasedStateError> for FfiError {
     fn from(error: ErasedStateError) -> Self {
         match error.category() {

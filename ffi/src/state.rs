@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use opentelemetry::trace::FutureExt;
-use prosody::codec::{BinaryPayload, ErasedStateCodec};
+use prosody::codec::BinaryPayload;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::state::{Direction, StoreOutcome as CoreStoreOutcome};
 use tracing::{Span, debug};
@@ -94,18 +94,4 @@ pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Arc<Messa
 pub(crate) fn platform_index(index: u64) -> Result<usize, FfiError> {
     usize::try_from(index)
         .map_err(|_| FfiError::TransientState("index exceeds platform range".to_owned()))
-}
-
-/// Rejects a JSON `null` document before it reaches the state codec.
-pub(crate) fn reject_null(
-    payload: &BinaryPayload,
-    collection: &str,
-    advice: &str,
-) -> Result<(), FfiError> {
-    if payload.is_absent_sentinel() {
-        return Err(FfiError::TransientState(format!(
-            "collection {collection:?}: JSON null is not a storable value{advice}"
-        )));
-    }
-    Ok(())
 }

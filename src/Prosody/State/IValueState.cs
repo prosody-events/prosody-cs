@@ -19,8 +19,8 @@ public interface IValueState<T>
     Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Buffers a write of the value. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient) — use <see cref="ClearAsync"/> to delete.
+    /// Buffers a write of the value. A value that serializes to JSON <see langword="null"/> fails with
+    /// a <see cref="PermanentStateException"/>. Use <see cref="ClearAsync"/> to delete.
     /// </summary>
     /// <param name="value">The value to store.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

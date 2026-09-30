@@ -12,12 +12,11 @@ use prosody::consumer::message::ConsumerMessage;
 use crate::error::FfiError;
 use crate::message::Message;
 use crate::runtime::run;
-use crate::state::{StoreOutcome, into_bytes, into_message, reject_null, traced};
+use crate::state::{StoreOutcome, into_bytes, into_message, traced};
 
 /// A JSON single-value state handle for one event.
 #[derive(uniffi::Object)]
 pub struct JsonValueStateHandle {
-    pub(crate) name: String,
     pub(crate) state: BoxValueState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
@@ -45,7 +44,8 @@ impl JsonValueStateHandle {
     ///
     /// # Errors
     ///
-    /// Returns a state error if the document is `null` or the write fails.
+    /// Returns a permanent state error if the document is JSON `null`, and a
+    /// state error if the write fails.
     pub async fn set(
         self: Arc<Self>,
         bytes: Vec<u8>,
@@ -53,7 +53,6 @@ impl JsonValueStateHandle {
     ) -> Result<(), FfiError> {
         run(async move {
             let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-            reject_null(&payload, &self.name, "; use ClearAsync to remove the value")?;
             traced(&self.propagator, carrier, self.state.set(payload)).await
         })
         .await

@@ -16,8 +16,8 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     where T : notnull
 {
     /// <summary>
-    /// Appends an element at the back. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient); a deque stores only concrete values.
+    /// Appends an element at the back. A value that serializes to JSON <see langword="null"/> fails
+    /// with a <see cref="PermanentStateException"/>; a deque stores only concrete values.
     /// </summary>
     /// <param name="value">The element to append.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
@@ -25,8 +25,8 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     Task PushBackAsync(T value, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Prepends an element at the front. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient); a deque stores only concrete values.
+    /// Prepends an element at the front. A value that serializes to JSON <see langword="null"/> fails
+    /// with a <see cref="PermanentStateException"/>; a deque stores only concrete values.
     /// </summary>
     /// <param name="value">The element to prepend.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>

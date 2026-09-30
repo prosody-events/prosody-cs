@@ -21,13 +21,13 @@ internal sealed class DequeState<T> : IDequeState<T>
 
     public Task PushBackAsync(T value, CancellationToken cancellationToken = default)
     {
-        var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "A deque stores only concrete values.");
+        var bytes = StateInterop.SerializeJson(value, _typeInfo);
         return StateInterop.RunAsync(() => _handle.PushBack(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 
     public Task PushFrontAsync(T value, CancellationToken cancellationToken = default)
     {
-        var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "A deque stores only concrete values.");
+        var bytes = StateInterop.SerializeJson(value, _typeInfo);
         return StateInterop.RunAsync(() => _handle.PushFront(bytes, StateInterop.CreateCarrier()), cancellationToken);
     }
 

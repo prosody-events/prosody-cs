@@ -12,12 +12,11 @@ use crate::cursor::JsonDequeCursor;
 use crate::error::FfiError;
 use crate::query::PositionQuery;
 use crate::runtime::run;
-use crate::state::{StoreOutcome, into_bytes, platform_index, reject_null, traced};
+use crate::state::{StoreOutcome, into_bytes, platform_index, traced};
 
 /// A JSON deque state handle for one event.
 #[derive(uniffi::Object)]
 pub struct JsonDequeStateHandle {
-    pub(crate) name: String,
     pub(crate) state: BoxDequeState<BinaryPayload>,
     pub(crate) propagator: Arc<TextMapCompositePropagator>,
 }
@@ -76,7 +75,8 @@ impl JsonDequeStateHandle {
     ///
     /// # Errors
     ///
-    /// Returns a state error if the document is `null` or the write fails.
+    /// Returns a permanent state error if the document is JSON `null`, and a
+    /// state error if the write fails.
     pub async fn push_back(
         self: Arc<Self>,
         bytes: Vec<u8>,
@@ -84,7 +84,6 @@ impl JsonDequeStateHandle {
     ) -> Result<(), FfiError> {
         run(async move {
             let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-            reject_null(&payload, &self.name, " in a deque")?;
             traced(&self.propagator, carrier, self.state.push_back(payload)).await
         })
         .await
@@ -94,7 +93,8 @@ impl JsonDequeStateHandle {
     ///
     /// # Errors
     ///
-    /// Returns a state error if the document is `null` or the write fails.
+    /// Returns a permanent state error if the document is JSON `null`, and a
+    /// state error if the write fails.
     pub async fn push_front(
         self: Arc<Self>,
         bytes: Vec<u8>,
@@ -102,7 +102,6 @@ impl JsonDequeStateHandle {
     ) -> Result<(), FfiError> {
         run(async move {
             let payload = BinaryPayload::new(bytes, None::<String>, None::<String>);
-            reject_null(&payload, &self.name, " in a deque")?;
             traced(&self.propagator, carrier, self.state.push_front(payload)).await
         })
         .await

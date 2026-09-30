@@ -765,7 +765,7 @@ while (last is not null);
 
 The same query works on published readers and in either direction.
 
-Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Do not store `null`. Use `ClearAsync` or `RemoveAsync`.
+Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. A write of JSON `null` fails with `PermanentStateException`. Use `ClearAsync` (value, deque) or `RemoveAsync` (map) to delete.
 
 Payload types guide JSON serialization. They do not add runtime validation.
 
@@ -1614,7 +1614,6 @@ Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
 - `TransientStateException : StateException`: Reports a keyed-state error that Prosody can retry.
-- `NullValueException : TransientStateException`: Reports a rejected `null` write. Use `ClearAsync` or `RemoveAsync` to delete data.
 - `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
 
