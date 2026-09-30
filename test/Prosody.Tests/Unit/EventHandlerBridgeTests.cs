@@ -59,54 +59,6 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task OnMessageReturnsTransientErrorForUnclassifiedException()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new InvalidOperationException("transient failure")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleMessageAsync(bridge);
-
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("transient failure", result.ErrorMessage, StringComparison.Ordinal)
-        );
-    }
-
-    [Fact]
-    public async Task OnMessageReturnsPermanentErrorForIPermanentError()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new PermanentException("permanent failure")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleMessageAsync(bridge);
-
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("permanent failure", result.ErrorMessage, StringComparison.Ordinal)
-        );
-    }
-
-    [Fact]
-    public async Task OnMessageReturnsPermanentErrorForCustomIPermanentError()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onMessage: (_, _, _) => throw new CustomPermanentException("custom permanent")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleMessageAsync(bridge);
-
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("custom permanent", result.ErrorMessage, StringComparison.Ordinal)
-        );
-    }
-
-    [Fact]
     public async Task ResponseEncodingFailureIsTransient()
     {
         var response = new CyclicResponse();
@@ -188,38 +140,6 @@ public sealed class EventHandlerBridgeTests
         Assert.Multiple(
             () => Assert.Equal(NativeResultCode.Success, result.Code),
             () => Assert.Null(result.ErrorMessage)
-        );
-    }
-
-    [Fact]
-    public async Task OnTimerReturnsTransientErrorForUnclassifiedException()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onTimer: (_, _, _) => throw new InvalidOperationException("transient timer failure")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleTimerAsync(bridge);
-
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code),
-            () => Assert.Contains("transient timer failure", result.ErrorMessage, StringComparison.Ordinal)
-        );
-    }
-
-    [Fact]
-    public async Task OnTimerReturnsPermanentErrorForIPermanentError()
-    {
-        var handler = new LambdaHandler<JsonElement>(
-            onTimer: (_, _, _) => throw new PermanentException("permanent timer failure")
-        );
-        var bridge = new EventHandlerBridge<JsonElement>(handler, TestJson.Options);
-
-        var result = await HandleTimerAsync(bridge);
-
-        Assert.Multiple(
-            () => Assert.Equal(NativeResultCode.PermanentError, result.Code),
-            () => Assert.Contains("permanent timer failure", result.ErrorMessage, StringComparison.Ordinal)
         );
     }
 
