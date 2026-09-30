@@ -1,4 +1,8 @@
 #![recursion_limit = "256"]
+#![expect(
+    clippy::multiple_crate_versions,
+    reason = "the dependency tree of prosody pulls in more than one version of some crates"
+)]
 //! Prosody FFI bindings for C#.
 //!
 //! This crate provides FFI bindings for the Prosody Kafka client library,
