@@ -52,12 +52,12 @@ impl From<CoreDemandType> for DemandType {
 
 /// Event context passed to message handlers during event processing.
 ///
-/// This type wraps Prosody's [`BoxEventContext`] and provides FFI-safe methods
-/// for timer management and cancellation handling. All timer operations are
-/// scoped to the current message key.
+/// This type wraps Prosody's [`BoxEventContext`]. Timer operations apply to
+/// the current message key and take an OpenTelemetry carrier for the parent
+/// span.
 ///
-/// Timer operations accept an OpenTelemetry carrier for distributed tracing
-/// context propagation, allowing traces to span across service boundaries.
+/// The `*_state` methods vend state handles. Vending checks the registration
+/// in core and opens no span, because each handle operation opens its own.
 #[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
@@ -87,11 +87,7 @@ impl Context {
 
 #[uniffi::export]
 impl Context {
-    /// Checks whether the handler should stop processing.
-    ///
-    /// Handlers should periodically check this flag during long-running
-    /// operations and exit gracefully when it returns `true`. This enables
-    /// cooperative cancellation during consumer shutdown or rebalancing.
+    /// Returns true when the handler should stop.
     #[must_use]
     pub fn should_cancel(&self) -> bool {
         self.inner.should_cancel()
@@ -103,29 +99,16 @@ impl Context {
         self.demand
     }
 
-    /// Waits until cancellation is requested.
-    ///
-    /// Use this in a `select!` or similar construct to respond to cancellation
-    /// while awaiting other operations. Completes immediately if cancellation
-    /// has already been requested.
+    /// Completes when cancellation is requested.
     pub async fn on_cancel(self: Arc<Self>) {
-        run(async move {
-            self.inner.on_cancel().await;
-        })
-        .await;
+        run(async move { self.inner.on_cancel().await }).await;
     }
 
-    /// Schedules a new timer to fire at the specified time.
-    ///
-    /// The timer is associated with the current message key. When the timer
-    /// fires, the handler will be invoked with a timer event for that key.
-    ///
-    /// Multiple timers can be scheduled for the same key at different times.
+    /// Schedules a timer for the current key.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the scheduling operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn schedule(
         self: Arc<Self>,
         time: SystemTime,
@@ -146,16 +129,11 @@ impl Context {
         .await
     }
 
-    /// Clears all timers for the current key, then schedules a new one.
-    ///
-    /// This is an atomic operation that ensures exactly one timer exists for
-    /// the key after completion. Useful for "snooze" or "reschedule" patterns
-    /// where previous timers should be replaced.
+    /// Replaces all timers for the current key with one timer.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn clear_and_schedule(
         self: Arc<Self>,
         time: SystemTime,
@@ -176,15 +154,11 @@ impl Context {
         .await
     }
 
-    /// Cancels a timer scheduled for the specified time.
-    ///
-    /// If no timer exists at the given time for the current key, this is a
-    /// no-op.
+    /// Cancels the timer at the given time for the current key.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn unschedule(
         self: Arc<Self>,
         time: SystemTime,
@@ -207,12 +181,9 @@ impl Context {
 
     /// Cancels all timers for the current key.
     ///
-    /// After this call, no timers will be scheduled for the key until new ones
-    /// are explicitly scheduled.
-    ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// Returns an error if the store operation fails.
     pub async fn clear_scheduled(
         self: Arc<Self>,
         carrier: HashMap<String, String>,
@@ -230,13 +201,11 @@ impl Context {
         .await
     }
 
-    /// Returns all scheduled timer times for the current key.
-    ///
-    /// The returned times are not guaranteed to be in any particular order.
+    /// Returns the scheduled timer times for the current key, in no order.
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// Returns an error if the store operation fails.
     pub async fn scheduled(
         self: Arc<Self>,
         carrier: HashMap<String, String>,
@@ -258,17 +227,11 @@ impl Context {
 
     /// Vends the state handle for the named JSON value collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn value_state(&self, name: String) -> Result<Arc<JsonValueStateHandle>, FfiError> {
-        let handle = self.inner.value_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn value_state(&self, name: &str) -> Result<Arc<JsonValueStateHandle>, FfiError> {
+        let handle = self.inner.value_state(name)?;
         Ok(Arc::new(JsonValueStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -277,17 +240,11 @@ impl Context {
 
     /// Vends the state handle for the named JSON map collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn map_state(&self, name: String) -> Result<Arc<JsonMapStateHandle>, FfiError> {
-        let handle = self.inner.map_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn map_state(&self, name: &str) -> Result<Arc<JsonMapStateHandle>, FfiError> {
+        let handle = self.inner.map_state(name)?;
         Ok(Arc::new(JsonMapStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -296,16 +253,11 @@ impl Context {
 
     /// Vends the state handle for the named set collection.
     ///
-    /// Vending verifies the collection's registration core-side. No span is
-    /// opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn set_state(&self, name: String) -> Result<Arc<SetStateHandle>, FfiError> {
-        let handle = self.inner.set_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn set_state(&self, name: &str) -> Result<Arc<SetStateHandle>, FfiError> {
+        let handle = self.inner.set_state(name)?;
         Ok(Arc::new(SetStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -314,17 +266,11 @@ impl Context {
 
     /// Vends the state handle for the named JSON deque collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn deque_state(&self, name: String) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
-        let handle = self.inner.deque_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn deque_state(&self, name: &str) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
+        let handle = self.inner.deque_state(name)?;
         Ok(Arc::new(JsonDequeStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -333,22 +279,14 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message value collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
+    /// Returns a permanent state error if no collection has this name and kind.
     pub fn message_value_state(
         &self,
-        name: String,
+        name: &str,
     ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
-        let handle = self.inner.message_value_state(&name)?;
-        // Consume each message collection name after lookup. This keeps the
-        // by-value FFI argument without a lint exception.
-        drop(name);
+        let handle = self.inner.message_value_state(name)?;
         Ok(Arc::new(MessageValueStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -357,17 +295,11 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message map collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn message_map_state(&self, name: String) -> Result<Arc<MessageMapStateHandle>, FfiError> {
-        let handle = self.inner.message_map_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn message_map_state(&self, name: &str) -> Result<Arc<MessageMapStateHandle>, FfiError> {
+        let handle = self.inner.message_map_state(name)?;
         Ok(Arc::new(MessageMapStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -376,20 +308,14 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message deque collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
+    /// Returns a permanent state error if no collection has this name and kind.
     pub fn message_deque_state(
         &self,
-        name: String,
+        name: &str,
     ) -> Result<Arc<MessageDequeStateHandle>, FfiError> {
-        let handle = self.inner.message_deque_state(&name)?;
-        drop(name);
+        let handle = self.inner.message_deque_state(name)?;
         Ok(Arc::new(MessageDequeStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
