@@ -107,7 +107,7 @@ public sealed class EventHandlerBridgeTests
     }
 
     [Fact]
-    public async Task ResponseEncodingFailureIsPermanent()
+    public async Task ResponseEncodingFailureIsTransient()
     {
         var response = new CyclicResponse();
         response.Next = response;
@@ -119,7 +119,7 @@ public sealed class EventHandlerBridgeTests
 
         var result = await HandleMessageAsync(bridge);
 
-        Assert.Equal(NativeResultCode.PermanentError, result.Code);
+        Assert.Equal(NativeResultCode.TransientError, result.Code);
     }
 
     [Fact]

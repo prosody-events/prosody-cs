@@ -26,6 +26,10 @@ internal static class EventHandlerBridge
     internal const string OnExciseActivityName = "on_excise";
     internal const string OnTimerActivityName = "on_timer";
 
+    /// <summary>
+    /// Encodes a handler response. A response with no JSON form, such as a cycle, is a caller mistake,
+    /// so it throws a transient <see cref="InvalidOperationException"/> and the event retries.
+    /// </summary>
     internal static byte[] SerializeResponse<TResponse>(TResponse response, JsonTypeInfo<TResponse> typeInfo)
     {
         try
@@ -34,7 +38,7 @@ internal static class EventHandlerBridge
         }
         catch (Exception error) when (error is JsonException or NotSupportedException)
         {
-            throw new PermanentException("The handler response is not valid JSON.", error);
+            throw new InvalidOperationException("The handler response has no JSON form.", error);
         }
     }
 
