@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use arc_swap::ArcSwap;
 use tracing::field::Empty;
 use tracing::{Instrument, info_span};
 
@@ -69,10 +68,6 @@ use outcome::{native_request_results, subsystem_names};
 pub struct ProsodyClient {
     /// Underlying prosody high-level client instance.
     client: SharedHighLevelClient<CsHandler>,
-    /// Holds the C# handler reference to prevent premature deallocation.
-    ///
-    /// Uses [`ArcSwap`] for lock-free updates during subscribe/unsubscribe.
-    handler: ArcSwap<Option<Arc<dyn EventHandler>>>,
 }
 
 /// UniFFI-exported methods for [`ProsodyClient`].
@@ -109,10 +104,7 @@ impl ProsodyClient {
             ))
             .await?;
 
-            Ok(Self {
-                client,
-                handler: ArcSwap::new(Arc::new(None)),
-            })
+            Ok(Self { client })
         })
         .await
     }
@@ -200,8 +192,8 @@ impl ProsodyClient {
     /// Subscribes to configured topics and begins consuming messages.
     ///
     /// The handler receives messages and timer events asynchronously until
-    /// [`unsubscribe`](Self::unsubscribe) is called. The handler reference is
-    /// retained internally to prevent garbage collection on the C# side.
+    /// [`unsubscribe`](Self::unsubscribe) is called. The consumer owns the
+    /// handler for that time.
     ///
     /// # Errors
     ///
@@ -212,9 +204,6 @@ impl ProsodyClient {
         handler: Arc<dyn EventHandler>,
     ) -> Result<(), FfiError> {
         run(async move {
-            // Store the handler reference to keep it alive
-            self.handler.store(Arc::new(Some(Arc::clone(&handler))));
-
             // Wrap the handler with a trace propagator
             let cs_handler = CsHandler::new(handler, Arc::new(new_propagator()));
             self.client.subscribe(cs_handler).await?;
@@ -227,19 +216,14 @@ impl ProsodyClient {
     /// Stops consuming messages and unsubscribes from all topics.
     ///
     /// In-flight messages are allowed to complete before this method returns.
-    /// The handler reference is released, allowing C# garbage collection.
+    /// The consumer then releases the handler.
     ///
     /// # Errors
     ///
     /// Returns [`FfiError::Client`] if the consumer fails to stop cleanly.
     pub async fn unsubscribe(self: Arc<Self>) -> Result<(), FfiError> {
         run(async move {
-            // Unsubscribe from the client
             self.client.unsubscribe().await?;
-
-            // Clear the handler reference
-            self.handler.store(Arc::new(None));
-
             Ok(())
         })
         .await
@@ -252,9 +236,7 @@ impl ProsodyClient {
     /// Returns [`FfiError::Client`] if shutdown fails.
     pub async fn shutdown(self: Arc<Self>) -> Result<(), FfiError> {
         run(async move {
-            let result = self.client.clone().shutdown().await;
-            self.handler.store(Arc::new(None));
-            result?;
+            self.client.clone().shutdown().await?;
             Ok(())
         })
         .await
@@ -426,6 +408,7 @@ impl ProsodyClient {
     }
 
     /// Returns the source system identifier configured for this client.
+    #[must_use]
     pub fn source_system(&self) -> String {
         self.client.source_system().to_owned()
     }

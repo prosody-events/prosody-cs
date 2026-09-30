@@ -193,8 +193,7 @@ impl FallibleHandler for CsHandler {
 
     /// Called when the handler is being shut down.
     ///
-    /// No cleanup is needed since the C# handler lifetime is managed by
-    /// [`ProsodyClient::handler`] field via `ArcSwap`.
+    /// No cleanup is needed. The C# handler lives as long as this value.
     async fn shutdown(self) {}
 }
 
