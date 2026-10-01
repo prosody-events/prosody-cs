@@ -36,20 +36,15 @@ public sealed partial class ProsodyClient
     /// <summary>
     /// Gets the number of partitions currently assigned to this consumer.
     /// </summary>
-    public async Task<uint> AssignedPartitionCountAsync()
-    {
-        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
-        return await native.AssignedPartitionCount().ConfigureAwait(false);
-    }
+    /// <remarks>Returns <c>0</c> when the client has not connected. Never starts or waits on a connect.</remarks>
+    public Task<uint> AssignedPartitionCountAsync() =>
+        Connected is { } native ? native.AssignedPartitionCount() : Task.FromResult(0u);
 
     /// <summary>
     /// Gets a value indicating whether the consumer is currently stalled.
     /// </summary>
-    public async Task<bool> IsStalledAsync()
-    {
-        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
-        return await native.IsStalled().ConfigureAwait(false);
-    }
+    /// <remarks>Returns <c>false</c> when the client has not connected. Never starts or waits on a connect.</remarks>
+    public Task<bool> IsStalledAsync() => Connected is { } native ? native.IsStalled() : Task.FromResult(false);
 
     /// <summary>
     /// Subscribes to receive messages using the provided strongly typed event handler.
@@ -129,18 +124,13 @@ public sealed partial class ProsodyClient
     /// </summary>
     /// <remarks>
     /// This method never starts or waits on a connect. A client that has not connected has no
-    /// consumer, so the call returns at once.
+    /// consumer, so the call returns at once. A subscribe that still waits for the connect is not
+    /// stopped. Dispose the client to reject it.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The consumer is not subscribed.</exception>
     /// <exception cref="ProsodyException">The consumer failed to stop.</exception>
-    public async Task UnsubscribeAsync()
-    {
-        if (Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } connected)
-        {
-            var native = await connected.ConfigureAwait(false);
-            await NativeErrors.RunAsync(native.Unsubscribe).ConfigureAwait(false);
-        }
-    }
+    public Task UnsubscribeAsync() =>
+        Connected is { } native ? NativeErrors.RunAsync(native.Unsubscribe) : Task.CompletedTask;
 
     private async Task SubscribeCoreAsync(Native.EventHandler bridge)
     {

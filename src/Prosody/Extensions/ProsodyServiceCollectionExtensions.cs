@@ -156,7 +156,7 @@ public static class ProsodyServiceCollectionExtensions
         var existing = services.FirstOrDefault(d => d.ServiceType == typeof(Registration));
         if (
             existing?.ImplementationInstance is Registration registration
-            && !string.Equals(registration.ConfigSectionPath, configSectionPath, StringComparison.Ordinal)
+            && !string.Equals(registration.ConfigSectionPath, configSectionPath, StringComparison.OrdinalIgnoreCase)
         )
         {
             throw new InvalidOperationException(

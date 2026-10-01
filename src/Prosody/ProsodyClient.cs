@@ -27,7 +27,8 @@ namespace Prosody;
 /// Construction opens no connection and makes no native call. The first operation, or <see cref="ConnectAsync"/>, starts the
 /// connect. All operations share one connect. A cancelled caller stops only its own wait, and
 /// the connect continues for later callers. A failed connect is not kept, so the next operation
-/// tries again.
+/// tries again. An operation's timeout starts after the connect. Use the operation's token, or
+/// <see cref="ConnectAsync"/>, to limit the connect wait.
 /// </para>
 /// <para>
 /// <see cref="DisposeAsync"/> never waits on a pending connect. It releases the result when the
@@ -46,24 +47,27 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     private readonly ClientLock _gate = new();
     private readonly Func<Task<Native.ProsodyClient>> _connect;
-    private readonly ILogger _logger;
+    private readonly ILogger? _logger;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
     private readonly Lazy<Task> _shutdown;
 
     // Invariant: _native is null, a pending build, or a completed build that every caller shares.
     // A successful build is never replaced. SharedBuild evicts a failed build, so the next
-    // operation retries. _closed and _claimed change only from false to true. A closed client
-    // starts no build and hands out no native client. _claimed gives one disposer the build to
-    // release. _gate guards every write. Reads outside the lock use Volatile.Read.
+    // operation retries. _closed and _disposed change only from false to true. Shutdown and
+    // disposal close the client, and a closed client starts no build. Disposal also hands out no
+    // native client and gives the build to one release. _gate guards every write. Reads outside
+    // the lock use Volatile.Read.
     private Task<Native.ProsodyClient>? _native;
     private bool _closed;
-    private bool _claimed;
+    private bool _disposed;
 
     internal JsonSerializerOptions JsonOptions { get; }
 
     /// <summary>Creates an unconnected client from validated options.</summary>
     /// <param name="validated">The options. The client keeps a copy.</param>
-    /// <param name="logger">Logs disposal failures. The default comes from <see cref="ProsodyLogging"/>.</param>
+    /// <param name="logger">
+    /// Logs disposal failures. Without it, the client asks <see cref="ProsodyLogging"/> when a failure occurs.
+    /// </param>
     /// <param name="connect">Builds the native client. Tests replace it to control the build.</param>
     /// <exception cref="InvalidOperationException">No source system or consumer group id is configured.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
@@ -83,8 +87,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
             options.ResolveSourceSystem()
             ?? throw new InvalidOperationException("No source system or consumer group id is configured.");
         _connect = connect ?? (() => Native.ProsodyClient.ProsodyClientAsync(nativeOptions));
-        // Keep the logger after the logging service clears its factory during host stop.
-        _logger = logger ?? ProsodyLogging.CreateLogger(nameof(ProsodyClient));
+        // DI passes a logger that outlives the logging service, which clears its factory during host stop.
+        _logger = logger;
         _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
@@ -94,6 +98,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown when <paramref name="options"/> fails validation.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when a duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Thrown when Prosody cannot connect to Kafka or Cassandra.</exception>
     /// <remarks>
     /// When no <c>TypeInfoResolver</c> is set via <see cref="ClientOptions.ConfigureJsonOptions"/>,
     /// this method auto-installs <c>DefaultJsonTypeInfoResolver</c>, which uses reflection metadata.
@@ -130,25 +136,34 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// <summary>Connects now instead of on first use. Safe to call more than once.</summary>
     /// <remarks>Use the token to limit the connect wait, for example in a health check or a worker.</remarks>
     /// <exception cref="OperationCanceledException">The caller's token was cancelled. The connect continues.</exception>
-    /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
+    /// <exception cref="ObjectDisposedException">The client is disposed, or shut down before it connected.</exception>
+    /// <exception cref="ProsodyException">Prosody cannot connect to Kafka or Cassandra.</exception>
     public async Task ConnectAsync(CancellationToken cancellationToken = default) =>
         await NativeAsync(cancellationToken).ConfigureAwait(false);
 
     /// <summary>Returns the connected native client. Starts the shared build when none is cached.</summary>
     /// <exception cref="OperationCanceledException">The caller's token was cancelled. The build continues.</exception>
-    /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
+    /// <exception cref="ObjectDisposedException">The client is disposed, or shut down before it connected.</exception>
     private async ValueTask<Native.ProsodyClient> NativeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (Connected is { } connected)
+        {
+            return connected;
+        }
 
-        // A connected client takes no lock.
-        var build = Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } ready ? ready : SharedBuild();
-        var native = await build.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var native = await SharedBuild().WaitAsync(cancellationToken).ConfigureAwait(false);
 
-        // A wait can outlive ShutdownAsync or DisposeAsync.
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed), this);
+        // A wait can outlive DisposeAsync.
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
         return native;
     }
+
+    /// <summary>The native client if it is connected and not disposed. Takes no lock and never starts a build.</summary>
+    private Native.ProsodyClient? Connected =>
+        !Volatile.Read(ref _disposed) && Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } build
+            ? build.Result
+            : null;
 
     private Task<Native.ProsodyClient> SharedBuild()
     {
@@ -196,14 +211,16 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     public string SourceSystem { get; }
 
     /// <summary>
-    /// Shuts down all client services and rejects new operations.
+    /// Shuts down all client services.
     /// Concurrent and repeated calls await the same shutdown operation.
     /// </summary>
     /// <remarks>
-    /// The client closes first, so a later operation throws <see cref="ObjectDisposedException"/>
-    /// and starts no connect. This method waits for a pending connect, then shuts the native
-    /// client down. <see cref="DisposeAsync"/> still releases the native handle.
+    /// The client closes first, so it starts no later connect. This method waits for a pending
+    /// connect, then shuts the native client down. After that, <see cref="GetConsumerStateAsync"/>
+    /// reports <see cref="Messaging.ConsumerState.Shutdown"/>. <see cref="DisposeAsync"/> still releases the
+    /// native handle.
     /// </remarks>
+    /// <exception cref="ProsodyException">A client service failed to shut down.</exception>
     public Task ShutdownAsync() => _shutdown.Value;
 
     private async Task ShutdownCoreAsync()
@@ -262,8 +279,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         lock (_gate)
         {
             _closed = true;
-            build = _claimed ? null : _native;
-            _claimed = true;
+            build = _disposed ? null : _native;
+            _disposed = true;
             return build is not null;
         }
     }
@@ -285,7 +302,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         catch (Exception error)
 #pragma warning restore CA1031
         {
-            LogHelper.LogShutdownFailed(_logger, error);
+            LogHelper.LogShutdownFailed(_logger ?? ProsodyLogging.CreateLogger(nameof(ProsodyClient)), error);
         }
         finally
         {

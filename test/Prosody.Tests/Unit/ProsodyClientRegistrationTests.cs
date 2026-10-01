@@ -29,7 +29,8 @@ public sealed class ProsodyClientRegistrationTests
         services.AddSingleton(MockConfiguration());
 
         services.AddProsodyClient(options => options.MaxConcurrency = 7);
-        services.AddProsodyClient(options => options.SourceSystem = "second-call");
+        // Configuration keys ignore case, so this is the same section.
+        services.AddProsodyClient("prosody", options => options.SourceSystem = "second-call");
 
         Assert.Single(services, d => d.ServiceType == typeof(ProsodyClient));
         Assert.Single(services, d => d.ImplementationType == typeof(ProsodyClientLifecycle));

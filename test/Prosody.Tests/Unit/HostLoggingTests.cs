@@ -61,7 +61,7 @@ public sealed class HostLoggingTests
     }
 
     [Fact]
-    public async Task BackgroundDisposalRetainsItsLoggerAfterLoggingStops()
+    public async Task BackgroundDisposalLogsThroughLoggingConfiguredAfterConstruction()
     {
         var logged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var collector = FakeLogCollector.Create(
@@ -77,14 +77,13 @@ public sealed class HostLoggingTests
             }
         );
         using var factory = new FakeLoggerFactory(collector);
-        ProsodyLogging.Configure(factory);
         try
         {
             var options = new ClientOptions { Mock = true, SourceSystem = "background-shutdown" };
             var native = await Native.ProsodyClient.ProsodyClientAsync(options.ToNative());
             await using var client = new ProsodyClient(options, connect: () => Task.FromResult(native));
             await client.ConnectAsync(TestContext.Current.CancellationToken);
-            ProsodyLogging.Clear();
+            ProsodyLogging.Configure(factory);
             collector.Clear();
 
             // A released handle makes the native shutdown throw.

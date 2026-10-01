@@ -293,7 +293,7 @@ public sealed class DisposalTests
     }
 
     [Fact]
-    public async Task ShutdownOfAConnectedClientRejectsOperationsAndDisposeStillReleasesIt()
+    public async Task ShutdownOfAConnectedClientReportsShutdownAndDisposeStillReleasesIt()
     {
         var ready = MockNativeAsync();
         var client = new ProsodyClient(MockOptions, connect: () => ready);
@@ -301,7 +301,7 @@ public sealed class DisposalTests
 
         await client.ShutdownAsync().WaitAsync(Deadline, Ct);
 
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync().WaitAsync(Deadline, Ct));
+        Assert.Equal(ConsumerState.Shutdown, await client.GetConsumerStateAsync().WaitAsync(Deadline, Ct));
         Assert.False(IsReleased(await ready));
         await client.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
         Assert.True(IsReleased(await ready));
@@ -315,23 +315,25 @@ public sealed class DisposalTests
 
         await client.ShutdownAsync();
 
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct).WaitAsync(Deadline, Ct));
         Assert.Equal(0, build.Attempts);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync().WaitAsync(Deadline, Ct));
     }
 
-    [Fact]
-    public async Task UnsubscribeNeverStartsOrWaitsOnABuild()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProbesAndUnsubscribeNeverStartOrWaitOnAConnect(bool pending)
     {
         var build = new Build();
         await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
+        var connect = pending ? client.ConnectAsync(Ct) : Task.CompletedTask;
 
+        Assert.False(await client.IsStalledAsync().WaitAsync(Deadline, Ct));
+        Assert.Equal(0u, await client.AssignedPartitionCountAsync().WaitAsync(Deadline, Ct));
         await client.UnsubscribeAsync().WaitAsync(Deadline, Ct);
-        Assert.Equal(0, build.Attempts);
 
-        var connect = client.ConnectAsync(Ct);
-        await client.UnsubscribeAsync().WaitAsync(Deadline, Ct);
-        Assert.False(connect.IsCompleted);
-        Assert.Equal(1, build.Attempts);
+        Assert.Equal(pending ? 1 : 0, build.Attempts);
+        Assert.Equal(!pending, connect.IsCompleted);
     }
 
     [Fact]
