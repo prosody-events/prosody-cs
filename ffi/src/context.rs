@@ -37,7 +37,7 @@ pub enum DemandType {
     /// An attempt after one or more failures.
     Failure {
         /// The retry ordinal. It is 1 on the first retry. It is an estimate.
-        retry: u32,
+        retry_attempt: u32,
     },
 }
 
@@ -45,7 +45,9 @@ impl From<CoreDemandType> for DemandType {
     fn from(demand: CoreDemandType) -> Self {
         match demand {
             CoreDemandType::Normal => Self::Normal,
-            CoreDemandType::Failure { retry } => Self::Failure { retry },
+            CoreDemandType::Failure { retry } => Self::Failure {
+                retry_attempt: retry,
+            },
         }
     }
 }
