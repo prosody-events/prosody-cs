@@ -58,8 +58,6 @@ use rustfs_mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use std::collections::HashMap;
-
 pub mod admin;
 pub mod cancellation;
 pub mod client;
@@ -81,15 +79,6 @@ pub mod state;
 pub mod timer;
 pub mod types;
 pub mod value;
-
-/// OpenTelemetry context carrier for distributed tracing propagation.
-///
-/// This type alias is used to pass trace context (trace ID, span ID, etc.)
-/// across the FFI boundary. Rust injects context into the carrier before
-/// calling C# handlers, and C# injects context before calling Rust methods.
-///
-/// In C#, this maps to `IDictionary<string, string>`.
-pub type Carrier = HashMap<String, String>;
 
 // Re-exports for UniFFI scaffolding.
 //
