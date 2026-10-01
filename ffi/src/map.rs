@@ -3,8 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::codec::BinaryPayload;
 use prosody::consumer::event_context::BoxMapState;
 use prosody::consumer::message::ConsumerMessage;
@@ -14,7 +13,7 @@ use crate::error::FfiError;
 use crate::message::Message;
 use crate::query::KeyQuery;
 use crate::runtime::run;
-use crate::state::{StoreOutcome, into_bytes, into_message, traced};
+use crate::state::{StoreOutcome, in_context, into_bytes, into_message, traced};
 
 /// One optional JSON value from an ordered batch read.
 ///
@@ -205,8 +204,8 @@ impl JsonMapStateHandle {
     /// Discards the buffered operations and reports whether any existed.
     pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
         run(async move {
-            let context = self.propagator.extract(&carrier);
-            self.state.rollback().with_context(context).await.into()
+            let rollback = in_context(&self.propagator, &carrier, self.state.rollback());
+            rollback.await.into()
         })
         .await
     }
@@ -391,8 +390,8 @@ impl MessageMapStateHandle {
     /// Discards the buffered operations and reports whether any existed.
     pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
         run(async move {
-            let context = self.propagator.extract(&carrier);
-            self.state.rollback().with_context(context).await.into()
+            let rollback = in_context(&self.propagator, &carrier, self.state.rollback());
+            rollback.await.into()
         })
         .await
     }

@@ -5,7 +5,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
+use opentelemetry::trace::{FutureExt, WithContext};
 use prosody::codec::BinaryPayload;
 use prosody::consumer::message::ConsumerMessage;
 use prosody::state::{Direction, StoreOutcome as CoreStoreOutcome};
@@ -51,6 +51,15 @@ impl From<CoreStoreOutcome> for StoreOutcome {
     }
 }
 
+/// Runs `operation` in the caller's trace context.
+pub(crate) fn in_context<F: Future>(
+    propagator: &TextMapCompositePropagator,
+    carrier: &HashMap<String, String>,
+    operation: F,
+) -> WithContext<F> {
+    operation.with_context(propagator.extract(carrier))
+}
+
 /// Runs one state operation with the caller's trace context.
 pub(crate) async fn traced<T, E>(
     propagator: &TextMapCompositePropagator,
@@ -60,8 +69,7 @@ pub(crate) async fn traced<T, E>(
 where
     E: Into<FfiError>,
 {
-    operation
-        .with_context(propagator.extract(&carrier))
+    in_context(propagator, &carrier, operation)
         .await
         .map_err(Into::into)
 }

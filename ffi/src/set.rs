@@ -3,15 +3,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
 use prosody::consumer::event_context::BoxSetState;
 
 use crate::cursor::KeyCursor;
 use crate::error::FfiError;
 use crate::query::KeyQuery;
 use crate::runtime::run;
-use crate::state::{StoreOutcome, traced};
+use crate::state::{StoreOutcome, in_context, traced};
 
 /// A set state handle for one event. A set stores ordered string members.
 #[derive(uniffi::Object)]
@@ -131,8 +130,8 @@ impl SetStateHandle {
     /// Discards the buffered operations and reports whether any existed.
     pub async fn rollback(self: Arc<Self>, carrier: HashMap<String, String>) -> StoreOutcome {
         run(async move {
-            let context = self.propagator.extract(&carrier);
-            self.state.rollback().with_context(context).await.into()
+            let rollback = in_context(&self.propagator, &carrier, self.state.rollback());
+            rollback.await.into()
         })
         .await
     }
