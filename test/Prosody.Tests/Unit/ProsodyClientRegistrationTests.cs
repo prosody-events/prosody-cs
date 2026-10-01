@@ -7,8 +7,8 @@ using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
 
-/// <summary>Tests repeated registration, validation, and the shared client instance.</summary>
-public sealed class ProsodyClientRegistrationTests : AsyncDisposalTestBase
+/// <summary>Tests repeated registration and startup validation.</summary>
+public sealed class ProsodyClientRegistrationTests
 {
     private static IConfiguration MockConfiguration(string section = "Prosody") =>
         new ConfigurationBuilder()
@@ -54,22 +54,6 @@ public sealed class ProsodyClientRegistrationTests : AsyncDisposalTestBase
         Assert.Contains("'First'", error.Message, StringComparison.Ordinal);
         using var provider = services.BuildServiceProvider();
         Assert.Equal("first", provider.GetRequiredService<IOptions<ClientOptions>>().Value.SourceSystem);
-    }
-
-    [Fact]
-    public async Task ProviderAndClientResolveToOneInstance()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton(MockConfiguration());
-        services.AddProsodyClient();
-        var provider = Track(services.BuildServiceProvider());
-
-#pragma warning disable CS0618 // The adapter is kept for one minor; this test pins that it still resolves.
-        var legacy = provider.GetRequiredService<ProsodyClientProvider>();
-        Func<Task<ProsodyClient>> methodGroup = legacy.GetAsync;
-        var fromProvider = await methodGroup();
-#pragma warning restore CS0618
-        Assert.Same(provider.GetRequiredService<ProsodyClient>(), fromProvider);
     }
 
     [Fact]

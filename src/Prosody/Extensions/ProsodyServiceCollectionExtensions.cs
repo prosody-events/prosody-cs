@@ -185,9 +185,6 @@ public static class ProsodyServiceCollectionExtensions
             sp.GetRequiredService<IOptions<ClientOptions>>().Value,
             sp.GetService<ILogger<ProsodyClient>>()
         ));
-#pragma warning disable CS0618 // The adapter keeps existing GetRequiredService<ProsodyClientProvider>() calls resolving.
-        services.TryAddSingleton(sp => new ProsodyClientProvider(sp.GetRequiredService<ProsodyClient>()));
-#pragma warning restore CS0618
         services.AddHostedService<ProsodyClientLifecycle>();
 
         return services;

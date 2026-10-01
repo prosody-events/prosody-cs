@@ -1231,8 +1231,6 @@ The library disposes the client after every hosted service has stopped, inside t
 
 `AddProsodyClient` is safe to call more than once with the same section. Every call may add a configure action; only the first binds configuration. A call with a different section throws.
 
-`ProsodyClientProvider` is obsolete. It still resolves and its `GetAsync` returns the same shared client.
-
 Log messages are emitted under the `Prosody.Native` category.
 
 ## Error Monitoring (Sentry)
