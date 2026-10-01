@@ -379,7 +379,7 @@ public sealed class ProsodyClientBuilder
     /// <returns>A <see cref="ProsodyClient"/> that connects on its first operation or on <see cref="ProsodyClient.ConnectAsync"/>.</returns>
     /// <exception cref="InvalidOperationException">The options are invalid.</exception>
     /// <remarks>
-    /// This method validates configuration and does no I/O. See <see cref="BuildAsync"/> for
+    /// This method validates configuration. It opens no connection and makes no native call. See <see cref="BuildAsync"/> for
     /// the JSON resolver behavior; it applies here as well.
     /// </remarks>
     [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]

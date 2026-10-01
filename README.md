@@ -198,7 +198,7 @@ For the complete configuration reference, see [CONFIGURATION.md](CONFIGURATION.m
 
 `ClientOptions` properties take precedence. Unset properties use environment variables, then library defaults.
 
-Client construction does no I/O. The first operation connects, or call `ConnectAsync` to connect early. `ProsodyClient.CreateAsync` and `ProsodyClientBuilder.BuildAsync` construct and connect in one step. `ProsodyClientBuilder.Build` returns an unconnected client.
+Client construction opens no connection and makes no native call. The first operation connects, or call `ConnectAsync` to connect early. `ProsodyClient.CreateAsync` and `ProsodyClientBuilder.BuildAsync` construct and connect in one step. `ProsodyClientBuilder.Build` returns an unconnected client.
 
 ## Liveness and Readiness Probes
 
@@ -1219,7 +1219,7 @@ builder.Services.AddProsodyClient();
 var host = builder.Build();
 ```
 
-Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects, and all operations share that connect. A caller that cancels stops only its own wait; the connect continues. A failed connect is not kept; the next operation tries again.
+Inject `ProsodyClient` into hosted services. Resolving it opens no connection. The first operation connects, and all operations share that connect. A caller that cancels stops only its own wait; the connect continues. A failed connect is not kept; the next operation tries again.
 
 Call `ConnectAsync(cancellationToken)` to limit the connect wait. For example, a health check calls it with the check's token before `IsStalledAsync`, so a connect that does not finish cannot block the probe. `UnsubscribeAsync` never starts or waits on a connect.
 

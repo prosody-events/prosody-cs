@@ -24,7 +24,7 @@ namespace Prosody;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Construction does no I/O. The first operation, or <see cref="ConnectAsync"/>, starts the
+/// Construction opens no connection and makes no native call. The first operation, or <see cref="ConnectAsync"/>, starts the
 /// connect. All operations share one connect. A cancelled caller stops only its own wait, and
 /// the connect continues for later callers. A failed connect is not kept, so the next operation
 /// tries again.
