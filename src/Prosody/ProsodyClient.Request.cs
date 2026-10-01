@@ -17,7 +17,7 @@ public sealed partial class ProsodyClient
 
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
     /// <inheritdoc
-    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
     ///     path="/remarks|/exception"/>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
@@ -41,9 +41,43 @@ public sealed partial class ProsodyClient
         );
 
     /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
+    ///     path="/remarks|/exception"/>
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default
+    ) =>
+        RequestAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            NoOverrides,
+            cancellationToken
+        );
+
+    /// <summary>
+    /// Sends one trim-safe request with event metadata overrides and returns one outcome per subsystem.
+    /// </summary>
     /// <remarks>
+    /// <para>
+    /// A set <see cref="SendOptions.EventId"/> or <see cref="SendOptions.EventType"/> replaces the
+    /// value that Prosody reads from the payload.
+    /// </para>
+    /// <para>
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
     /// A request-level failure throws instead of returning a partial dictionary.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
@@ -61,6 +95,7 @@ public sealed partial class ProsodyClient
         JsonTypeInfo<TResponse> responseType,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
+        SendOptions options,
         CancellationToken cancellationToken = default
     )
     {
@@ -69,13 +104,24 @@ public sealed partial class ProsodyClient
         ArgumentNullException.ThrowIfNull(payloadType);
         ArgumentNullException.ThrowIfNull(responseType);
         ArgumentNullException.ThrowIfNull(subsystems);
+        ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
-        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
+        return RequestCoreAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            options,
+            cancellationToken
+        );
     }
 
     /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
     /// <inheritdoc
-    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
     ///     path="/remarks|/exception"/>
     [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
     [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
@@ -97,7 +143,7 @@ public sealed partial class ProsodyClient
 
     /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
     /// <inheritdoc
-    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, CancellationToken)"
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
     ///     path="/remarks|/exception"/>
     public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
         string topic,
@@ -137,16 +183,16 @@ public sealed partial class ProsodyClient
         JsonTypeInfo<TResponse> responseType,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
+        SendOptions options,
         CancellationToken cancellationToken
     )
     {
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
-        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
         var request = new Native.NativeRequest(
             topic,
             key,
             encoded,
-            new Native.EventMetadata(EventId: eventId, EventType: eventType),
+            options.Metadata(payload, payloadType),
             [.. subsystems],
             Durations.ToNative(timeout),
             StateInterop.CreateCarrier()

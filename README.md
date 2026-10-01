@@ -1414,6 +1414,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, SendOptions options, CancellationToken cancellationToken = default)`: Override event metadata during a trim-safe send.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, IReadOnlyList<string> subsystems, TimeSpan timeout, SendOptions options, ...)`: Override event metadata during a trim-safe request.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
@@ -1519,7 +1520,7 @@ Enum representing the operating mode:
 - `Failure<T>`: Contains a `ResponseError` in `Error`.
 - `ResponseError`: Base record with a `Message` property.
 - `HandlerError`, `TimeoutError`, `FormatMismatchError`, and `MalformedResponseError`: The possible response errors.
-- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send.
+- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send or request.
 
 ### Keyed State
 

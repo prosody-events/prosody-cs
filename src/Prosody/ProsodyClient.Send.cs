@@ -153,11 +153,7 @@ public sealed partial class ProsodyClient
         CancellationToken cancellationToken
     )
     {
-        var (extractedId, extractedType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
-        var metadata = new Native.EventMetadata(
-            EventId: options.EventId ?? extractedId,
-            EventType: options.EventType ?? extractedType
-        );
+        var metadata = options.Metadata(payload, typeInfo);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
         var carrier = StateInterop.CreateCarrier();
 
