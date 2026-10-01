@@ -9,7 +9,7 @@ namespace Prosody.Tests.Integration;
 /// </summary>
 public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
-    private sealed record RequestResponse(string Key, bool Accepted);
+    private sealed record RequestResponse(string Key, bool IsResponseRequested, string? SourceSystem);
 
     private sealed class RequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
     {
@@ -17,13 +17,13 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             ProsodyContext prosodyContext,
             Message<TestPayload> message,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(message.Key, true));
+        ) => Task.FromResult(new RequestResponse(message.Key, message.IsResponseRequested, message.SourceSystem));
 
         public Task<RequestResponse> OnExciseAsync(
             ProsodyContext prosodyContext,
             ExciseMessage message,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(message.Key, true));
+        ) => Task.FromResult(new RequestResponse(message.Key, message.IsResponseRequested, message.SourceSystem));
 
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
@@ -69,7 +69,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         );
 
         var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
-        Assert.Equal(new RequestResponse("order-1", true), result.Value);
+        Assert.Equal(new RequestResponse("order-1", true, ctx.Client.SourceSystem), result.Value);
     }
 
     [Fact(Timeout = 60_000)]
@@ -87,7 +87,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         );
 
         var result = Assert.IsType<Success<RequestResponse>>(results["inventory"]);
-        Assert.Equal(new RequestResponse("order-1", true), result.Value);
+        Assert.Equal(new RequestResponse("order-1", true, ctx.Client.SourceSystem), result.Value);
     }
 
     [Fact(Timeout = 60_000)]
@@ -136,7 +136,9 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         Assert.Multiple(
             () => Assert.Equal(ctx.Topic, received.Topic),
             () => Assert.Equal("test-key", received.Key),
-            () => Assert.Equal("Hello, Kafka!", received.Payload?.Content)
+            () => Assert.Equal("Hello, Kafka!", received.Payload?.Content),
+            () => Assert.Equal(ctx.Client.SourceSystem, received.SourceSystem),
+            () => Assert.False(received.IsResponseRequested)
         );
     }
 
@@ -160,7 +162,11 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             TestContext.Current.CancellationToken
         );
 
-        Assert.Equal("obsolete-key", message.Key);
+        Assert.Multiple(
+            () => Assert.Equal("obsolete-key", message.Key),
+            () => Assert.Equal(ctx.Client.SourceSystem, message.SourceSystem),
+            () => Assert.False(message.IsResponseRequested)
+        );
     }
 
     [Fact(Timeout = 60_000)]

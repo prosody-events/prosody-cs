@@ -16,7 +16,7 @@ namespace Prosody.State;
 /// <see langword="false"/> only when the collection has no value at that position.
 /// </para>
 /// </remarks>
-public readonly struct StateValue<T> : IEquatable<StateValue<T>>
+public readonly record struct StateValue<T>
     where T : notnull
 {
     private readonly T _value;
@@ -66,32 +66,7 @@ public readonly struct StateValue<T> : IEquatable<StateValue<T>>
     /// <summary>Represents the absent value.</summary>
     internal static StateValue<T> None => default;
 
-    /// <inheritdoc/>
-    public bool Equals(StateValue<T> other)
-    {
-        if (HasValue != other.HasValue)
-        {
-            return false;
-        }
-
-        return !HasValue || EqualityComparer<T>.Default.Equals(_value, other._value);
-    }
-
-    /// <inheritdoc/>
-    public override bool Equals(object? obj) => obj is StateValue<T> other && Equals(other);
-
-    /// <inheritdoc/>
-    public override int GetHashCode() => HasValue ? EqualityComparer<T>.Default.GetHashCode(_value!) : 0;
-
-    /// <summary>Determines whether two <see cref="StateValue{T}"/> instances are equal.</summary>
-    /// <param name="left">The left operand.</param>
-    /// <param name="right">The right operand.</param>
-    /// <returns><see langword="true"/> when the instances are equal.</returns>
-    public static bool operator ==(StateValue<T> left, StateValue<T> right) => left.Equals(right);
-
-    /// <summary>Determines whether two <see cref="StateValue{T}"/> instances are unequal.</summary>
-    /// <param name="left">The left operand.</param>
-    /// <param name="right">The right operand.</param>
-    /// <returns><see langword="true"/> when the instances are not equal.</returns>
-    public static bool operator !=(StateValue<T> left, StateValue<T> right) => !left.Equals(right);
+    /// <summary>Returns the stored value as text, or an empty string when no value is present.</summary>
+    /// <returns>The text form, the same as <see cref="System.Nullable{T}.ToString"/> returns.</returns>
+    public override string ToString() => HasValue ? _value.ToString() ?? string.Empty : string.Empty;
 }

@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Prosody.Errors;
 using Prosody.Extensions;
+using Prosody.Infrastructure;
 using Prosody.Native;
 
 namespace Prosody.Logging;
@@ -71,10 +73,10 @@ public static class ProsodyLogging
     /// is disposed while the process keeps running — it forces the export that the
     /// batch span processor and periodic metric reader would otherwise defer to
     /// their timers. For a deterministic final export at process exit, prefer
-    /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes.
+    /// <see cref="ShutdownTelemetry"/>. Blocks until the export completes. Do not call it from a handler.
     /// </remarks>
-    /// <exception cref="Native.FfiException">Thrown if the span or metric exporter fails to flush.</exception>
-    public static void FlushTelemetry() => ProsodyFfiMethods.FlushTelemetry();
+    /// <exception cref="ProsodyException">Thrown if the span or metric exporter fails to flush.</exception>
+    public static void FlushTelemetry() => NativeErrors.Run(ProsodyFfiMethods.FlushTelemetry);
 
     /// <summary>
     /// Flushes and shuts down the process-global telemetry pipeline. A safe no-op
@@ -86,10 +88,10 @@ public static class ProsodyLogging
     /// sibling client. This runs automatically once via
     /// <see cref="AppDomain.ProcessExit"/> after logging is configured; call it
     /// directly only when managing process teardown yourself. Blocks until the
-    /// final export completes.
+    /// final export completes. Do not call it from a handler.
     /// </remarks>
-    /// <exception cref="Native.FfiException">Thrown if the span or metric pipeline fails to shut down.</exception>
-    public static void ShutdownTelemetry() => ProsodyFfiMethods.ShutdownTelemetry();
+    /// <exception cref="ProsodyException">Thrown if the span or metric pipeline fails to shut down.</exception>
+    public static void ShutdownTelemetry() => NativeErrors.Run(ProsodyFfiMethods.ShutdownTelemetry);
 
     /// <summary>
     /// Registers a one-shot <see cref="AppDomain.ProcessExit"/> handler that shuts
@@ -109,7 +111,7 @@ public static class ProsodyLogging
             {
                 ShutdownTelemetry();
             }
-            catch (Native.FfiException)
+            catch (ProsodyException)
             {
                 // Best-effort at process exit: a telemetry shutdown failure must not
                 // fault a process that is already tearing down.

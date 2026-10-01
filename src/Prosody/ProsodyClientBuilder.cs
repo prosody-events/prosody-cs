@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Prosody.Configuration;
+using Prosody.Errors;
 using Prosody.State;
 
 namespace Prosody;
@@ -271,8 +272,8 @@ public sealed class ProsodyClientBuilder
     /// <returns>This builder for chaining.</returns>
     /// <remarks>
     /// Registration is applied before the client subscribes. Each definition is the single source of
-    /// typing: pass the same object to a <c>State</c> overload on <c>ProsodyContext</c> in a handler
-    /// to bind a typed handle.
+    /// typing: pass it, or an equal definition, to a <c>State</c> overload on <c>ProsodyContext</c> in
+    /// a handler to bind a typed handle.
     /// </remarks>
     /// <example>
     /// <code>
@@ -346,6 +347,9 @@ public sealed class ProsodyClientBuilder
     /// Creates a new <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
     /// <returns>A new <see cref="ProsodyClient"/> instance.</returns>
+    /// <exception cref="InvalidOperationException">The options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Prosody cannot connect to Kafka or Cassandra.</exception>
     /// <remarks>
     /// <para>
     /// This method validates configuration, connects to Kafka, and allocates resources.
@@ -358,12 +362,8 @@ public sealed class ProsodyClientBuilder
     /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>BuildAsync()</c>.
     /// </para>
     /// </remarks>
-    [RequiresUnreferencedCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization."
-    )]
-    [RequiresDynamicCode(
-        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation."
-    )]
+    [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(ProsodyClient.DefaultResolverAotWarning)]
     public Task<ProsodyClient> BuildAsync()
     {
         _options.Validate();

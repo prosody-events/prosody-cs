@@ -5,14 +5,13 @@ namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
 /// Shared keyed-state definitions and payload records for the integration suite. Mirrors the JS
-/// reference <c>STATE_DEFS</c> — one of every kind × payload — plus the scalar/array/source-gen and
+/// reference <c>STATE_DEFS</c> — one of every kind × payload and a set — plus the scalar/array/source-gen and
 /// missing-vs-default pins the C# suite adds.
 /// </summary>
 /// <remarks>
 /// Fixed names are safe because <see cref="IntegrationTestContext"/> mints a unique group id per
 /// context and identity is keyed by <c>(group_id, state_type, name)</c>, so every context is fully
-/// isolated. Definitions carry no TTL, which avoids the set-level <c>Ttl &gt; StateRecoveryDelay</c>
-/// cross-rule.
+/// isolated. Definitions carry no TTL.
 /// </remarks>
 internal static class StateTestSupport
 {
@@ -23,16 +22,12 @@ internal static class StateTestSupport
     public static readonly ValueStateDefinition<RichState> Rich = StateDefinition.Value<RichState>("rich");
 
     /// <summary>
-    /// A deque collection of a bare scalar (scalar/array round-trip pin). Read back by a fresh client
-    /// after a consumer restart so the item travels the full serialize/durable/recover/deserialize
-    /// path rather than being served from an in-session materialized cell.
+    /// A deque collection of a bare scalar. A fresh client reads it back after a consumer restart, so
+    /// each stored item travels the full serialize and recover path.
     /// </summary>
     public static readonly DequeStateDefinition<int> ScalarDeque = StateDefinition.Deque<int>("scalarDeque");
 
-    /// <summary>
-    /// A deque collection of a bare array (scalar/array round-trip pin). Exercised the same way as
-    /// <see cref="ScalarDeque"/>.
-    /// </summary>
+    /// <summary>A deque collection of a bare array, read back like <see cref="ScalarDeque"/>.</summary>
     public static readonly DequeStateDefinition<int[]> ArrayDeque = StateDefinition.Deque<int[]>("arrayDeque");
 
     /// <summary>A string-keyed ordered-map collection of an integer value.</summary>
@@ -52,6 +47,9 @@ internal static class StateTestSupport
         "boundedDeque",
         capacity: 3
     );
+
+    /// <summary>A set collection of string members.</summary>
+    public static readonly SetStateDefinition Tags = StateDefinition.Set("tags");
 
     /// <summary>A single-value message collection.</summary>
     public static readonly MessageValueDefinition<StateMessagePayload> LastMsg =
@@ -77,6 +75,7 @@ internal static class StateTestSupport
         Backlog,
         BoolDeque,
         BoundedDeque,
+        Tags,
         LastMsg,
         MsgIndex,
         MsgLog,

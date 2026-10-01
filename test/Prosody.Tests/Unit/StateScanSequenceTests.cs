@@ -152,7 +152,7 @@ public sealed class StateScanSequenceTests
     }
 
     [Fact]
-    public async Task DisposeQueuedBehindActiveMoveNext_ClosesOnce_NoRace()
+    public async Task DisposeQueuedBehindActiveMoveNext_ClosesOnce_RepeatsSafely()
     {
         var cursor = new FakeStateCursor<byte[]>(Chunk("a")) { PullRelease = new TaskCompletionSource() };
         var sequence = Sequence(() => cursor, Decode, CancellationToken.None);
@@ -161,13 +161,17 @@ public sealed class StateScanSequenceTests
         var move = enumerator.MoveNextAsync().AsTask();
         await cursor.PullStarted.Task;
         var dispose = enumerator.DisposeAsync().AsTask();
+        var queuedMove = enumerator.MoveNextAsync().AsTask();
 
         cursor.PullRelease.SetResult();
         var moved = await move;
         await dispose;
+        var queuedMoved = await queuedMove;
+        await enumerator.DisposeAsync();
 
         Assert.Multiple(
             () => Assert.True(moved),
+            () => Assert.False(queuedMoved),
             () => Assert.Equal(1, cursor.CloseCalls),
             () => Assert.False(cursor.CloseDuringActivePull)
         );

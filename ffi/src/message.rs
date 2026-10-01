@@ -12,13 +12,7 @@ use prosody::consumer::message::ConsumerMessage;
 
 /// A Kafka message received from a consumer.
 ///
-/// Wraps prosody's [`ConsumerMessage`] and exposes message metadata and payload
-/// through FFI-safe accessor methods. The payload bytes are copied verbatim
-/// from the wire by [`JsonBinaryMessageCodec`] when the message is decoded.
-/// Each accessor clones once into the FFI return buffer as required by
-/// `UniFFI`.
-///
-/// [`JsonBinaryMessageCodec`]: prosody::codec::JsonBinaryMessageCodec
+/// Each accessor clones its value once into the FFI return buffer.
 #[derive(uniffi::Object)]
 pub struct Message {
     /// The underlying prosody message.
@@ -36,12 +30,6 @@ pub struct ExciseMessage {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Message {
-    /// Creates a new `Message` from a [`ConsumerMessage`].
-    #[must_use]
-    pub fn new(inner: ConsumerMessage<BinaryPayload>) -> Self {
-        Self { inner }
-    }
-
     /// Clones the wrapped consumer message for a keyed-state message write.
     ///
     /// [`ConsumerMessage`] is cheaply cloneable (it shares its value and
@@ -90,11 +78,24 @@ impl Message {
     pub fn payload(&self) -> Vec<u8> {
         self.inner.payload().bytes.clone()
     }
+
+    /// The source system that produced this message, when its headers name
+    /// one.
+    #[must_use]
+    pub fn source_system(&self) -> Option<String> {
+        self.inner.source_system().map(ToString::to_string)
+    }
+
+    /// Whether the sender waits for a response to this message.
+    #[must_use]
+    pub fn is_response_requested(&self) -> bool {
+        self.inner.response_requested()
+    }
 }
 
 impl From<ConsumerMessage<BinaryPayload>> for Message {
     fn from(inner: ConsumerMessage<BinaryPayload>) -> Self {
-        Self::new(inner)
+        Self { inner }
     }
 }
 
@@ -134,5 +135,18 @@ impl ExciseMessage {
     #[must_use]
     pub fn key(&self) -> String {
         self.inner.key().to_string()
+    }
+
+    /// The source system that produced this record, when its headers name
+    /// one.
+    #[must_use]
+    pub fn source_system(&self) -> Option<String> {
+        self.inner.source_system().map(ToString::to_string)
+    }
+
+    /// Whether the sender waits for a response to this record.
+    #[must_use]
+    pub fn is_response_requested(&self) -> bool {
+        self.inner.response_requested()
     }
 }

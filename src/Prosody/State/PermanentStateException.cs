@@ -6,8 +6,9 @@ namespace Prosody.State;
 /// A permanent keyed-state failure that can never succeed for this event.
 /// </summary>
 /// <remarks>
-/// Reserved for configuration or deployment mistakes: binding an unregistered collection, a
-/// registered-identity mismatch, or a duplicate name. Because it implements
+/// Raised for configuration or deployment mistakes, such as binding an unregistered collection, a
+/// registered-identity mismatch, or a duplicate name, and for a JSON <see langword="null"/> write.
+/// Use <c>ClearAsync</c> or <c>RemoveAsync</c> to delete. Because it implements
 /// <see cref="IPermanentError"/>, rethrowing it from a handler classifies the event permanent
 /// through the existing handler bridge, with no state-specific bridge changes.
 /// </remarks>

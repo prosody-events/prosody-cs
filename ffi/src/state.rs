@@ -1,15 +1,16 @@
-//! Shared keyed-state types and validation.
+//! Shared keyed-state types, validation, and trace helpers.
 
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
-use opentelemetry::Context;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::trace::FutureExt;
-use prosody::codec::{BinaryPayload, ErasedStateCodec};
+use opentelemetry::trace::{FutureExt, WithContext};
+use prosody::codec::BinaryPayload;
 use prosody::consumer::message::ConsumerMessage;
-use prosody::state::Direction;
+use prosody::state::{Direction, StoreOutcome as CoreStoreOutcome};
+use tracing::{Span, debug};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::error::FfiError;
 use crate::message::Message;
@@ -32,22 +33,31 @@ impl From<ScanDirection> for Direction {
     }
 }
 
-/// A carrier consumed while its OpenTelemetry context is extracted.
-///
-/// The owned wrapper keeps synchronous scan methods compatible with the
-/// required by-value FFI argument without a lint exception.
-pub(crate) struct OwnedCarrier(HashMap<String, String>);
+/// The effect of a commit or a rollback.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum StoreOutcome {
+    /// The call wrote or discarded buffered operations.
+    Applied,
+    /// Nothing was buffered.
+    NoOp,
+}
 
-impl OwnedCarrier {
-    /// Creates an owned carrier.
-    pub(crate) fn new(carrier: HashMap<String, String>) -> Self {
-        Self(carrier)
+impl From<CoreStoreOutcome> for StoreOutcome {
+    fn from(outcome: CoreStoreOutcome) -> Self {
+        match outcome {
+            CoreStoreOutcome::Applied => Self::Applied,
+            CoreStoreOutcome::NoOp => Self::NoOp,
+        }
     }
+}
 
-    /// Extracts the context and consumes the carrier.
-    pub(crate) fn into_context(self, propagator: &TextMapCompositePropagator) -> Context {
-        propagator.extract(&self.0)
-    }
+/// Runs `operation` in the caller's trace context.
+pub(crate) fn in_context<F: Future>(
+    propagator: &TextMapCompositePropagator,
+    carrier: &HashMap<String, String>,
+    operation: F,
+) -> WithContext<F> {
+    operation.with_context(propagator.extract(carrier))
 }
 
 /// Runs one state operation with the caller's trace context.
@@ -59,10 +69,23 @@ pub(crate) async fn traced<T, E>(
 where
     E: Into<FfiError>,
 {
-    operation
-        .with_context(propagator.extract(&carrier))
+    in_context(propagator, &carrier, operation)
         .await
         .map_err(Into::into)
+}
+
+/// Makes the caller's trace context the parent of `span` and returns `span`.
+///
+/// A failure to set the parent is logged at debug level. The span stays usable.
+pub(crate) fn with_parent(
+    span: Span,
+    propagator: &TextMapCompositePropagator,
+    carrier: &HashMap<String, String>,
+) -> Span {
+    if let Err(error) = span.set_parent(propagator.extract(carrier)) {
+        debug!("failed to set parent span: {error:#}");
+    }
+    span
 }
 
 /// Returns the bytes from an optional binary payload.
@@ -72,25 +95,11 @@ pub(crate) fn into_bytes(payload: Option<BinaryPayload>) -> Option<Vec<u8>> {
 
 /// Wraps one resolved Kafka message for FFI.
 pub(crate) fn into_message(message: ConsumerMessage<BinaryPayload>) -> Arc<Message> {
-    Arc::new(Message::new(message))
+    Arc::new(message.into())
 }
 
 /// Converts an FFI deque index to the platform index type.
 pub(crate) fn platform_index(index: u64) -> Result<usize, FfiError> {
     usize::try_from(index)
         .map_err(|_| FfiError::TransientState("index exceeds platform range".to_owned()))
-}
-
-/// Rejects a JSON `null` document before it reaches the state codec.
-pub(crate) fn reject_null(
-    payload: &BinaryPayload,
-    collection: &str,
-    advice: &str,
-) -> Result<(), FfiError> {
-    if payload.is_absent_sentinel() {
-        return Err(FfiError::TransientState(format!(
-            "collection {collection:?}: JSON null is not a storable value{advice}"
-        )));
-    }
-    Ok(())
 }

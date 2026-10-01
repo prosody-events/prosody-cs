@@ -5,77 +5,91 @@ using Prosody.Infrastructure;
 namespace Prosody.State;
 
 /// <summary>
-/// Internal glue between the public keyed-state surface and the generated native handles: error
-/// translation, carrier construction, cancellation-honoring dispatch, and JSON item marshaling.
+/// Internal glue between the public keyed-state surface and the generated native handles: carrier
+/// construction, cancellation-honoring dispatch, and JSON item marshaling.
 /// </summary>
 internal static class StateInterop
 {
     /// <summary>
-    /// Translates a native state failure into the matching public state exception, recovering the
-    /// category from the generated exception <b>type</b>. An untagged native error passes through
-    /// unchanged (it is not a categorized state error).
+    /// Runs one asynchronous native state operation with a fresh carrier and
+    /// <see cref="NativeErrors.RunAsync(Func{Task}, string?)"/>. A cancelled token faults the task with
+    /// <see cref="OperationCanceledException"/> and starts no operation. A started native operation
+    /// always runs to completion, so no later operation races it on the same context.
     /// </summary>
-    internal static Exception Translate(Native.FfiException error) =>
-        error switch
-        {
-            Native.FfiException.PermanentState permanent => new PermanentStateException(permanent.Message, permanent),
-            Native.FfiException.TransientState transient => new TransientStateException(transient.Message, transient),
-            _ => error,
-        };
-
-    /// <summary>
-    /// Runs one asynchronous native state operation, honoring cancellation at entry and translating a
-    /// categorized failure. An already-dispatched native op is awaited to completion and never
-    /// abandoned, so no further op races it on the same context.
-    /// </summary>
-    internal static async Task RunAsync(Func<Task> operation, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            await operation().ConfigureAwait(false);
-        }
-        catch (Native.FfiException ex)
-        {
-            throw Translate(ex);
-        }
-    }
-
-    /// <summary>
-    /// Runs one asynchronous native state operation that produces a value, honoring cancellation at
-    /// entry and translating a categorized failure.
-    /// </summary>
-    internal static async Task<TResult> RunAsync<TResult>(
-        Func<Task<TResult>> operation,
+    internal static async Task RunAsync(
+        Func<Dictionary<string, string>, Task> operation,
         CancellationToken cancellationToken
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        try
-        {
-            return await operation().ConfigureAwait(false);
-        }
-        catch (Native.FfiException ex)
-        {
-            throw Translate(ex);
-        }
+        await NativeErrors.RunAsync(() => operation(CreateCarrier())).ConfigureAwait(false);
+    }
+
+    /// <summary>Runs one asynchronous native state operation that produces a value, like <see cref="RunAsync(Func{Dictionary{string, string}, Task}, CancellationToken)"/>.</summary>
+    internal static async Task<TResult> RunAsync<TResult>(
+        Func<Dictionary<string, string>, Task<TResult>> operation,
+        CancellationToken cancellationToken
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await NativeErrors.RunAsync(() => operation(CreateCarrier())).ConfigureAwait(false);
+    }
+
+    /// <summary>Runs one native commit or rollback and converts its outcome.</summary>
+    internal static Task<StoreOutcome> RunOutcomeAsync(
+        Func<Dictionary<string, string>, Task<Native.StoreOutcome>> operation,
+        CancellationToken cancellationToken
+    ) => RunAsync(async carrier => ToPublic(await operation(carrier).ConfigureAwait(false)), cancellationToken);
+
+    /// <summary>Opens a lazy scan of the keys that <paramref name="query"/> selects.</summary>
+    internal static IAsyncEnumerable<string> Keys(
+        Func<Native.KeyQuery, Native.IKeyCursor> open,
+        KeyQuery query,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IKeyCursor, string, string>(
+            () => NativeErrors.Run(() => open(native)),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            static key => key,
+            cancellationToken
+        );
     }
 
     /// <summary>
-    /// Runs one synchronous native call (a handle vend or a scan open), translating a categorized
-    /// failure into the matching public state exception.
+    /// Validates a query limit. The exception names <paramref name="property"/>, the query property
+    /// that received the value.
     /// </summary>
-    internal static TResult RunSync<TResult>(Func<TResult> operation)
+    internal static int? PositiveLimit(int? value, string property) =>
+        value is <= 0 ? throw new ArgumentOutOfRangeException(property, value, $"{property} must be positive.") : value;
+
+    /// <summary>
+    /// Reads the deque element <paramref name="fromEnd"/> places before the end. The position is the
+    /// count minus <paramref name="fromEnd"/>. A position before the front reads absent.
+    /// </summary>
+    internal static async Task<StateValue<T>> GetFromEndAsync<T>(
+        int fromEnd,
+        Func<Task<int>> count,
+        Func<int, Task<StateValue<T>>> get
+    )
+        where T : notnull
     {
-        try
-        {
-            return operation();
-        }
-        catch (Native.FfiException ex)
-        {
-            throw Translate(ex);
-        }
+        var position = await count().ConfigureAwait(false) - fromEnd;
+        return position < 0 ? StateValue<T>.None : await get(position).ConfigureAwait(false);
     }
+
+    /// <summary>Maps a native store outcome to the public enum.</summary>
+    internal static StoreOutcome ToPublic(Native.StoreOutcome outcome) =>
+        outcome switch
+        {
+            Native.StoreOutcome.Applied => StoreOutcome.Applied,
+            Native.StoreOutcome.NoOp => StoreOutcome.NoOp,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown native store outcome."),
+        };
 
     /// <summary>
     /// Maps a public scan direction to the native enum. An out-of-range value is a caller mistake
@@ -92,7 +106,8 @@ internal static class StateInterop
     /// <summary>Creates a fresh trace-propagation carrier for one native operation.</summary>
     internal static Dictionary<string, string> CreateCarrier()
     {
-        var carrier = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Standard propagation adds at most traceparent, tracestate, and baggage.
+        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
         TracePropagation.Inject(carrier);
         return carrier;
     }
@@ -102,40 +117,33 @@ internal static class StateInterop
         (JsonTypeInfo<T>)options.GetTypeInfo(typeof(T));
 
     /// <summary>
-    /// Serializes a JSON value to raw bytes, rejecting a <see langword="null"/> (or null-serializing)
-    /// value before it crosses the boundary. The remediation clause names the delete verb for the
-    /// collection (for example <c>ClearAsync</c> or <c>RemoveAsync</c>).
+    /// Serializes a value for a keyed-state write. A value with no JSON form is a caller mistake and
+    /// classifies transient. Prosody rejects a JSON <see langword="null"/> as permanent.
     /// </summary>
-    internal static byte[] SerializeJsonOrThrowNull<T>(T value, JsonTypeInfo<T> typeInfo, string remediation)
+    internal static byte[] SerializeJson<T>(T value, JsonTypeInfo<T> typeInfo)
     {
-        if (value is null)
-        {
-            throw new NullValueException(
-                $"Cannot write a null value: JSON null is not a storable value. {remediation}"
-            );
-        }
-
-        byte[] bytes;
         try
         {
-            bytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
+            return JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
         }
         catch (Exception ex) when (ex is JsonException or NotSupportedException)
         {
-            throw new TransientStateException($"Cannot serialize the value for a keyed-state write. {remediation}", ex);
+            throw new TransientStateException("Cannot serialize the value for a keyed-state write.", ex);
         }
-
-        if (IsJsonNullToken(bytes))
-        {
-            throw new NullValueException($"Cannot write a value that serializes to JSON null. {remediation}");
-        }
-
-        return bytes;
     }
 
     /// <summary>Projects a native JSON map entry into a typed key-value pair.</summary>
     internal static KeyValuePair<string, T> JsonMapEntry<T>(Native.JsonMapEntry item, JsonTypeInfo<T> typeInfo)
         where T : notnull => KeyValuePair.Create(item.Key, DeserializeJson(item.Bytes, typeInfo));
+
+    /// <summary>Runs one native read with <see cref="RunAsync{TResult}"/> and decodes the optional JSON item.</summary>
+    internal static Task<StateValue<T>> ReadJsonAsync<T>(
+        Func<Dictionary<string, string>, Task<byte[]?>> read,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken cancellationToken
+    )
+        where T : notnull =>
+        RunAsync(async carrier => JsonToValue(await read(carrier).ConfigureAwait(false), typeInfo), cancellationToken);
 
     /// <summary>Projects optional JSON bytes into a typed value.</summary>
     internal static StateValue<T> JsonToValue<T>(byte[]? bytes, JsonTypeInfo<T> typeInfo)
@@ -145,11 +153,4 @@ internal static class StateInterop
         where T : notnull =>
         JsonSerializer.Deserialize(bytes.AsSpan(), typeInfo)
         ?? throw new TransientStateException("Stored keyed-state JSON deserialized to null.");
-
-    private static bool IsJsonNullToken(byte[] bytes) =>
-        bytes.Length == 4
-        && bytes[0] == (byte)'n'
-        && bytes[1] == (byte)'u'
-        && bytes[2] == (byte)'l'
-        && bytes[3] == (byte)'l';
 }

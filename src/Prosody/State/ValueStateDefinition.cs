@@ -8,19 +8,10 @@ public sealed record ValueStateDefinition<T> : StateDefinition
     internal ValueStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         bool published,
         StateReadCache? readCache
     )
-        : base(
-            name,
-            Native.StateKind.Value,
-            Native.StatePayload.Json,
-            ttl,
-            readUncommitted,
-            keysetLimit: null,
-            capacity: null,
-            published,
-            readCache
-        ) { }
+        : base(name, new Native.StateKind.Value(Native.StatePayload.Json), ttl, readUncommitted, published, readCache)
+    { }
 }

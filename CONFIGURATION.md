@@ -36,15 +36,15 @@ Prosody serializes and deserializes payloads with these defaults:
 Override any option via `ConfigureJsonOptions`:
 
 ```csharp
-ProsodyClientBuilder.Create()
+await ProsodyClientBuilder.Create()
     .ConfigureJsonOptions(opts =>
         opts.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
-    .Build();
+    .BuildAsync();
 ```
 
 ## AOT / Trim-safe Usage
 
-By default, `new ProsodyClient(options)` and `ProsodyClientBuilder.Build()` install a `DefaultJsonTypeInfoResolver`,
+By default, `ProsodyClient.CreateAsync(options)` and `ProsodyClientBuilder.BuildAsync()` install a `DefaultJsonTypeInfoResolver`,
 which uses reflection. Both are annotated with `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`.
 
 To eliminate trim/AOT warnings, supply a source-generated context and use the trim-clean overloads:
@@ -55,9 +55,9 @@ To eliminate trim/AOT warnings, supply a source-generated context and use the tr
 internal partial class AppJsonContext : JsonSerializerContext { }
 
 // Register the source-gen context (replaces DefaultJsonTypeInfoResolver)
-ProsodyClientBuilder.Create()
+await ProsodyClientBuilder.Create()
     .ConfigureJsonOptions(opts => opts.TypeInfoResolverChain.Add(AppJsonContext.Default))
-    .Build();
+    .BuildAsync();
 
 // Trim-clean send: pass the JsonTypeInfo directly
 var typeInfo = AppJsonContext.Default.OrderCreated;
@@ -69,7 +69,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `SendAsync<T>(..., JsonTypeInfo<T>, ...)` | Fully trim-clean. |
 | `SendAsync<T>(..., JsonTypeInfo<T>, SendOptions, ...)` | Fully trim-clean; explicit metadata bypasses naming-policy assumptions. |
 | `SendAsync<T>(...)` (convenience) | Annotated; suppress `IL2026`/`IL3050` at call site if source-gen resolver is configured. |
-| `new ProsodyClient(options)` / `Build()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
+| `ProsodyClient.CreateAsync(options)` / `BuildAsync()` | Annotated — installs `DefaultJsonTypeInfoResolver`. Suppress once at startup when using source-gen. |
 | `SubscribeAsync<TPayload>(handler, classifier)` | Zero reflection for error classification — opt-in when you want full explicit control. Full AOT safety also requires the client's `JsonSerializerOptions` to use a source-gen resolver (via `ConfigureJsonOptions`) for payload deserialization. |
 | `SubscribeAsync<TPayload>(handler)` | Annotated — reads `PermanentErrorAttribute` via `Type.GetInterfaceMap`. The BCL call is AOT-compatible, but the trimmer can't propagate DAM through an interface-typed parameter, so the method carries `[RequiresUnreferencedCode]`/`[RequiresDynamicCode]`. |
 
@@ -79,12 +79,16 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 |---|---|---|
 | `BootstrapServers` / `PROSODY_BOOTSTRAP_SERVERS` | Kafka servers to connect to | - |
 | `GroupId` / `PROSODY_GROUP_ID` | Consumer group name | - |
-| `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from | - |
+| `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from. A client that only reads published state needs no topics. | - |
 | `AllowedEvents` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes | (all) |
 | `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
 | `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |
 | `Mode` / - | Processing mode: `Pipeline`, `LowLatency`, or `BestEffort` | `Pipeline` |
-| - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info` |
+| - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info`, with `warn` for `scylla` and `opentelemetry` |
+
+A `PROSODY_LOG` directive replaces the default for its target. A value that names only targets,
+such as `prosody=debug`, keeps other targets at `info`. Set `PROSODY_LOG=opentelemetry=info` to
+restore the OpenTelemetry info events.
 
 ## Requests
 
@@ -114,9 +118,9 @@ Set `Subsystem` to make this client answer requests. Without it, the client cons
 | `ShutdownTimeout` / `PROSODY_SHUTDOWN_TIMEOUT` | Shutdown budget; handlers complete freely before cancellation fires near the deadline | 30s |
 | `StallThreshold` / `PROSODY_STALL_THRESHOLD` | Report unhealthy if no progress for this long | 5m |
 | `ProbePort` / `PROSODY_PROBE_PORT` | HTTP port for health checks; use `0` or the environment value `none` to disable | 8000 |
-| - / `PROSODY_STATISTICS_INTERVAL` | How often librdkafka reports client statistics; must be between 1ms and 24h | 5s |
+| `StatisticsInterval` / `PROSODY_STATISTICS_INTERVAL` | How often librdkafka reports client statistics; must be between 1ms and 24h | 5s |
 | `FailureTopic` / `PROSODY_FAILURE_TOPIC` | Send unprocessable messages here (dead letter queue) | - |
-| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Global shared cache capacity across all partitions for message deduplication. Must be at least 1. | 8192 |
+| `IdempotenceCacheSize` / `PROSODY_IDEMPOTENCE_CACHE_SIZE` | Capacity of the producer idempotence cache and of the consumer deduplication cache. Must be at least 1. | 8192 |
 | `IdempotenceVersion` / `PROSODY_IDEMPOTENCE_VERSION` | Version string for cache-busting dedup hashes | 1 |
 | `IdempotenceTtl` / `PROSODY_IDEMPOTENCE_TTL` | TTL for dedup records in Cassandra (minimum 1 minute) | 7 days |
 | `SlabSize` / `PROSODY_SLAB_SIZE` | Timer storage granularity (rarely needs changing) | 1h |
@@ -214,14 +218,14 @@ variable applies, then the default.
 | Property / Environment Variable | Description | Default |
 |---|---|---|
 | `StateCollections` / - | Collections to register before subscribe; duplicate names are rejected. Programmatic only (not IConfiguration-bindable). | (none) |
-| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Disk workspace for the local keyed-state cache; each live client needs its own directory. Set a mounted path in production. | per-client temp dir |
+| `StateCacheDir` / `PROSODY_STATE_CACHE_DIR` | Directory that holds the local keyed-state caches. Each consumer opens its cache in a new subdirectory and deletes it when the consumer is released, so clients can share the directory. Set a mounted path in production. | `<temp>/prosody/keyed-state` |
 | `StateOwnedCacheSize` / `PROSODY_STATE_OWNED_CACHE_SIZE` | Capacity of the owning keyed-state cache; accepts sizes such as `64 MiB` or `500 MB`. | storage-engine default |
+| `StateMemtableSize` / `PROSODY_STATE_MEMTABLE_SIZE` | Bytes of in-memory writes the local keyed-state cache holds for each assigned partition before it flushes them to disk; memory use scales with the number of assigned partitions. | storage-engine default of 64 MiB |
 | `StateReadCacheSize` / `PROSODY_STATE_READ_CACHE_SIZE` | Capacity of the published-state read cache; accepts sizes such as `1 MiB`. | `StateOwnedCacheSize` or `PROSODY_STATE_OWNED_CACHE_SIZE` when set; otherwise 1 MiB |
 | `StateReadCache` / `PROSODY_STATE_READ_CACHE_TTL` | Default published-read cache policy. Use `StateReadCache.For(ttl)`, `StateReadCache.Disabled`, or the environment value `none`. | 5s |
-| `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON collections whose definitions set `published: true`. | (none) |
-| `StateRecoveryDelay` / `PROSODY_STATE_RECOVERY_DELAY` | Delay between staging a provisional cell and the recovery sweep; every collection TTL must strictly exceed this. Whole seconds, min 1s. | 30s |
+| `Subsystem` / `PROSODY_SUBSYSTEM` | Subsystem name used to advertise JSON and set collections whose definitions set `published: true`. | (none) |
 
-Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` and their `Message*` variants).
+Declare each collection with a `StateDefinition` factory (`Value` / `Map` / `Deque` / `Set` and the `Message*` variants).
 The [API reference](README.md#api-reference) documents these factories. Their parameters map to these fields:
 
 Published collections require `Subsystem`. Keep it configured for one deployment after removing `published: true` so readers can observe the collection's retirement.
@@ -229,9 +233,9 @@ Published collections require `Subsystem`. Keep it configured for one deployment
 | Option | Applies to | Description | Default |
 |---|---|---|---|
 | `name` | all | Collection name; non-empty and unique within the client. | (required) |
-| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`, must exceed the recovery delay. | (none) |
-| `published` | JSON | Advertises the owned collection for cross-group read-only access. | `false` |
-| `readCache` | JSON | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
+| `ttl` | all | Per-write TTL as a `TimeSpan`; whole seconds, `1..=630720000`. | (none) |
+| `published` | JSON and set | Advertises the owned collection for cross-group read-only access. | `false` |
+| `readCache` | JSON and set | Per-reader cache override: `StateReadCache.For(ttl)` or `StateReadCache.Disabled`. | inherit |
 | `readUncommitted` | all | Opt out of transactional staging (read-uncommitted). | false |
-| `keysetLimit` | map only | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
+| `keysetLimit` | map and set | Ordered-scan bound `0..=4096` (`0` disables ordered-scan tracking). | 128 |
 | `capacity` | deque only | Maximum slot count (at least 1), enforced lazily on push. Runtime-only and may change across deploys. | unbounded |

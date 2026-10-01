@@ -8,19 +8,16 @@ public sealed record DequeStateDefinition<T> : StateDefinition
     internal DequeStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         int? capacity,
         bool published,
         StateReadCache? readCache
     )
         : base(
             name,
-            Native.StateKind.Deque,
-            Native.StatePayload.Json,
+            new Native.StateKind.Deque(Native.StatePayload.Json, Bound(capacity)),
             ttl,
             readUncommitted,
-            keysetLimit: null,
-            capacity,
             published,
             readCache
         ) { }

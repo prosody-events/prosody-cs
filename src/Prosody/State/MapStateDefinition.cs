@@ -8,19 +8,16 @@ public sealed record MapStateDefinition<TValue> : StateDefinition
     internal MapStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         int? keysetLimit,
         bool published,
         StateReadCache? readCache
     )
         : base(
             name,
-            Native.StateKind.Map,
-            Native.StatePayload.Json,
+            new Native.StateKind.Map(Native.StatePayload.Json, Bound(keysetLimit)),
             ttl,
             readUncommitted,
-            keysetLimit,
-            capacity: null,
             published,
             readCache
         ) { }

@@ -5,7 +5,7 @@ namespace Prosody.State;
 /// </summary>
 /// <remarks>
 /// The handle is directly enumerable: <c>await foreach (var element in deque)</c> iterates the live
-/// elements front-to-back — equivalent to <see cref="EnumerateAsync"/> with
+/// elements front-to-back — equivalent to <see cref="EnumerateAsync(ScanDirection, CancellationToken)"/> with
 /// <see cref="ScanDirection.Forward"/>. Each enumeration opens a fresh cursor.
 /// </remarks>
 /// <typeparam name="T">
@@ -16,8 +16,8 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     where T : notnull
 {
     /// <summary>
-    /// Appends an element at the back. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient); a deque stores only concrete values.
+    /// Appends an element at the back. A value that serializes to JSON <see langword="null"/> fails
+    /// with a <see cref="PermanentStateException"/>; a deque stores only concrete values.
     /// </summary>
     /// <param name="value">The element to append.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
@@ -25,8 +25,8 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     Task PushBackAsync(T value, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Prepends an element at the front. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient); a deque stores only concrete values.
+    /// Prepends an element at the front. A value that serializes to JSON <see langword="null"/> fails
+    /// with a <see cref="PermanentStateException"/>; a deque stores only concrete values.
     /// </summary>
     /// <param name="value">The element to prepend.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
@@ -49,10 +49,31 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     Task ClearAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Reads the element at <paramref name="index"/> (front-relative, zero-based).</summary>
-    /// <param name="index">The zero-based index from the front. A negative index is a caller mistake (transient).</param>
+    /// <param name="index">The zero-based index from the front.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
     /// <returns>The element, or an absent <see cref="StateValue{T}"/> when the index is out of range.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
     Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the element at <paramref name="index"/>, which can count from the back:
+    /// <c>GetAsync(^1)</c> reads the back element.
+    /// </summary>
+    /// <remarks>A from-end index reads the count, then the element.</remarks>
+    /// <param name="index">The index. A from-end index counts back from the end.</param>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>
+    /// The element, or an absent <see cref="StateValue{T}"/> when the index is out of range. The
+    /// index <c>^0</c> is out of range.
+    /// </returns>
+    Task<StateValue<T>> GetAsync(Index index, CancellationToken cancellationToken = default) =>
+        index.IsFromEnd
+            ? StateInterop.GetFromEndAsync(
+                index.Value,
+                () => CountAsync(cancellationToken),
+                position => GetAsync(position, cancellationToken)
+            )
+            : GetAsync(index.Value, cancellationToken);
 
     /// <summary>
     /// Reads the front element without a length round trip — exactly
@@ -98,18 +119,31 @@ public interface IDequeState<T> : IAsyncEnumerable<T>
     IAsyncEnumerable<T> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateAsync(new PositionQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
-    /// Durably commits the buffered operations mid-handler. Returns no value — the erased seam
-    /// drops the applied/no-op outcome.
+    /// Enumerates the live elements that <paramref name="query"/> selects. Valid only within the
+    /// handler invocation that opened it. Early exit closes the underlying cursor.
     /// </summary>
+    /// <param name="query">The positions to select and their order.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of the selected elements.</returns>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    IAsyncEnumerable<T> EnumerateAsync(PositionQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>Durably commits the buffered operations mid-handler.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the commit is durable.</returns>
-    Task CommitAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were written, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the rollback is applied.</returns>
-    Task RollbackAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were discarded, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default);
 }
