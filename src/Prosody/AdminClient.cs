@@ -54,6 +54,13 @@ public sealed class AdminClient : IDisposable
     }
 
     /// <summary>
+    /// Creates a new Kafka topic with the cluster default cleanup policy and retention.
+    /// </summary>
+    /// <inheritdoc cref="CreateTopicAsync(string, ushort, ushort, string?, TimeSpan?)"/>
+    public Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor) =>
+        CreateTopicAsync(name, partitionCount, replicationFactor, null, null);
+
+    /// <summary>
     /// Deletes a Kafka topic.
     /// </summary>
     /// <param name="name">The name of the topic to delete.</param>

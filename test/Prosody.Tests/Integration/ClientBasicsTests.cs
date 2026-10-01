@@ -51,4 +51,14 @@ public sealed class ClientBasicsTests(IntegrationTestFixture fixture) : Integrat
         );
         await Fixture.Admin.DeleteTopicAsync(compacted);
     }
+
+    // An assembly built against the three-parameter method must still bind to it.
+    [Fact]
+    public void KeepsThreeParameterCreateTopic() =>
+        Assert.NotNull(
+            typeof(AdminClient).GetMethod(
+                nameof(AdminClient.CreateTopicAsync),
+                [typeof(string), typeof(ushort), typeof(ushort)]
+            )
+        );
 }
