@@ -37,7 +37,7 @@ jobs:
         with:
           fetch-depth: 0
       - id: rail
-        uses: loadingalias/cargo-rail-action@ebc8ef2740efefe2cd5c42826344a8f1213113ae # v6
+        uses: loadingalias/cargo-rail-action@4d7bebe671430eee0db376de3f943d8de26e78de # v10.1.0
         with:
           since: ${{ github.event_name == 'push' && github.event.before || '' }}
 
