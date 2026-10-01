@@ -40,14 +40,10 @@ public sealed record KeyQuery
 
     /// <summary>
     /// Gets the ascending range of keys to keep, such as <c>new KeyRange("a", "m")</c>. The end is
-    /// exclusive. A <see langword="null"/> start or end leaves that side open.
+    /// exclusive. A <see langword="null"/> start or end leaves that side open. A descending range
+    /// selects no keys.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The start of the range is after its end.</exception>
-    public KeyRange? Range
-    {
-        get;
-        init => field = Ascending(value, nameof(Range));
-    }
+    public KeyRange? Range { get; init; }
 
     /// <summary>Gets the maximum number of returned items.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The value is zero or negative.</exception>
@@ -77,40 +73,6 @@ public sealed record KeyQuery
             query.Range is { } range ? new Native.KeyRange(range.Start, range.End) : null,
             (uint?)query.Limit
         );
-    }
-
-    private static KeyRange? Ascending(KeyRange? value, string property) =>
-        value is { Start: { } start, End: { } end } && CompareKeys(start, end) > 0
-            ? throw new ArgumentOutOfRangeException(
-                property,
-                value,
-                "Range must be ascending: Start must not follow End."
-            )
-            : value;
-
-    /// <summary>
-    /// Compares keys by Unicode scalar value. That order matches the UTF-8 byte order that Prosody
-    /// uses. An ordinal comparison of UTF-16 code units does not match it for every key.
-    /// </summary>
-    private static int CompareKeys(string left, string right)
-    {
-        var leftRunes = left.EnumerateRunes();
-        var rightRunes = right.EnumerateRunes();
-        while (true)
-        {
-            var hasLeft = leftRunes.MoveNext();
-            var hasRight = rightRunes.MoveNext();
-            if (!hasLeft || !hasRight)
-            {
-                return hasLeft.CompareTo(hasRight);
-            }
-
-            var order = leftRunes.Current.CompareTo(rightRunes.Current);
-            if (order != 0)
-            {
-                return order;
-            }
-        }
     }
 
     private static Native.KeyEdge? Edge(string? inclusive, string? exclusive) =>

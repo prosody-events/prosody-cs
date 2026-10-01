@@ -65,8 +65,8 @@ public sealed class StateQueryTests
     }
 
     /// <summary>
-    /// Key ranges in every open or closed form translate unchanged. The last row is ascending by
-    /// Unicode scalar value but descending by UTF-16 code unit.
+    /// Key ranges in every open, closed, ascending, or descending form reach the core unchanged. The
+    /// core owns the key order, so a descending range selects no keys and does not throw.
     /// </summary>
     [Theory]
     [InlineData("a", "m")]
@@ -75,24 +75,14 @@ public sealed class StateQueryTests
     [InlineData(null, null)]
     [InlineData("k", "k")]
     [InlineData("\uE000", "\U0001F600")]
+    [InlineData("m", "a")]
+    [InlineData("\U0001F600", "\uE000")]
     public void KeyQuery_TranslatesRangeForms(string? start, string? end)
     {
         Assert.Equal(
             new Native.KeyRange(start, end),
             KeyQuery.ToNative(new KeyQuery { Range = new KeyRange(start, end) }).Range
         );
-    }
-
-    [Theory]
-    [InlineData("m", "a")]
-    [InlineData("\U0001F600", "\uE000")]
-    public void KeyQuery_RejectsADescendingRange(string start, string end)
-    {
-        var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
-            new KeyQuery { Range = new KeyRange(start, end) }
-        );
-
-        Assert.Equal("Range", exception.ParamName);
     }
 
     [Theory]
