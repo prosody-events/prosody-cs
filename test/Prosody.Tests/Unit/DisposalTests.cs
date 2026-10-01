@@ -68,7 +68,7 @@ public sealed class DisposalTests
         }
     }
 
-    private sealed class NoOpHandler : IProsodyHandler<JsonElement>
+    internal sealed class NoOpHandler : IProsodyHandler<JsonElement>
     {
         public Task OnMessageAsync(
             ProsodyContext prosodyContext,
@@ -149,6 +149,25 @@ public sealed class DisposalTests
 
         await client.DisposeAsync();
         Assert.True(IsReleased(native));
+    }
+
+    [Fact]
+    public async Task SendWaitsForTheConnectUnderItsOwnToken()
+    {
+        var build = new Build();
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            client.SendAsync("topic", "key", 1, new CancellationToken(canceled: true))
+        );
+        Assert.Equal(0, build.Attempts);
+
+        using var cts = new CancellationTokenSource();
+        var send = client.SendAsync("topic", "key", 1, cts.Token);
+        await cts.CancelAsync();
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => send.WaitAsync(Deadline, Ct));
+        Assert.Equal(cts.Token, error.CancellationToken);
+        Assert.Equal(1, build.Attempts);
     }
 
     [Fact]

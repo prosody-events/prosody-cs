@@ -1229,6 +1229,8 @@ With sequential startup, hosted services registered after the client start after
 
 The library disposes the client after every hosted service has stopped, inside the host's stop deadline. If the deadline fires first, the wait is abandoned and logged. Disposal never waits on a connect that has not finished.
 
+Dispose the host asynchronously, for example with `await using`. Synchronous disposal starts the client shutdown and returns before the shutdown completes.
+
 `AddProsodyClient` is safe to call more than once with the same section. Every call may add a configure action; only the first binds configuration. A call with a different section throws.
 
 Log messages are emitted under the `Prosody.Native` category.

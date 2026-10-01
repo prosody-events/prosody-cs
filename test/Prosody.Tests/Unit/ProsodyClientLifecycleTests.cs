@@ -90,7 +90,7 @@ public sealed class ProsodyClientLifecycleTests
     }
 
     [Fact]
-    public async Task WorkerUnsubscribingDuringAPendingBuildDoesNotHangHostRunAndTheLateBuildIsReleased()
+    public async Task HostStopDuringAPendingConnectDoesNotHangAndALateSubscribeNeverStarts()
     {
         var pending = new TaskCompletionSource<Native.ProsodyClient>();
         var options = new ClientOptions
@@ -117,17 +117,17 @@ public sealed class ProsodyClientLifecycleTests
         {
             var run = host.RunAsync(Ct);
             await started.Task.WaitAsync(Deadline, Ct);
-            var connect = client.ConnectAsync(Ct);
+            var subscribe = client.SubscribeAsync(new DisposalTests.NoOpHandler());
             lifetime.StopApplication();
             await run.WaitAsync(shutdownTimeout, Ct);
 
-            Assert.False(connect.IsCompleted);
+            Assert.False(subscribe.IsCompleted);
             await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct));
 
-            // A build that settles after the host stops serves no caller and is released.
+            // A connect that completes after the host stops subscribes nothing and is released.
             var native = await Native.ProsodyClient.ProsodyClientAsync(options.ToNative());
             pending.SetResult(native);
-            await Assert.ThrowsAsync<ObjectDisposedException>(() => connect.WaitAsync(Deadline, Ct));
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => subscribe.WaitAsync(Deadline, Ct));
             await DisposalTests.WaitUntilReleasedAsync(native);
         }
         finally
