@@ -74,6 +74,19 @@ public sealed class LoggingTests : IDisposable
     }
 
     [Fact]
+    public async Task ThrowingLoggerDoesNotChangeNativeClientBehavior()
+    {
+        using var provider = new ThrowingLoggerProvider(ThrowFrom.Log);
+        using var factory = new LoggerFactory([provider]);
+        ProsodyLogging.Configure(factory);
+
+        // A producer-only client emits a native "consumer is disabled" event on creation.
+        await CreateProducerOnlyClientAsync();
+
+        Assert.True(provider.ThrownCallCount > 0, "the native side emitted no log event, so this test proves nothing");
+    }
+
+    [Fact]
     public void ConfigureCanBeCalledAgainAfterResetForTesting()
     {
         using var factory1 = new FakeLoggerFactory();
