@@ -60,9 +60,10 @@ public static class ProsodyServiceCollectionExtensions
     /// Invalid configuration throws <see cref="OptionsValidationException"/>.
     /// </para>
     /// <para>
-    /// The service registers one <see cref="ProsodyClient"/>. Construction opens no connection. The first operation connects, or set
-    /// <see cref="ClientOptions.ConnectOnStart"/> to connect when the host starts. A hosted
-    /// lifecycle service disposes the client inside the host's stop deadline.
+    /// The service registers one <see cref="ProsodyClient"/>. Construction opens no connection.
+    /// The first operation connects. Set <see cref="ClientOptions.ConnectOnStart"/> to connect
+    /// when the host starts. A hosted lifecycle service disposes the client inside the host's
+    /// stop deadline.
     /// </para>
     /// <para>
     /// Repeated calls are safe. The first call binds and registers; later calls with the same

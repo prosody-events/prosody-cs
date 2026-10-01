@@ -154,10 +154,10 @@ public sealed partial class ProsodyClient
         CancellationToken cancellationToken
     )
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
         var metadata = options.Metadata(payload, typeInfo);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(payload, typeInfo);
         var carrier = StateInterop.CreateCarrier();
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
 
         await CancellationHelper
             .RunAsync(

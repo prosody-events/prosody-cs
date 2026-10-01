@@ -188,7 +188,6 @@ public sealed partial class ProsodyClient
         CancellationToken cancellationToken
     )
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
         var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
         var request = new Native.NativeRequest(
             topic,
@@ -199,6 +198,7 @@ public sealed partial class ProsodyClient
             Durations.ToNative(timeout),
             StateInterop.CreateCarrier()
         );
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
         return await CompleteRequestAsync(responseType, signal => native.Request(request, signal), cancellationToken)
             .ConfigureAwait(false);
     }

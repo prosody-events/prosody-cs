@@ -378,9 +378,10 @@ public sealed class ProsodyClientBuilder
     /// </summary>
     /// <returns>A <see cref="ProsodyClient"/> that connects on its first operation or on <see cref="ProsodyClient.ConnectAsync"/>.</returns>
     /// <exception cref="InvalidOperationException">The options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
     /// <remarks>
-    /// This method validates configuration. It opens no connection and makes no native call. See <see cref="BuildAsync"/> for
-    /// the JSON resolver behavior; it applies here as well.
+    /// This method validates configuration. It opens no connection and makes no native call.
+    /// The JSON resolver behavior of <see cref="BuildAsync"/> applies here as well.
     /// </remarks>
     [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]
     [RequiresDynamicCode(ProsodyClient.DefaultResolverAotWarning)]

@@ -129,7 +129,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     /// <summary>Connects now instead of on first use. Safe to call more than once.</summary>
     /// <remarks>Use the token to limit the connect wait, for example in a health check or a worker.</remarks>
-    /// <exception cref="OperationCanceledException">The caller's token was cancelled. The build continues.</exception>
+    /// <exception cref="OperationCanceledException">The caller's token was cancelled. The connect continues.</exception>
     /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
     public async Task ConnectAsync(CancellationToken cancellationToken = default) =>
         await NativeAsync(cancellationToken).ConfigureAwait(false);
@@ -200,9 +200,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// Concurrent and repeated calls await the same shutdown operation.
     /// </summary>
     /// <remarks>
-    /// The client is closed first, so no later operation starts a build or reaches the native
-    /// client; each throws <see cref="ObjectDisposedException"/>. A pending build is awaited,
-    /// then shut down. <see cref="DisposeAsync"/> still releases the native handle.
+    /// The client closes first, so a later operation throws <see cref="ObjectDisposedException"/>
+    /// and starts no connect. This method waits for a pending connect, then shuts the native
+    /// client down. <see cref="DisposeAsync"/> still releases the native handle.
     /// </remarks>
     public Task ShutdownAsync() => _shutdown.Value;
 
@@ -231,9 +231,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Closes the client before this call returns. When the build has completed, the returned
-    /// task shuts the native client down and releases it. A pending build is never awaited:
-    /// the release runs when it settles. A shutdown error is logged, not thrown.
+    /// Closes the client before this call returns. When the connect has completed, the returned
+    /// task shuts the native client down and releases it. This method never waits on a pending
+    /// connect: the release runs when the connect completes. A shutdown error is logged, not thrown.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
