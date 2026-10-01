@@ -19,8 +19,8 @@ public interface IValueState<T>
     Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Buffers a write of the value. Writing <see langword="null"/> is a caller mistake rejected
-    /// with a <see cref="NullValueException"/> (transient) — use <see cref="ClearAsync"/> to delete.
+    /// Buffers a write of the value. A value that serializes to JSON <see langword="null"/> fails with
+    /// a <see cref="PermanentStateException"/>. Use <see cref="ClearAsync"/> to delete.
     /// </summary>
     /// <param name="value">The value to store.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
@@ -34,15 +34,20 @@ public interface IValueState<T>
 
     /// <summary>
     /// Durably commits the buffered operations mid-handler (at-least-once; the committed floor
-    /// survives a later rollback or a failed event). Returns no value — the erased seam drops the
-    /// applied/no-op outcome.
+    /// survives a later rollback or a failed event).
     /// </summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the commit is durable.</returns>
-    Task CommitAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were written, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the rollback is applied.</returns>
-    Task RollbackAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were discarded, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default);
 }

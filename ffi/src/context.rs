@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use tracing::{Instrument, debug, info_span};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use opentelemetry::propagation::TextMapCompositePropagator;
+use tracing::{Instrument, info_span};
 
 use prosody::codec::BinaryPayload;
+use prosody::consumer::DemandType as CoreDemandType;
 use prosody::consumer::event_context::BoxEventContext;
 use prosody::timers::TimerType;
 use prosody::timers::datetime::CompactDateTime;
@@ -24,20 +24,40 @@ use crate::error::FfiError;
 use crate::json_deque::JsonDequeStateHandle;
 use crate::map::{JsonMapStateHandle, MessageMapStateHandle};
 use crate::message_deque::MessageDequeStateHandle;
+use crate::runtime::run;
+use crate::set::SetStateHandle;
+use crate::state::with_parent;
 use crate::value::{JsonValueStateHandle, MessageValueStateHandle};
 
-/// Event context passed to message handlers during event processing.
-///
-/// This type wraps Prosody's [`BoxEventContext`] and provides FFI-safe methods
-/// for timer management and cancellation handling. All timer operations are
-/// scoped to the current message key.
-///
-/// Timer operations accept an OpenTelemetry carrier for distributed tracing
-/// context propagation, allowing traces to span across service boundaries.
+/// The demand that one handler call serves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DemandType {
+    /// The first attempt at an event.
+    Normal,
+    /// An attempt after one or more failures.
+    Failure {
+        /// The retry count. It is 1 on the first retry. It is an estimate.
+        retry_attempt: u32,
+    },
+}
+
+impl From<CoreDemandType> for DemandType {
+    fn from(demand: CoreDemandType) -> Self {
+        match demand {
+            CoreDemandType::Normal => Self::Normal,
+            CoreDemandType::Failure { retry } => Self::Failure {
+                retry_attempt: retry,
+            },
+        }
+    }
+}
+
+/// The event context that a message or timer handler receives.
 #[derive(uniffi::Object)]
 pub struct Context {
     inner: BoxEventContext<BinaryPayload>,
     propagator: Arc<TextMapCompositePropagator>,
+    demand: DemandType,
 }
 
 #[expect(
@@ -45,210 +65,172 @@ pub struct Context {
     reason = "UniFFI requires separate impl blocks for exported vs internal methods"
 )]
 impl Context {
-    /// Creates a new context wrapping the given event context and propagator.
+    /// Creates a context for one handler call with the demand it serves.
     #[must_use]
     pub fn new(
         inner: BoxEventContext<BinaryPayload>,
         propagator: Arc<TextMapCompositePropagator>,
+        demand: CoreDemandType,
     ) -> Self {
-        Self { inner, propagator }
+        Self {
+            inner,
+            propagator,
+            demand: demand.into(),
+        }
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[uniffi::export]
 impl Context {
-    /// Checks whether the handler should stop processing.
-    ///
-    /// Handlers should periodically check this flag during long-running
-    /// operations and exit gracefully when it returns `true`. This enables
-    /// cooperative cancellation during consumer shutdown or rebalancing.
+    /// Returns true when the handler should stop.
     #[must_use]
     pub fn should_cancel(&self) -> bool {
         self.inner.should_cancel()
     }
 
-    /// Waits until cancellation is requested.
-    ///
-    /// Use this in a `select!` or similar construct to respond to cancellation
-    /// while awaiting other operations. Completes immediately if cancellation
-    /// has already been requested.
-    pub async fn on_cancel(&self) {
-        self.inner.on_cancel().await;
+    /// Returns the demand that this handler call serves.
+    #[must_use]
+    pub fn demand(&self) -> DemandType {
+        self.demand
     }
 
-    /// Schedules a new timer to fire at the specified time.
-    ///
-    /// The timer is associated with the current message key. When the timer
-    /// fires, the handler will be invoked with a timer event for that key.
-    ///
-    /// Multiple timers can be scheduled for the same key at different times.
+    /// Completes when cancellation is requested.
+    pub async fn on_cancel(self: Arc<Self>) {
+        run(async move { self.inner.on_cancel().await }).await;
+    }
+
+    /// Schedules a timer for the current key.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the scheduling operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn schedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("Schedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .schedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C# ScheduleAsync)
-        let span = info_span!("Schedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .schedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
-    /// Clears all timers for the current key, then schedules a new one.
-    ///
-    /// This is an atomic operation that ensures exactly one timer exists for
-    /// the key after completion. Useful for "snooze" or "reschedule" patterns
-    /// where previous timers should be replaced.
+    /// Replaces all timers for the current key with one timer.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn clear_and_schedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("ClearAndSchedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .clear_and_schedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C#
-        // ClearAndScheduleAsync)
-        let span = info_span!("ClearAndSchedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .clear_and_schedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
-    /// Cancels a timer scheduled for the specified time.
-    ///
-    /// If no timer exists at the given time for the current key, this is a
-    /// no-op.
+    /// Cancels the timer at the given time for the current key.
     ///
     /// # Errors
     ///
-    /// Returns an error if `time` cannot be converted to a valid timestamp
-    /// or if the operation fails.
+    /// Returns an error if the time is not valid or the store operation fails.
     pub async fn unschedule(
-        &self,
+        self: Arc<Self>,
         time: SystemTime,
         carrier: HashMap<String, String>,
     ) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let compact_time = CompactDateTime::try_from(time)?;
+            let span = info_span!("Unschedule", time = %compact_time);
+            let span = with_parent(span, &self.propagator, &carrier);
 
-        let compact_time = CompactDateTime::try_from(time)?;
+            self.inner
+                .unschedule(compact_time, TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        // Create span with extracted context as parent (matches C# UnscheduleAsync)
-        let span = info_span!("Unschedule", time = %compact_time);
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        self.inner
-            .unschedule(compact_time, TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Cancels all timers for the current key.
     ///
-    /// After this call, no timers will be scheduled for the key until new ones
-    /// are explicitly scheduled.
-    ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
-    pub async fn clear_scheduled(&self, carrier: HashMap<String, String>) -> Result<(), FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+    /// Returns an error if the store operation fails.
+    pub async fn clear_scheduled(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<(), FfiError> {
+        run(async move {
+            let span = with_parent(info_span!("ClearScheduled"), &self.propagator, &carrier);
 
-        // Create span with extracted context as parent (matches C# ClearScheduledAsync)
-        let span = info_span!("ClearScheduled");
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
+            self.inner
+                .clear_scheduled(TimerType::Application)
+                .instrument(span)
+                .await?;
 
-        self.inner
-            .clear_scheduled(TimerType::Application)
-            .instrument(span)
-            .await?;
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
-    /// Returns all scheduled timer times for the current key.
-    ///
-    /// The returned times are not guaranteed to be in any particular order.
+    /// Returns the scheduled timer times for the current key, in no order.
     ///
     /// # Errors
     ///
-    /// Returns an error if the operation fails.
+    /// Returns an error if the store operation fails.
     pub async fn scheduled(
-        &self,
+        self: Arc<Self>,
         carrier: HashMap<String, String>,
     ) -> Result<Vec<SystemTime>, FfiError> {
-        // Extract OpenTelemetry context from carrier passed by C#
-        let context = self.propagator.extract(&carrier);
+        run(async move {
+            let span = with_parent(info_span!("Scheduled"), &self.propagator, &carrier);
 
-        // Create span with extracted context as parent (matches C# ScheduledAsync)
-        let span = info_span!("Scheduled");
-        if let Err(err) = span.set_parent(context) {
-            debug!("failed to set parent span: {err:#}");
-        }
-
-        Ok(self
-            .inner
-            .scheduled(TimerType::Application)
-            .instrument(span)
-            .await?
-            .into_iter()
-            .map(Into::<SystemTime>::into)
-            .collect())
+            Ok(self
+                .inner
+                .scheduled(TimerType::Application)
+                .instrument(span)
+                .await?
+                .into_iter()
+                .map(Into::<SystemTime>::into)
+                .collect())
+        })
+        .await
     }
+
+    // Vending checks the registration in core and opens no span, because each
+    // handle operation opens its own.
 
     /// Vends the state handle for the named JSON value collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn value_state(&self, name: String) -> Result<Arc<JsonValueStateHandle>, FfiError> {
-        let handle = self.inner.value_state(&name)?;
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn value_state(&self, name: &str) -> Result<Arc<JsonValueStateHandle>, FfiError> {
+        let handle = self.inner.value_state(name)?;
         Ok(Arc::new(JsonValueStateHandle {
-            name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
@@ -256,18 +238,25 @@ impl Context {
 
     /// Vends the state handle for the named JSON map collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
+    /// # Errors
+    ///
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn map_state(&self, name: &str) -> Result<Arc<JsonMapStateHandle>, FfiError> {
+        let handle = self.inner.map_state(name)?;
+        Ok(Arc::new(JsonMapStateHandle {
+            state: handle,
+            propagator: Arc::clone(&self.propagator),
+        }))
+    }
+
+    /// Vends the state handle for the named set collection.
     ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn map_state(&self, name: String) -> Result<Arc<JsonMapStateHandle>, FfiError> {
-        let handle = self.inner.map_state(&name)?;
-        Ok(Arc::new(JsonMapStateHandle {
-            name,
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn set_state(&self, name: &str) -> Result<Arc<SetStateHandle>, FfiError> {
+        let handle = self.inner.set_state(name)?;
+        Ok(Arc::new(SetStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
@@ -275,18 +264,12 @@ impl Context {
 
     /// Vends the state handle for the named JSON deque collection.
     ///
-    /// Vending verifies the collection's registration core-side; no span is
-    /// opened here — vended handles outlive the call, and every operation opens
-    /// its own span.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn deque_state(&self, name: String) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
-        let handle = self.inner.deque_state(&name)?;
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn deque_state(&self, name: &str) -> Result<Arc<JsonDequeStateHandle>, FfiError> {
+        let handle = self.inner.deque_state(name)?;
         Ok(Arc::new(JsonDequeStateHandle {
-            name,
             state: handle,
             propagator: Arc::clone(&self.propagator),
         }))
@@ -294,22 +277,14 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message value collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
+    /// Returns a permanent state error if no collection has this name and kind.
     pub fn message_value_state(
         &self,
-        name: String,
+        name: &str,
     ) -> Result<Arc<MessageValueStateHandle>, FfiError> {
-        let handle = self.inner.message_value_state(&name)?;
-        // Consume each message collection name after lookup. This keeps the by-value
-        // FFI argument without a lint exception.
-        drop(name);
+        let handle = self.inner.message_value_state(name)?;
         Ok(Arc::new(MessageValueStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -318,17 +293,11 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message map collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
-    pub fn message_map_state(&self, name: String) -> Result<Arc<MessageMapStateHandle>, FfiError> {
-        let handle = self.inner.message_map_state(&name)?;
-        drop(name);
+    /// Returns a permanent state error if no collection has this name and kind.
+    pub fn message_map_state(&self, name: &str) -> Result<Arc<MessageMapStateHandle>, FfiError> {
+        let handle = self.inner.message_map_state(name)?;
         Ok(Arc::new(MessageMapStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),
@@ -337,20 +306,14 @@ impl Context {
 
     /// Vends the state handle for the named Kafka-message deque collection.
     ///
-    /// Items are the full [`Message`](crate::message::Message) the handler
-    /// received, loader-resolved on read. Vending verifies registration
-    /// core-side; no span is opened here.
-    ///
     /// # Errors
     ///
-    /// Returns a permanent state error if the name is unregistered or its
-    /// registered identity mismatches.
+    /// Returns a permanent state error if no collection has this name and kind.
     pub fn message_deque_state(
         &self,
-        name: String,
+        name: &str,
     ) -> Result<Arc<MessageDequeStateHandle>, FfiError> {
-        let handle = self.inner.message_deque_state(&name)?;
-        drop(name);
+        let handle = self.inner.message_deque_state(name)?;
         Ok(Arc::new(MessageDequeStateHandle {
             state: handle,
             propagator: Arc::clone(&self.propagator),

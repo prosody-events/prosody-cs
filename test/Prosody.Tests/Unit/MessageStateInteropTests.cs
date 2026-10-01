@@ -12,19 +12,16 @@ namespace Prosody.Tests.Unit;
 public sealed class MessageStateInteropTests
 {
     [Fact]
-    public async Task Set_NullMessage_ThrowsNullValueException_TransientCategory_StoreUntouched()
+    public async Task Set_NullMessage_ThrowsArgumentNullException_StoreUntouched()
     {
         var handle = new FakeMessageValueStateHandle();
         var state = new MessageValueState<int>(handle, TestJson.TypeInfo<int>());
 
-        var exception = await Assert.ThrowsAsync<NullValueException>(() =>
+        await Assert.ThrowsAsync<ArgumentNullException>(() =>
             state.SetAsync(null!, TestContext.Current.CancellationToken)
         );
 
-        Assert.Multiple(
-            () => Assert.Equal(StateErrorCategory.Transient, exception.Category),
-            () => Assert.Equal(0, handle.SetCalls)
-        );
+        Assert.Equal(0, handle.SetCalls);
     }
 
     [Fact]

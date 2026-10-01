@@ -6,7 +6,7 @@ namespace Prosody.State;
 /// </summary>
 /// <remarks>
 /// The handle is directly enumerable: <c>await foreach (var (key, value) in map)</c> iterates the
-/// live entries forward, in key order — equivalent to <see cref="EnumerateAsync"/> with
+/// live entries forward, in key order — equivalent to <see cref="EnumerateAsync(ScanDirection, CancellationToken)"/> with
 /// <see cref="ScanDirection.Forward"/>. Each enumeration opens a fresh cursor.
 /// </remarks>
 /// <typeparam name="TValue">
@@ -23,19 +23,36 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether a stored cell exists for <paramref name="key"/> — a cheap presence check
-    /// that reads the cell through this event's writes (an uncommitted <see cref="SetAsync"/> reads
+    /// Determines whether a stored entry exists for <paramref name="key"/> — a cheap presence check
+    /// that reads the entry through this event's writes (an uncommitted <see cref="SetAsync"/> reads
     /// <see langword="true"/>, <see cref="RemoveAsync"/> <see langword="false"/>,
     /// <see cref="ClearAsync"/> hides entries) <b>without decoding the value or running the message
     /// resolver</b>. Cheaper than <see cref="GetAsync"/>, but not free: a cache miss still touches the
     /// store, so it is async and fallible. For a message-backed map it can return
     /// <see langword="true"/> even when the referenced Kafka message can no longer be fetched —
-    /// presence is about the cell, not fetchability.
+    /// presence is about the entry, not fetchability.
     /// </summary>
     /// <param name="key">The map key.</param>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns><see langword="true"/> when a live cell exists for <paramref name="key"/>.</returns>
+    /// <returns><see langword="true"/> when a live entry exists for <paramref name="key"/>.</returns>
     Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tests several keys for presence in one batch. <c>result[i]</c> answers <c>keys[i]</c>, and
+    /// each answer matches <see cref="ContainsKeyAsync"/>.
+    /// </summary>
+    /// <param name="keys">The keys to test. Enumerated once, before the batch dispatches.</param>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns>One result per requested key, in the requested order.</returns>
+    Task<IReadOnlyList<bool>> ContainsManyAsync(
+        IEnumerable<string> keys,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>Determines whether the map has no live entries.</summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns><see langword="true"/> when the map is empty.</returns>
+    Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Reads several keys in a single isolated batch. The result is positional:
@@ -54,8 +71,8 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     );
 
     /// <summary>
-    /// Inserts or overwrites <paramref name="key"/>. Writing <see langword="null"/> is a caller
-    /// mistake rejected with a <see cref="NullValueException"/> (transient) — use
+    /// Inserts or overwrites <paramref name="key"/>. A value that serializes to JSON
+    /// <see langword="null"/> fails with a <see cref="PermanentStateException"/>. Use
     /// <see cref="RemoveAsync"/> to delete an entry.
     /// </summary>
     /// <param name="key">The map key.</param>
@@ -91,13 +108,13 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
-    );
+    ) => EnumerateAsync(new KeyQuery { Direction = direction }, cancellationToken);
 
     /// <summary>
     /// Enumerates the live entry keys in key order, <b>skipping every value decode and the message
     /// resolver</b> — a message-backed map enumerates keys with zero Kafka fetches. Not zero-I/O: the
     /// presence of each key is still read from the store. When you need the values, prefer a single
-    /// <see cref="EnumerateAsync"/> (one batched, fully-resolving scan) over a <see cref="GetAsync"/>
+    /// <see cref="EnumerateAsync(ScanDirection, CancellationToken)"/> (one batched, fully-resolving scan) over a <see cref="GetAsync"/>
     /// per key. Valid only within the handler invocation that opened it; early exit closes the cursor.
     /// </summary>
     /// <param name="direction">The scan direction. Defaults to <see cref="ScanDirection.Forward"/>.</param>
@@ -106,18 +123,66 @@ public interface IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValu
     IAsyncEnumerable<string> EnumerateKeysAsync(
         ScanDirection direction = ScanDirection.Forward,
         CancellationToken cancellationToken = default
+    ) => EnumerateKeysAsync(new KeyQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>
+    /// Enumerates the live entries that <paramref name="query"/> selects. Valid only within the
+    /// handler invocation that opened it. Early exit closes the underlying cursor.
+    /// </summary>
+    /// <param name="query">The keys to select and their order.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of the selected key/value pairs.</returns>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(
+        KeyQuery query,
+        CancellationToken cancellationToken = default
     );
 
     /// <summary>
-    /// Durably commits the buffered operations mid-handler. Returns no value — the erased seam
-    /// drops the applied/no-op outcome.
+    /// Enumerates the live keys that <paramref name="query"/> selects without reading values.
+    /// Valid only within the handler invocation that opened it.
     /// </summary>
+    /// <param name="query">The keys to select and their order.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of the selected keys.</returns>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Enumerates the live values in key order. Valid only within the handler invocation that
+    /// opened it. Early exit closes the underlying cursor.
+    /// </summary>
+    /// <param name="direction">The scan direction. Defaults to <see cref="ScanDirection.Forward"/>.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of values in the requested order.</returns>
+    IAsyncEnumerable<TValue> EnumerateValuesAsync(
+        ScanDirection direction = ScanDirection.Forward,
+        CancellationToken cancellationToken = default
+    ) => EnumerateValuesAsync(new KeyQuery { Direction = direction }, cancellationToken);
+
+    /// <summary>
+    /// Enumerates the values of the live entries that <paramref name="query"/> selects. Valid only
+    /// within the handler invocation that opened it.
+    /// </summary>
+    /// <param name="query">The keys to select and their order.</param>
+    /// <param name="cancellationToken">A token observed at entry and between chunk pulls.</param>
+    /// <returns>An async sequence of the selected values.</returns>
+    /// <exception cref="ArgumentException">The query sets both edges of an inclusive and exclusive pair.</exception>
+    IAsyncEnumerable<TValue> EnumerateValuesAsync(KeyQuery query, CancellationToken cancellationToken = default);
+
+    /// <summary>Durably commits the buffered operations mid-handler.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the commit is durable.</returns>
-    Task CommitAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were written, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Discards buffered uncommitted operations back to the last committed floor.</summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
-    /// <returns>A task that completes when the rollback is applied.</returns>
-    Task RollbackAsync(CancellationToken cancellationToken = default);
+    /// <returns>
+    /// <see cref="StoreOutcome.Applied"/> when buffered operations were discarded, or
+    /// <see cref="StoreOutcome.NoOp"/> when nothing was buffered.
+    /// </returns>
+    Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default);
 }

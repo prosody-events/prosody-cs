@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using Prosody.Infrastructure;
+
 namespace Prosody.State;
 
 /// <summary>
@@ -5,10 +8,11 @@ namespace Prosody.State;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A definition is the single source of typing: the same object is registered via
+/// A definition is the single source of typing: it is registered via
 /// <see cref="ProsodyClientBuilder.WithStateCollections"/> and passed to a <c>State</c> overload on
-/// <c>ProsodyContext</c> to bind a typed handle. Construct definitions through the static factories
-/// (<see cref="Value{T}"/>, <see cref="Map{TValue}"/>, <see cref="Deque{T}"/>,
+/// <c>ProsodyContext</c> to bind a typed handle. Binding uses record equality, so an equal definition
+/// or a <c>with { }</c> copy binds the registered collection. Construct definitions through the static factories
+/// (<see cref="Value{T}"/>, <see cref="Map{TValue}"/>, <see cref="Deque{T}"/>, <see cref="Set"/>,
 /// <see cref="MessageValue{TPayload}"/>, <see cref="MessageMap{TPayload}"/>,
 /// <see cref="MessageDeque{TPayload}"/>).
 /// </para>
@@ -22,42 +26,17 @@ public abstract record StateDefinition
     private protected StateDefinition(
         string name,
         Native.StateKind kind,
-        Native.StatePayload payload,
         TimeSpan? ttl,
-        bool? readUncommitted,
-        int? keysetLimit,
-        int? capacity,
+        bool readUncommitted,
         bool published = false,
         StateReadCache? readCache = null
     )
     {
         ArgumentNullException.ThrowIfNull(name);
-        if (ttl is { Ticks: < 0 })
-        {
-            throw new ArgumentOutOfRangeException(nameof(ttl), ttl, "TTL must not be negative.");
-        }
-
-        if (keysetLimit is < 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(keysetLimit),
-                keysetLimit,
-                "Keyset limit must not be negative."
-            );
-        }
-
-        if (capacity is < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(capacity), capacity, "Capacity must not be negative.");
-        }
-
         Name = name;
         Kind = kind;
-        Payload = payload;
-        Ttl = ttl;
+        Ttl = Durations.ToNative(ttl);
         ReadUncommitted = readUncommitted;
-        KeysetLimit = keysetLimit;
-        Capacity = capacity;
         Published = published;
         ReadCache = readCache;
     }
@@ -67,23 +46,13 @@ public abstract record StateDefinition
 
     internal Native.StateKind Kind { get; }
 
-    internal Native.StatePayload Payload { get; }
-
     internal TimeSpan? Ttl { get; }
 
-    internal bool? ReadUncommitted { get; }
-
-    internal int? KeysetLimit { get; }
-
-    internal int? Capacity { get; }
+    internal bool ReadUncommitted { get; }
 
     internal bool Published { get; }
 
     internal StateReadCache? ReadCache { get; }
-
-    internal TimeSpan? ReadCacheTtl => ReadCache?.Ttl;
-
-    internal bool ReadCacheDisabled => ReadCache?.IsDisabled ?? false;
 
     /// <summary>
     /// Declares a single-value JSON collection.
@@ -98,7 +67,7 @@ public abstract record StateDefinition
     public static ValueStateDefinition<T> Value<T>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         bool published = false,
         StateReadCache? readCache = null
     )
@@ -118,7 +87,7 @@ public abstract record StateDefinition
     public static MapStateDefinition<TValue> Map<TValue>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? keysetLimit = null,
         bool published = false,
         StateReadCache? readCache = null
@@ -143,12 +112,31 @@ public abstract record StateDefinition
     public static DequeStateDefinition<T> Deque<T>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? capacity = null,
         bool published = false,
         StateReadCache? readCache = null
     )
         where T : notnull => new(name, ttl, readUncommitted, capacity, published, readCache);
+
+    /// <summary>
+    /// Declares an ordered set of <see cref="string"/> members. A set stores presence only.
+    /// </summary>
+    /// <param name="name">The collection name.</param>
+    /// <param name="ttl">Optional per-write TTL (whole seconds, at least one).</param>
+    /// <param name="readUncommitted">Optional opt-out of transactional staging.</param>
+    /// <param name="keysetLimit">Optional ordered-scan keyset bound (<c>0..=4096</c>).</param>
+    /// <param name="published">Whether owners advertise the collection for cross-group reads.</param>
+    /// <param name="readCache">Optional cache policy used by read-only clients.</param>
+    /// <returns>A validated definition.</returns>
+    public static SetStateDefinition Set(
+        string name,
+        TimeSpan? ttl = null,
+        bool readUncommitted = false,
+        int? keysetLimit = null,
+        bool published = false,
+        StateReadCache? readCache = null
+    ) => new(name, ttl, readUncommitted, keysetLimit, published, readCache);
 
     /// <summary>
     /// Declares a single-value message collection storing the full Kafka message.
@@ -161,7 +149,7 @@ public abstract record StateDefinition
     public static MessageValueDefinition<TPayload> MessageValue<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null
+        bool readUncommitted = false
     ) => new(name, ttl, readUncommitted);
 
     /// <summary>
@@ -176,7 +164,7 @@ public abstract record StateDefinition
     public static MessageMapDefinition<TPayload> MessageMap<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? keysetLimit = null
     ) => new(name, ttl, readUncommitted, keysetLimit);
 
@@ -195,21 +183,16 @@ public abstract record StateDefinition
     public static MessageDequeDefinition<TPayload> MessageDeque<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? capacity = null
     ) => new(name, ttl, readUncommitted, capacity);
 
-    internal Native.StateCollectionConfig ToNative() =>
-        new(
-            Name,
-            Kind,
-            Payload,
-            Ttl,
-            ReadUncommitted,
-            KeysetLimit is { } k ? (uint)k : null,
-            Capacity is { } c ? (uint)c : null,
-            Published,
-            ReadCacheTtl,
-            ReadCacheDisabled
-        );
+    internal Native.StateCollectionConfig ToNative() => new(Name, Kind, Ttl, ReadUncommitted, Published);
+
+    /// <summary>Returns a keyset limit or capacity as the unsigned native bound.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="value"/> is negative.</exception>
+    private protected static uint? Bound(int? value, [CallerArgumentExpression(nameof(value))] string name = "") =>
+        value is < 0
+            ? throw new ArgumentOutOfRangeException(name, value, $"{name} must not be negative.")
+            : (uint?)value;
 }

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Prosody.Errors;
+using Prosody.Infrastructure;
 using Prosody.State;
 
 namespace Prosody.Messaging;
@@ -26,7 +28,7 @@ public sealed class ProsodyContext
         _native = native;
         _jsonOptions = jsonOptions;
         _stateDefinitions = stateDefinitions;
-        _stateHandles = new Dictionary<StateDefinition, object>(ReferenceEqualityComparer.Instance);
+        _stateHandles = [];
     }
 
     /// <summary>Creates a stub context for unit tests that do not invoke any context methods.</summary>
@@ -38,6 +40,12 @@ public sealed class ProsodyContext
     public bool ShouldCancel => _native.ShouldCancel();
 
     /// <summary>
+    /// Gets the demand that this handler call serves: a first attempt, or a retry after a failure
+    /// with its retry count.
+    /// </summary>
+    public Demand Demand => Demand.FromNative(_native.Demand());
+
+    /// <summary>
     /// Returns a task that completes when cancellation is requested.
     /// </summary>
     public Task OnCancelAsync() => _native.OnCancel();
@@ -46,49 +54,57 @@ public sealed class ProsodyContext
     /// Schedule a new timer at the given time for the current message key.
     /// </summary>
     /// <param name="time">The time to schedule the timer (UTC).</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="time"/> is outside the range that timers support.</exception>
+    /// <exception cref="ProsodyException">The timer store failed.</exception>
     public Task ScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.Schedule(time.UtcDateTime, carrier);
+        return NativeErrors.RunAsync(() => _native.Schedule(time.UtcDateTime, carrier), nameof(time));
     }
 
     /// <summary>
     /// Unschedule all existing timers, then schedule exactly one new timer.
     /// </summary>
     /// <param name="time">The time to schedule the timer (UTC).</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="time"/> is outside the range that timers support.</exception>
+    /// <exception cref="ProsodyException">The timer store failed.</exception>
     public Task ClearAndScheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.ClearAndSchedule(time.UtcDateTime, carrier);
+        return NativeErrors.RunAsync(() => _native.ClearAndSchedule(time.UtcDateTime, carrier), nameof(time));
     }
 
     /// <summary>
     /// Unschedule a specific timer at the given time.
     /// </summary>
     /// <param name="time">The time of the timer to unschedule (UTC).</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="time"/> is outside the range that timers support.</exception>
+    /// <exception cref="ProsodyException">The timer store failed.</exception>
     public Task UnscheduleAsync(DateTimeOffset time)
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.Unschedule(time.UtcDateTime, carrier);
+        return NativeErrors.RunAsync(() => _native.Unschedule(time.UtcDateTime, carrier), nameof(time));
     }
 
     /// <summary>
     /// Unschedule all timers for the current key.
     /// </summary>
+    /// <exception cref="ProsodyException">The timer store failed.</exception>
     public Task ClearScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        return _native.ClearScheduled(carrier);
+        return NativeErrors.RunAsync(() => _native.ClearScheduled(carrier));
     }
 
     /// <summary>
     /// List all scheduled timer times for the current key.
     /// </summary>
     /// <returns>An array of scheduled times (UTC).</returns>
+    /// <exception cref="ProsodyException">The timer store failed.</exception>
     public async Task<DateTimeOffset[]> ScheduledAsync()
     {
         Dictionary<string, string> carrier = StateInterop.CreateCarrier();
-        DateTime[] times = await _native.Scheduled(carrier).ConfigureAwait(false);
+        DateTime[] times = await NativeErrors.RunAsync(() => _native.Scheduled(carrier)).ConfigureAwait(false);
         return Array.ConvertAll(times, t => new DateTimeOffset(t, TimeSpan.Zero));
     }
 
@@ -105,7 +121,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new ValueState<T>(
-                StateInterop.RunSync(() => _native.ValueState(definition.Name)),
+                NativeErrors.Run(() => _native.ValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
@@ -124,7 +140,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MapState<TValue>(
-                StateInterop.RunSync(() => _native.MapState(definition.Name)),
+                NativeErrors.Run(() => _native.MapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TValue>(options)
             )
         );
@@ -143,10 +159,21 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new DequeState<T>(
-                StateInterop.RunSync(() => _native.DequeState(definition.Name)),
+                NativeErrors.Run(() => _native.DequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<T>(options)
             )
         );
+    }
+
+    /// <summary>
+    /// Binds a set collection for the current handler invocation.
+    /// </summary>
+    /// <param name="definition">The collection definition. Must be registered on the client.</param>
+    /// <returns>A handle. Repeated calls within one invocation return the same handle.</returns>
+    public ISetState State(SetStateDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        return GetOrAddHandle(definition, _ => new SetState(NativeErrors.Run(() => _native.SetState(definition.Name))));
     }
 
     /// <summary>
@@ -161,7 +188,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageValueState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageValueState(definition.Name)),
+                NativeErrors.Run(() => _native.MessageValueState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -179,7 +206,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageMapState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageMapState(definition.Name)),
+                NativeErrors.Run(() => _native.MessageMapState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -197,7 +224,7 @@ public sealed class ProsodyContext
         return GetOrAddHandle(
             definition,
             options => new MessageDequeState<TPayload>(
-                StateInterop.RunSync(() => _native.MessageDequeState(definition.Name)),
+                NativeErrors.Run(() => _native.MessageDequeState(definition.Name)),
                 StateInterop.ResolveTypeInfo<TPayload>(options)
             )
         );
@@ -214,7 +241,7 @@ public sealed class ProsodyContext
         if (_stateDefinitions?.Contains(definition) != true)
         {
             throw new PermanentStateException(
-                $"State collection '{definition.Name}' must be bound with the definition object registered on the client."
+                $"State collection '{definition.Name}' must be bound with a definition equal to one registered on the client."
             );
         }
 

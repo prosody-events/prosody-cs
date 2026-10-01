@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Prosody.Configuration;
+using Prosody.Errors;
 using Prosody.State;
 
 namespace Prosody;
@@ -272,8 +273,8 @@ public sealed class ProsodyClientBuilder
     /// <returns>This builder for chaining.</returns>
     /// <remarks>
     /// Registration is applied before the client subscribes. Each definition is the single source of
-    /// typing: pass the same object to a <c>State</c> overload on <c>ProsodyContext</c> in a handler
-    /// to bind a typed handle.
+    /// typing: pass it, or an equal definition, to a <c>State</c> overload on <c>ProsodyContext</c> in
+    /// a handler to bind a typed handle.
     /// </remarks>
     /// <example>
     /// <code>
@@ -347,6 +348,9 @@ public sealed class ProsodyClientBuilder
     /// Creates a <see cref="ProsodyClient"/> with the configured options and connects it.
     /// </summary>
     /// <returns>A connected <see cref="ProsodyClient"/>.</returns>
+    /// <exception cref="InvalidOperationException">The options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Prosody cannot connect to Kafka or Cassandra.</exception>
     /// <remarks>
     /// <para>
     /// This method validates configuration, then performs the native connect. Use
@@ -360,8 +364,8 @@ public sealed class ProsodyClientBuilder
     /// <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c> before calling <c>BuildAsync()</c>.
     /// </para>
     /// </remarks>
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(ProsodyClient.DefaultResolverAotWarning)]
     public async Task<ProsodyClient> BuildAsync()
     {
         var client = Build();
@@ -373,12 +377,13 @@ public sealed class ProsodyClientBuilder
     /// Creates an unconnected <see cref="ProsodyClient"/> with the configured options.
     /// </summary>
     /// <returns>A <see cref="ProsodyClient"/> that connects on its first operation or on <see cref="ProsodyClient.ConnectAsync"/>.</returns>
+    /// <exception cref="InvalidOperationException">The options are invalid.</exception>
     /// <remarks>
     /// This method validates configuration and does no I/O. See <see cref="BuildAsync"/> for
     /// the JSON resolver behavior; it applies here as well.
     /// </remarks>
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(ProsodyClient.DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(ProsodyClient.DefaultResolverAotWarning)]
     public ProsodyClient Build()
     {
         _options.Validate();

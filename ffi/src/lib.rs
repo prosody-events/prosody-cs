@@ -1,4 +1,8 @@
 #![recursion_limit = "256"]
+#![expect(
+    clippy::multiple_crate_versions,
+    reason = "the dependency tree of prosody pulls in more than one version of some crates"
+)]
 //! Prosody FFI bindings for C#.
 //!
 //! This crate provides FFI bindings for the Prosody Kafka client library,
@@ -20,7 +24,7 @@
 //!
 //! This crate serves as the FFI boundary layer. C# code wraps the generated
 //! bindings in idiomatic classes that provide:
-//! - Typed JSON payloads via `Send<T>()` and `GetPayload<T>()`
+//! - Typed JSON payloads via `SendAsync<T>()` and `Message<T>.Payload`
 //! - `CancellationToken` support on async methods
 //! - Properties instead of methods for simple accessors
 //!
@@ -32,20 +36,27 @@
 //! - [`client`]: Core [`ProsodyClient`] service implementation
 //! - [`config`]: Configuration conversion utilities for builder types
 //! - [`context`]: Event context for timer scheduling and cancellation checks
+//! - [`cursor`]: Typed cursors for keyed-state scans
 //! - [`error`]: Error types that cross the FFI boundary
 //! - [`handler`]: [`EventHandler`] callback trait for message/timer processing
+//! - [`json_deque`]: JSON deque state handle
 //! - [`logging`]: Logging bridge from Rust tracing to C# `ILoggerFactory`
+//! - [`map`]: JSON and message ordered-map state handles
 //! - [`message`]: Kafka message wrapper for C# consumption
+//! - [`message_deque`]: Kafka-message deque state handle
+//! - [`published`]: Read-only published-state handles
+//! - [`query`]: Keyed-state query settings
+//! - `runtime`: The one Tokio runtime of the native library
+//! - [`set`]: Set state handle
 //! - [`state`]: Shared keyed-state types and validation
 //! - [`timer`]: Timer trigger wrapper for scheduled event handling
 //! - [`types`]: Configuration records ([`ClientOptions`], [`ClientMode`])
+//! - [`value`]: JSON and message single-value state handles
 
-use mimalloc::MiMalloc;
+use rustfs_mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-
-use std::collections::HashMap;
 
 pub mod admin;
 pub mod cancellation;
@@ -61,19 +72,13 @@ pub mod map;
 pub mod message;
 pub mod message_deque;
 pub mod published;
+pub mod query;
+mod runtime;
+pub mod set;
 pub mod state;
 pub mod timer;
 pub mod types;
 pub mod value;
-
-/// OpenTelemetry context carrier for distributed tracing propagation.
-///
-/// This type alias is used to pass trace context (trace ID, span ID, etc.)
-/// across the FFI boundary. Rust injects context into the carrier before
-/// calling C# handlers, and C# injects context before calling Rust methods.
-///
-/// In C#, this maps to `IDictionary<string, string>`.
-pub type Carrier = HashMap<String, String>;
 
 // Re-exports for UniFFI scaffolding.
 //
@@ -83,10 +88,10 @@ pub type Carrier = HashMap<String, String>;
 pub use admin::AdminClient;
 pub use cancellation::CancellationSignal;
 pub use client::ProsodyClient;
-pub use context::Context;
+pub use context::{Context, DemandType};
 pub use cursor::{
-    JsonDequeCursor, JsonMapCursor, JsonMapEntry, MapKeyCursor, MessageDequeCursor,
-    MessageMapCursor, MessageMapEntry,
+    JsonDequeCursor, JsonMapCursor, JsonMapEntry, KeyCursor, MessageDequeCursor, MessageMapCursor,
+    MessageMapEntry,
 };
 pub use error::FfiError;
 pub use handler::{
@@ -96,8 +101,12 @@ pub use json_deque::JsonDequeStateHandle;
 pub use map::{JsonMapStateHandle, JsonMapValue, MessageMapStateHandle};
 pub use message::{ExciseMessage, Message};
 pub use message_deque::MessageDequeStateHandle;
-pub use published::{PublishedDequeHandle, PublishedMapHandle, PublishedValueHandle};
-pub use state::ScanDirection;
+pub use published::{
+    PublishedDequeHandle, PublishedMapHandle, PublishedSetHandle, PublishedValueHandle,
+};
+pub use query::{KeyEdge, KeyQuery, KeyRange, PositionEdge, PositionQuery, PositionRange};
+pub use set::SetStateHandle;
+pub use state::{ScanDirection, StoreOutcome};
 pub use timer::Timer;
 pub use types::{
     ClientMode, ClientOptions, ConsumerState, StateCollectionConfig, StateKind, StatePayload,

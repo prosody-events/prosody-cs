@@ -5,8 +5,8 @@ using Native = Prosody.Native;
 namespace Prosody.Tests.Unit;
 
 /// <summary>
-/// Pins the normative C# keyed-state example from the plan: it must compile against the public
-/// surface, the definitions must construct, and the builder chain must accept them.
+/// Checks a keyed-state usage example. It must compile against the public API, its definitions
+/// must construct, and the builder chain must accept them.
 /// </summary>
 public sealed class NormativeExampleCompileTests
 {
@@ -19,7 +19,7 @@ public sealed class NormativeExampleCompileTests
         "backlog"
     );
 
-    // The §3.2 burst-batching collections: a per-user "is a batch open" flag and a bounded buffer of
+    // The burst-batching collections: a per-user "is a batch open" flag and a bounded buffer of
     // the pending messages.
     private static readonly ValueStateDefinition<bool> WindowDef = StateDefinition.Value<bool>("window");
     private static readonly MessageDequeDefinition<Activity> PendingDef = StateDefinition.MessageDeque<Activity>(
@@ -36,11 +36,9 @@ public sealed class NormativeExampleCompileTests
 
         Assert.Multiple(
             () => Assert.Equal("cart", cart.Name),
-            () => Assert.Equal(Native.StateKind.Value, cart.Kind),
-            () => Assert.Equal(Native.StatePayload.Json, cart.Payload),
-            () => Assert.Equal(Native.StateKind.Map, totals.Kind),
-            () => Assert.Equal(Native.StateKind.Deque, backlog.Kind),
-            () => Assert.Equal(Native.StatePayload.Message, backlog.Payload)
+            () => Assert.Equal(new Native.StateKind.Value(Native.StatePayload.Json), cart.Kind),
+            () => Assert.IsType<Native.StateKind.Map>(totals.Kind),
+            () => Assert.Equal(new Native.StateKind.Deque(Native.StatePayload.Message, null), backlog.Kind)
         );
     }
 
@@ -75,7 +73,7 @@ public sealed class NormativeExampleCompileTests
         Assert.Multiple(
             () => Assert.NotNull(ProsodyClientBuilder.Create().WithStateCollections(WindowDef, PendingDef)),
             () => Assert.Equal("actor", activity.Actor),
-            () => Assert.Equal(100u, PendingDef.ToNative().Capacity)
+            () => Assert.Equal(new Native.StateKind.Deque(Native.StatePayload.Message, 100), PendingDef.ToNative().Kind)
         );
     }
 
@@ -135,7 +133,7 @@ public sealed class NormativeExampleCompileTests
     }
 
     /// <summary>
-    /// The §3.2 burst-batching example: notify on the first event of a batch and set a 5-minute timer,
+    /// The burst-batching example: notify on the first event of a batch and set a 5-minute timer,
     /// buffer the rest in a bounded <c>messageDeque</c>, then send one summary when the timer fires.
     /// Compile-pins the fuller README example against the post-Phase-1 surface (the capacity deque and
     /// the concurrent-resolving scan drain).

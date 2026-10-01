@@ -7,7 +7,6 @@ using Prosody.Configuration;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Logging;
-using Prosody.Messaging;
 using Prosody.State;
 #if NET9_0_OR_GREATER
 using ClientLock = System.Threading.Lock;
@@ -16,6 +15,9 @@ using ClientLock = System.Object;
 #endif
 
 namespace Prosody;
+
+// This file owns client construction, the shared connection, JSON options, shutdown, and disposal.
+// The other ProsodyClient.*.cs files own the consumer, send, request, and published-state members.
 
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
@@ -35,6 +37,14 @@ namespace Prosody;
 /// </remarks>
 public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 {
+    /// <summary>The trim warning for an API that can install the reflection JSON resolver.</summary>
+    internal const string DefaultResolverTrimWarning =
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to use trim-safe serialization.";
+
+    /// <summary>The AOT warning for an API that can install the reflection JSON resolver.</summary>
+    internal const string DefaultResolverAotWarning =
+        "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation.";
+
     /// <summary>The crate's default handler-drain timeout, used when <see cref="ClientOptions.ShutdownTimeout"/> is unset.</summary>
     private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(30);
 
@@ -65,8 +75,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     internal JsonSerializerOptions JsonOptions { get; }
 
     /// <summary>Creates an unconnected client from validated options.</summary>
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(DefaultResolverAotWarning)]
     internal ProsodyClient(ClientOptions validated, ILogger? logger = null)
         : this(validated, connect: null, shutdownNative: null, logger) { }
 
@@ -74,8 +84,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// Creates an unconnected client. Tests pass <paramref name="connect"/> to drive the native
     /// build and <paramref name="shutdownNative"/> to drive the native shutdown.
     /// </summary>
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(DefaultResolverAotWarning)]
     internal ProsodyClient(
         ClientOptions validated,
         Func<Task<Native.ProsodyClient>>? connect,
@@ -90,7 +100,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
             options.ResolveSourceSystem()
             ?? throw new InvalidOperationException("No source system or consumer group id is configured.");
         _connect = connect ?? (() => Native.ProsodyClient.ProsodyClientAsync(options.ToNative()));
-        _shutdownNative = shutdownNative ?? (native => native.Shutdown());
+        _shutdownNative = shutdownNative ?? (native => NativeErrors.RunAsync(native.Shutdown));
         _shutdownBudget = (options.ResolveShutdownTimeout() ?? DefaultShutdownTimeout) + ShutdownMargin;
         // Keep the logger after the logging service clears its factory during host stop.
         _logger = logger ?? ProsodyLogging.CreateLogger(nameof(ProsodyClient));
@@ -109,8 +119,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// To avoid this, set <c>TypeInfoResolver</c> to a source-generated <c>JsonSerializerContext</c>
     /// in the <see cref="ClientOptions.ConfigureJsonOptions"/> callback.
     /// </remarks>
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(DefaultResolverAotWarning)]
     public static async Task<ProsodyClient> CreateAsync(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -122,7 +132,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     private async Task<Native.ProsodyClient> BuildAsync()
     {
-        var native = await _connect().ConfigureAwait(false);
+        var native = await NativeErrors.RunAsync(_connect).ConfigureAwait(false);
 
         // SourceSystem was resolved before connect with the crate's precedence. Prove it matched.
         var actual = native.SourceSystem();
@@ -208,10 +218,10 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     private static HashSet<StateDefinition> RegisteredStateDefinitions(ClientOptions options) =>
-        new HashSet<StateDefinition>(options.StateCollections ?? [], ReferenceEqualityComparer.Instance);
+        [.. options.StateCollections ?? []];
 
-    [RequiresUnreferencedCode(Trimming.JsonResolver)]
-    [RequiresDynamicCode(Trimming.JsonResolver)]
+    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(DefaultResolverAotWarning)]
     private static JsonSerializerOptions BuildJsonOptions(ClientOptions options)
     {
         var opts = new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -234,59 +244,6 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// the client lives.
     /// </remarks>
     public string SourceSystem { get; }
-
-    /// <summary>
-    /// Gets the current consumer state.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when the consumer configuration failed during build, with the full error message.
-    /// </exception>
-    public Task<ConsumerState> GetConsumerStateAsync() => GetConsumerStateAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="GetConsumerStateAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<ConsumerState> GetConsumerStateAsync(CancellationToken cancellationToken)
-    {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
-        Native.ConsumerState state = await native.ConsumerState().ConfigureAwait(false);
-        return state switch
-        {
-            Native.ConsumerState.Shutdown => ConsumerState.Shutdown,
-            Native.ConsumerState.Unconfigured => ConsumerState.Unconfigured,
-            Native.ConsumerState.Configured => ConsumerState.Configured,
-            Native.ConsumerState.Running => ConsumerState.Running,
-            Native.ConsumerState.ConfigurationFailed failed => throw new InvalidOperationException(
-                $"Consumer configuration failed: {failed.Message}"
-            ),
-            _ => throw new InvalidOperationException("Unknown consumer state"),
-        };
-    }
-
-    /// <summary>
-    /// Gets the number of partitions currently assigned to this consumer.
-    /// </summary>
-    public Task<uint> AssignedPartitionCountAsync() => AssignedPartitionCountAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="AssignedPartitionCountAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<uint> AssignedPartitionCountAsync(CancellationToken cancellationToken)
-    {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
-        return await native.AssignedPartitionCount().ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Gets a value indicating whether the consumer is currently stalled.
-    /// </summary>
-    public Task<bool> IsStalledAsync() => IsStalledAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="IsStalledAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<bool> IsStalledAsync(CancellationToken cancellationToken)
-    {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
-        return await native.IsStalled().ConfigureAwait(false);
-    }
 
     /// <summary>
     /// Shuts down all client services and rejects new operations.
@@ -388,9 +345,13 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         {
             await ShutdownAsync().WaitAsync(_shutdownBudget).ConfigureAwait(false);
         }
+        catch (ProsodyException error)
+        {
+            LogHelper.LogShutdownFailed(_logger, error);
+        }
         catch (Native.UniffiException error)
         {
-            // Covers FfiException and the panic, allocation, and internal errors beside it.
+            // Covers the panic, allocation, and internal errors that NativeErrors does not translate.
             LogHelper.LogShutdownFailed(_logger, error);
         }
         catch (TimeoutException)
@@ -407,7 +368,7 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
             {
                 ProsodyLogging.FlushTelemetry();
             }
-            catch (Native.FfiException)
+            catch (ProsodyException)
             {
                 // Telemetry flush is best-effort during disposal.
             }

@@ -19,27 +19,20 @@ internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload
     }
 
     public Task<StateValue<Message<TPayload>>> GetAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.Get(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.Get, _typeInfo, cancellationToken);
 
     public Task SetAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(() => _handle.Set(native, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Set(native, carrier), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
 }

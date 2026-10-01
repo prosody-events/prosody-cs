@@ -17,7 +17,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
 
         List<string> failures = [];
 
-        CheckTimeSpans(options, failures);
         CheckShutdownTimeout(options, failures);
         CheckStateCollections(options, failures);
         CheckSourceSystem(options, failures);
@@ -73,33 +72,6 @@ internal sealed class ClientOptionsValidator : IValidateOptions<ClientOptions>
             {
                 failures.Add($"StateCollections[{i}] must not be null.");
             }
-        }
-    }
-
-    private static void CheckTimeSpans(ClientOptions options, List<string> failures)
-    {
-        CheckNonNegative(options.Timeout, nameof(ClientOptions.Timeout), failures);
-        CheckNonNegative(options.StallThreshold, nameof(ClientOptions.StallThreshold), failures);
-        CheckNonNegative(options.PollInterval, nameof(ClientOptions.PollInterval), failures);
-        CheckNonNegative(options.CommitInterval, nameof(ClientOptions.CommitInterval), failures);
-        CheckNonNegative(options.SlabSize, nameof(ClientOptions.SlabSize), failures);
-        CheckNonNegative(options.SendTimeout, nameof(ClientOptions.SendTimeout), failures);
-        CheckNonNegative(options.RetryBase, nameof(ClientOptions.RetryBase), failures);
-        CheckNonNegative(options.MaxRetryDelay, nameof(ClientOptions.MaxRetryDelay), failures);
-        CheckNonNegative(options.DeferBase, nameof(ClientOptions.DeferBase), failures);
-        CheckNonNegative(options.DeferMaxDelay, nameof(ClientOptions.DeferMaxDelay), failures);
-        CheckNonNegative(options.DeferFailureWindow, nameof(ClientOptions.DeferFailureWindow), failures);
-        CheckNonNegative(options.LoaderSeekTimeout, nameof(ClientOptions.LoaderSeekTimeout), failures);
-        CheckNonNegative(options.MonopolizationWindow, nameof(ClientOptions.MonopolizationWindow), failures);
-        CheckNonNegative(options.SchedulerMaxWait, nameof(ClientOptions.SchedulerMaxWait), failures);
-        CheckNonNegative(options.CassandraRetention, nameof(ClientOptions.CassandraRetention), failures);
-    }
-
-    private static void CheckNonNegative(TimeSpan? value, string name, List<string> failures)
-    {
-        if (value is { Ticks: < 0 })
-        {
-            failures.Add($"{name} must not be negative.");
         }
     }
 }

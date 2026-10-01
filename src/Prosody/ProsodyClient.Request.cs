@@ -4,22 +4,23 @@ using System.Text.Json.Serialization.Metadata;
 using Prosody.Errors;
 using Prosody.Infrastructure;
 using Prosody.Messaging;
+using Prosody.State;
 
 namespace Prosody;
 
-// Request and response over the message bus: one outcome per subsystem.
+// This file owns the request members, which send one event and collect one outcome per subsystem.
+
 public sealed partial class ProsodyClient
 {
+    private const string _runtimeJsonMetadataWarning =
+        "Resolves JSON metadata at run time. Use the overload that accepts JsonTypeInfo values.";
+
     /// <summary>Sends one request and returns one outcome per subsystem.</summary>
-    /// <remarks>
-    /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
-    /// A request-level failure throws instead of returning a partial dictionary.
-    /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
-    /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
-    [RequiresUnreferencedCode(Trimming.JsonMetadata)]
-    [RequiresDynamicCode(Trimming.JsonMetadata)]
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
+    ///     path="/remarks|/exception"/>
+    [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
+    [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
         string key,
@@ -27,24 +28,64 @@ public sealed partial class ProsodyClient
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
         CancellationToken cancellationToken = default
-    )
-    {
-        ArgumentNullException.ThrowIfNull(topic);
-        ArgumentNullException.ThrowIfNull(key);
-        ArgumentNullException.ThrowIfNull(subsystems);
-        cancellationToken.ThrowIfCancellationRequested();
-        var payloadType = (JsonTypeInfo<TPayload>)JsonOptions.GetTypeInfo(typeof(TPayload));
-        var responseType = (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse));
-        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
-    }
+    ) =>
+        RequestAsync(
+            topic,
+            key,
+            payload,
+            StateInterop.ResolveTypeInfo<TPayload>(JsonOptions),
+            StateInterop.ResolveTypeInfo<TResponse>(JsonOptions),
+            subsystems,
+            timeout,
+            cancellationToken
+        );
 
     /// <summary>Sends one trim-safe request and returns one outcome per subsystem.</summary>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
+    ///     path="/remarks|/exception"/>
+    public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default
+    ) =>
+        RequestAsync(
+            topic,
+            key,
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
+            timeout,
+            NoOverrides,
+            cancellationToken
+        );
+
+    /// <summary>
+    /// Sends one trim-safe request with event metadata overrides and returns one outcome per subsystem.
+    /// </summary>
     /// <remarks>
+    /// <para>
+    /// A set <see cref="SendOptions.EventId"/> or <see cref="SendOptions.EventType"/> replaces the
+    /// value that Prosody reads from the payload.
+    /// </para>
+    /// <para>
     /// A missed deadline returns <see cref="TimeoutError"/> for that subsystem.
     /// A request-level failure throws instead of returning a partial dictionary.
+    /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentException">A subsystem name is invalid.</exception>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// The subsystem list is empty, repeats a name, or has an empty name, or the timeout is too large.
+    /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">The timeout is negative.</exception>
+    /// <exception cref="InvalidOperationException">The client is shut down.</exception>
+    /// <exception cref="ProsodyException">Kafka did not accept the request.</exception>
     /// <exception cref="OperationCanceledException">The cancellation token was canceled.</exception>
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(
         string topic,
@@ -54,6 +95,7 @@ public sealed partial class ProsodyClient
         JsonTypeInfo<TResponse> responseType,
         IReadOnlyList<string> subsystems,
         TimeSpan timeout,
+        SendOptions options,
         CancellationToken cancellationToken = default
     )
     {
@@ -62,52 +104,27 @@ public sealed partial class ProsodyClient
         ArgumentNullException.ThrowIfNull(payloadType);
         ArgumentNullException.ThrowIfNull(responseType);
         ArgumentNullException.ThrowIfNull(subsystems);
+        ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
-        return RequestCoreAsync(topic, key, payload, payloadType, responseType, subsystems, timeout, cancellationToken);
-    }
-
-    private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
-        string topic,
-        string key,
-        TPayload payload,
-        JsonTypeInfo<TPayload> payloadType,
-        JsonTypeInfo<TResponse> responseType,
-        IReadOnlyList<string> subsystems,
-        TimeSpan timeout,
-        CancellationToken cancellationToken
-    )
-    {
-        if (timeout < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
-        }
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
-        var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
-        var (eventId, eventType) = TypedEventMetadataExtractor.Extract(payload, payloadType);
-        // Standard propagation can add traceparent, tracestate, and baggage.
-        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        var request = new Native.NativeRequest(
+        return RequestCoreAsync(
             topic,
             key,
-            encoded,
-            new Native.EventMetadata(EventId: eventId, EventType: eventType),
-            [.. subsystems],
+            payload,
+            payloadType,
+            responseType,
+            subsystems,
             timeout,
-            carrier
+            options,
+            cancellationToken
         );
-        return await CompleteRequestAsync(
-                responseType,
-                signal => native.Request(request, signal),
-                nameof(subsystems),
-                cancellationToken
-            )
-            .ConfigureAwait(false);
     }
 
     /// <summary>Sends one excise request and returns one outcome per subsystem.</summary>
-    [RequiresUnreferencedCode(Trimming.JsonMetadata)]
-    [RequiresDynamicCode(Trimming.JsonMetadata)]
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
+    ///     path="/remarks|/exception"/>
+    [RequiresUnreferencedCode(_runtimeJsonMetadataWarning)]
+    [RequiresDynamicCode(_runtimeJsonMetadataWarning)]
     public Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
         string topic,
         string key,
@@ -118,13 +135,16 @@ public sealed partial class ProsodyClient
         RequestExciseAsync(
             topic,
             key,
-            (JsonTypeInfo<TResponse>)JsonOptions.GetTypeInfo(typeof(TResponse)),
+            StateInterop.ResolveTypeInfo<TResponse>(JsonOptions),
             subsystems,
             timeout,
             cancellationToken
         );
 
     /// <summary>Sends one trim-safe excise request and returns one outcome per subsystem.</summary>
+    /// <inheritdoc
+    ///     cref="RequestAsync{TPayload, TResponse}(string, string, TPayload, JsonTypeInfo{TPayload}, JsonTypeInfo{TResponse}, IReadOnlyList{string}, TimeSpan, SendOptions, CancellationToken)"
+    ///     path="/remarks|/exception"/>
     public async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(
         string topic,
         string key,
@@ -139,52 +159,60 @@ public sealed partial class ProsodyClient
         ArgumentNullException.ThrowIfNull(responseType);
         ArgumentNullException.ThrowIfNull(subsystems);
         cancellationToken.ThrowIfCancellationRequested();
-        if (timeout < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "A duration cannot be negative.");
-        }
-        var carrier = new Dictionary<string, string>(capacity: 3, StringComparer.OrdinalIgnoreCase);
-        TracePropagation.Inject(carrier);
-        var request = new Native.NativeExciseRequest(topic, key, [.. subsystems], timeout, carrier);
+
+        var request = new Native.NativeExciseRequest(
+            topic,
+            key,
+            [.. subsystems],
+            Durations.ToNative(timeout),
+            StateInterop.CreateCarrier()
+        );
         var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
         return await CompleteRequestAsync(
                 responseType,
                 signal => native.RequestExcise(request, signal),
-                nameof(subsystems),
                 cancellationToken
             )
+            .ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestCoreAsync<TPayload, TResponse>(
+        string topic,
+        string key,
+        TPayload payload,
+        JsonTypeInfo<TPayload> payloadType,
+        JsonTypeInfo<TResponse> responseType,
+        IReadOnlyList<string> subsystems,
+        TimeSpan timeout,
+        SendOptions options,
+        CancellationToken cancellationToken
+    )
+    {
+        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        var encoded = JsonSerializer.SerializeToUtf8Bytes(payload, payloadType);
+        var request = new Native.NativeRequest(
+            topic,
+            key,
+            encoded,
+            options.Metadata(payload, payloadType),
+            [.. subsystems],
+            Durations.ToNative(timeout),
+            StateInterop.CreateCarrier()
+        );
+        return await CompleteRequestAsync(responseType, signal => native.Request(request, signal), cancellationToken)
             .ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyDictionary<string, Outcome<TResponse>>> CompleteRequestAsync<TResponse>(
         JsonTypeInfo<TResponse> responseType,
         Func<Native.CancellationSignal?, Task<Dictionary<string, Native.NativeRequestResult>>> send,
-        string subsystemParameterName,
         CancellationToken cancellationToken
     )
     {
-        LinkedCancellationSignal? linked = CancellationHelper.CreateSignal(cancellationToken);
-        Dictionary<string, Native.NativeRequestResult> nativeResults;
-        try
-        {
-            nativeResults = await send(linked?.Signal).ConfigureAwait(false);
-        }
-        catch (Native.FfiException.Cancelled ex)
-        {
-            throw new OperationCanceledException("The request was cancelled.", ex, cancellationToken);
-        }
-        catch (Native.FfiException.PermanentState ex)
-        {
-            throw new ArgumentException(ex.Message, subsystemParameterName, ex);
-        }
-        finally
-        {
-            if (linked is { } value)
-            {
-                await value.Registration.DisposeAsync().ConfigureAwait(false);
-                value.Signal.Dispose();
-            }
-        }
+        var nativeResults = await CancellationHelper
+            .RunAsync(send, "The request was cancelled.", cancellationToken)
+            .ConfigureAwait(false);
+
         var outcomes = new Dictionary<string, Outcome<TResponse>>(nativeResults.Count, StringComparer.Ordinal);
         foreach (var (subsystem, result) in nativeResults)
         {
@@ -208,7 +236,7 @@ public sealed partial class ProsodyClient
     {
         try
         {
-            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType)!);
+            return new Success<T>(JsonSerializer.Deserialize(value.AsSpan(), responseType));
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException)
         {

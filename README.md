@@ -267,7 +267,7 @@ Kafka decouples producers from consumers, so a send does not return consumer res
 
 Send a request from a handler or other application code. The Prosody client does not need an active subscription. The result dictionary uses canonical subsystem names as keys. Use `RequestExciseAsync` to send an excise record and collect the same outcome type.
 
-Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. The request throws an exception for request-level failures, such as invalid input, a Kafka send failure, or shutdown. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
+Do not rely on dictionary order. The dictionary contains one entry for each selected subsystem. A missing response becomes a timeout `Failure<T>`; Prosody does not omit the subsystem. A request-level failure throws: `ArgumentException` for invalid input, `InvalidOperationException` after shutdown, and `ProsodyException` when Kafka does not accept the request. Do not await a request if the current consumer group must process it for the same key. That group cannot process it until the handler returns.
 
 Message and excise handler return values become successful outcomes. Timer handlers do not return request outcomes.
 
@@ -478,7 +478,8 @@ the same process. For cross-restart deduplication, a Cassandra-backed persistent
 configured.
 
 Deduplication is always active. `IdempotenceCacheSize` must be greater than `0`; a value of `0` (via either the
-option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The cache capacity can be tuned:
+option or `PROSODY_IDEMPOTENCE_CACHE_SIZE=0`) is rejected when the client is built. The same value sizes the producer
+idempotence cache, which skips a send whose event ID the client already sent. The cache capacity can be tuned:
 
 ```csharp
 await using var client = await ProsodyClientBuilder.Create()
@@ -672,7 +673,7 @@ public async Task OnMessageAsync(
         return;
     }
 
-    await Notify(message.Key, [message]);
+    await NotifyAsync(message.Key, [message]);
     await windowState.SetAsync(true, cancellationToken);
     await context.ClearAndScheduleAsync(
         DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
@@ -688,7 +689,7 @@ public async Task OnTimerAsync(
     await foreach (var message in pendingState.WithCancellation(cancellationToken))
         batch.Add(message);
 
-    if (batch.Count > 0) await Notify(timer.Key, batch);
+    if (batch.Count > 0) await NotifyAsync(timer.Key, batch);
     await pendingState.ClearAsync(cancellationToken);
     await context.State(window).ClearAsync(cancellationToken);
 }
@@ -724,12 +725,47 @@ Do not reuse a durable name for a different collection kind or payload type. Cre
 | Collection | JSON payload | Kafka message | Main operations |
 | --- | --- | --- | --- |
 | Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `SetAsync`, `ClearAsync` |
-| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `ClearAsync` |
+| Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `EnumerateKeysAsync`, `EnumerateValuesAsync`, `ClearAsync` |
 | Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
+| Ordered string set | `StateDefinition.Set` | - | `AddAsync`, `RemoveAsync`, `ContainsAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, `ClearAsync` |
 
-Map and deque scans use `await foreach`. Map keys are strings.
+Map, set, and deque scans use `await foreach`. Map keys and set members are strings. A set stores presence only.
 
-Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. Do not store `null`. Use `ClearAsync` or `RemoveAsync`.
+### Query a collection
+
+Pass a `KeyQuery` to a map or set enumeration. Pass a `PositionQuery` to a deque enumeration. A query selects a direction, bounds, and a limit. A `KeyQuery` can also select a key prefix. Prosody applies each option in storage, so a query reads only the selected entries, members, or values.
+
+- `From` and `To` are inclusive. `After` and `Before` are exclusive. Set at most one start and one end.
+- Bounds are in iteration order. A `ScanDirection.Backward` query starts at the high end.
+- `KeyQuery.Range` accepts an ascending `KeyRange` of keys, such as `new KeyRange("a", "m")`. The start is inclusive and the end is exclusive. A `null` start or end leaves that side open. It applies in either direction. A descending range selects no keys. Keys sort in the order of their UTF-8 bytes.
+- `PositionQuery.Range` accepts an ascending `System.Range` of positions, such as `2..5` or `3..`. It applies in either direction. Use positions that count from the front; only `^0` is allowed, as the end. A descending range such as `5..2` throws, as in .NET slicing.
+- Every option narrows the selection. `Limit` must be positive.
+- To read the last N elements of a deque, use a reverse query with `Limit = N`: `new PositionQuery { Direction = ScanDirection.Backward, Limit = N }`.
+
+To page through a map, pass the last key of the previous page as `After`:
+
+```csharp
+var orders = StateDefinition.Map<Order>("orders");
+
+// In a handler: read the order keys 100 at a time.
+var map = context.State(orders);
+var page = new KeyQuery { Prefix = "order:", Limit = 100 };
+string? last = null;
+do
+{
+    var keys = new List<string>();
+    await foreach (var key in map.EnumerateKeysAsync(page with { After = last }, cancellationToken))
+        keys.Add(key);
+
+    await Process(keys);
+    last = keys.Count == page.Limit ? keys[^1] : null;
+}
+while (last is not null);
+```
+
+The same query works on published readers and in either direction.
+
+Reads return `StateValue<T>`. This type distinguishes an absent value from a stored `default(T)`. A write of JSON `null` fails with `PermanentStateException`. Use `ClearAsync` (value, deque) or `RemoveAsync` (map) to delete.
 
 Payload types guide JSON serialization. They do not add runtime validation.
 
@@ -742,6 +778,7 @@ This transaction applies only to keyed state. Some workflows need state changes 
 - `readUncommitted: true` persists keyed-state changes before Prosody records the event as complete. If the process stops between these steps, Prosody can process the same event again. The retry sees state changes from the earlier attempt. You must make these keyed-state changes idempotent. Each retry must produce the same state.
 - `await state.CommitAsync()` commits the collection's pending changes before the handler ends. A later handler failure does not remove them.
 - `await state.RollbackAsync()` discards pending changes since the last `CommitAsync()`. It cannot undo committed changes.
+- Both return a `StoreOutcome`: `Applied` when they wrote or discarded buffered changes, or `NoOp` when nothing was buffered.
 
 Keyed-state payloads use the client's `JsonSerializerOptions`. For AOT or trimmed builds, include every state payload type in the source-generated `JsonSerializerContext`; see [AOT / Trim-safe Usage](#aot--trim-safe-usage).
 
@@ -767,7 +804,7 @@ var ownedOrder = context.State(currentOrder);
 await ownedOrder.SetAsync(updatedOrder, cancellationToken);
 ```
 
-Read published state from a handler or other application code. The Prosody client does not need an active subscription.
+Read published state from a handler or other application code. The Prosody client does not need an active subscription. A client that only reads published state needs no `SubscribedTopics`.
 
 Use the subsystem and the same definition to open a reader:
 
@@ -778,7 +815,7 @@ StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellatio
 
 The reader cannot see pending changes that exist only in a handler. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
 
-Map and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order.
+Map, set, and deque readers return `IAsyncEnumerable<T>`. They fetch data in chunks. Pass `ScanDirection.Backward` to read in reverse order, or pass a `KeyQuery` or `PositionQuery` to select a page.
 
 The default cache window is five seconds. Set `readCache: StateReadCache.For(ttl)` to select a different window. Use `StateReadCache.Disabled` to bypass the cache.
 
@@ -1262,9 +1299,20 @@ await admin.CreateTopicAsync(
     replicationFactor: 1
 );
 
+// Create a compacted topic that keeps messages for one day
+await admin.CreateTopicAsync(
+    name: "state-topic",
+    partitionCount: 4,
+    replicationFactor: 1,
+    cleanupPolicy: "compact",
+    retention: TimeSpan.FromDays(1)
+);
+
 // Delete a topic
 await admin.DeleteTopicAsync("test-topic");
 ```
+
+`cleanupPolicy` sets `cleanup.policy`, such as `delete`, `compact`, or `delete,compact`. `retention` sets `retention.ms`. When you omit them, the topic uses the cluster defaults.
 
 #### Configuration Parameters
 
@@ -1367,12 +1415,14 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
+- `Task<PublishedSet> StateAsync(string subsystem, SetStateDefinition definition, CancellationToken cancellationToken = default)`: Open a read-only published set.
 - `Task SendAsync<T>(string topic, string key, T payload, CancellationToken cancellationToken = default)`: Send with the configured `JsonSerializerOptions`.
 - `Task ExciseAsync(string topic, string key, CancellationToken cancellationToken = default)`: Send an excise record for a key.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken = default)`: Send with supplied JSON metadata. This overload supports trimming.
 - `Task SendAsync<T>(string topic, string key, T payload, JsonTypeInfo<T> typeInfo, SendOptions options, CancellationToken cancellationToken = default)`: Override event metadata during a trim-safe send.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(...)`: Return one outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, ...)`: Return outcomes in trimmed applications.
+- `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, IReadOnlyList<string> subsystems, TimeSpan timeout, SendOptions options, ...)`: Override event metadata during a trim-safe request.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
 - `Task SubscribeAsync<T>(IProsodyHandler<T> handler, CancellationToken cancellationToken)`: Start event processing with a typed payload handler. The token bounds the connect wait only.
@@ -1387,7 +1437,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 ### AdminClient
 
 - `AdminClient(params string[] bootstrapServers)`: Initialize a new AdminClient with the given configuration.
-- `Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor)`: Create a Kafka topic.
+- `Task CreateTopicAsync(string name, ushort partitionCount, ushort replicationFactor, string? cleanupPolicy = null, TimeSpan? retention = null)`: Create a Kafka topic.
 - `Task DeleteTopicAsync(string name)`: Delete an existing Kafka topic.
 - `void Dispose()`: Dispose of admin client resources.
 
@@ -1418,10 +1468,12 @@ Represents a Kafka message with the following properties:
 - `Timestamp` (DateTimeOffset): The timestamp when the message was created or sent.
 - `Key` (string): The message key.
 - `T? Payload`: The deserialized payload (deserialized once before the handler is invoked).
+- `SourceSystem` (string?): The source system that produced the message, or `null` when its headers name none.
+- `IsResponseRequested` (bool): `true` when the sender waits for a response. Skip the work that only a response needs when it is `false`.
 
 ### ExciseMessage
 
-An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, and `Key` properties. It has no `Payload` property.
+An `ExciseMessage` has `Topic`, `Partition`, `Offset`, `Timestamp`, `Key`, `SourceSystem`, and `IsResponseRequested` properties. It has no `Payload` property.
 
 ### ProsodyContext
 
@@ -1429,6 +1481,7 @@ Represents the current event context:
 
 - `bool ShouldCancel { get; }`: Check if cancellation has been requested (includes timeout and shutdown).
 - `Task OnCancelAsync()`: Returns a task that completes when cancellation is signaled.
+- `Demand Demand { get; }`: The demand this call serves. `Demand.Kind` is `DemandKind.Normal` for a first attempt or `DemandKind.Failure` for a retry. `Demand.RetryAttempt` is the retry count: 0 for normal demand and 1 on the first retry. The count is an estimate. Keep an exact attempt count in keyed state if you need one.
 
 Keyed-state binding:
 
@@ -1471,50 +1524,57 @@ Enum representing the operating mode:
 ### Requests
 
 - `Outcome<T>`: A `Success<T>` or `Failure<T>` result for one subsystem.
-- `Success<T>`: Contains the response in `Value`.
+- `Success<T>`: Contains the response in `Value`. A JSON `null` response is a success with a `null` value, so use a nullable `T`, such as `RequestAsync<Order, Order?>`, when a subsystem can respond with `null`.
 - `Failure<T>`: Contains a `ResponseError` in `Error`.
 - `ResponseError`: Base record with a `Message` property.
 - `HandlerError`, `TimeoutError`, `FormatMismatchError`, and `MalformedResponseError`: The possible response errors.
-- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send.
+- `SendOptions`: Optionally overrides `EventId` and `EventType` for a trim-safe send or request.
 
 ### Keyed State
 
 Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
 
-- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
-- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
-- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
-- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
-- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
-- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool readUncommitted = false, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Set(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `SetStateDefinition`
+- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false)` → `MessageValueDefinition<TPayload>`
+- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
+- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
 Each definition exposes its validated `Name`.
 
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
-Published JSON collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, `EnumerateAsync`, and key-only `EnumerateKeysAsync`. `PublishedDeque<T>` provides `GetAsync`, `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`.
+Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync` (an `Index` such as `^1` counts from the back), `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
 
 `IValueState<T> where T : notnull`:
 
 - `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
 - `Task SetAsync(T value, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
 
 `IMapState<TValue> : IAsyncEnumerable<KeyValuePair<string, TValue>>` (keys are `string`, `TValue : notnull`):
 
 - `Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)`
 - `Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
 - `Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<bool>> ContainsManyAsync(IEnumerable<string> keys, CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `Task SetAsync(string key, TValue value, CancellationToken cancellationToken = default)`
 - `Task RemoveAsync(string key, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<KeyValuePair<string, TValue>> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<string> EnumerateKeysAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<TValue> EnumerateValuesAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<TValue> EnumerateValuesAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
 
 `IDequeState<T> : IAsyncEnumerable<T>` (`T : notnull`):
 
@@ -1524,12 +1584,35 @@ Published JSON collections use the same definition for owned and read-only acces
 - `Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default)`
 - `Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default)`
-- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`
+- `Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)`: A negative index throws `ArgumentOutOfRangeException`.
+- `Task<StateValue<T>> GetAsync(Index index, CancellationToken cancellationToken = default)`: `GetAsync(^1)` reads the back element.
 - `Task<int> CountAsync(CancellationToken cancellationToken = default)`
 - `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
 - `IAsyncEnumerable<T> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
-- `Task CommitAsync(CancellationToken cancellationToken = default)`
-- `Task RollbackAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<T> EnumerateAsync(PositionQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
+
+`ISetState : IAsyncEnumerable<string>`:
+
+- `Task AddAsync(string member, CancellationToken cancellationToken = default)`
+- `Task RemoveAsync(string member, CancellationToken cancellationToken = default)`: An absent member is a no-op.
+- `Task<bool> ContainsAsync(string member, CancellationToken cancellationToken = default)`
+- `Task<IReadOnlyList<bool>> ContainsManyAsync(IEnumerable<string> members, CancellationToken cancellationToken = default)`
+- `Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default)`
+- `Task ClearAsync(CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateAsync(ScanDirection direction = ScanDirection.Forward, CancellationToken cancellationToken = default)`
+- `IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
+- `Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default)`
+
+`KeyQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `string? Prefix`, `string? From`, `string? After`, `string? To`, `string? Before`, `KeyRange? Range`, `int? Limit`. A non-positive `Limit` throws `ArgumentOutOfRangeException`. Both `From` and `After`, or both `To` and `Before`, throw `ArgumentException` when the query is used.
+
+`KeyRange(string? Start, string? End)` (a `readonly record struct`): an ascending key range that includes `Start` and excludes `End`. A `null` side is open.
+
+`PositionQuery` (a `sealed record` with `init` properties): `ScanDirection Direction`, `int? From`, `int? After`, `int? To`, `int? Before`, `Range? Range`, `int? Limit`. A negative position, a descending range, or a from-end index other than an end of `^0` throws `ArgumentOutOfRangeException`. The pairs follow the `KeyQuery` rules.
+
+`StoreOutcome`: `Applied` (buffered changes were written or discarded) or `NoOp` (nothing was buffered).
 
 `StateValue<T>` (a `readonly struct` optional read result, `T : notnull`):
 
@@ -1546,9 +1629,13 @@ Errors:
 
 - `StateException`: abstract base; exposes `StateErrorCategory Category { get; }`.
 - `TransientStateException : StateException`: Reports a keyed-state error that Prosody can retry.
-- `NullValueException : TransientStateException`: Reports a rejected `null` write. Use `ClearAsync` or `RemoveAsync` to delete data.
 - `PermanentStateException : StateException, IPermanentError`: Reports a keyed-state error that another attempt cannot resolve.
 - `StateErrorCategory`: `Permanent` or `Transient`.
+
+Client errors:
+
+- `ProsodyException`: Reports a broker or runtime failure. A handler that rethrows it retries the event.
+- A caller mistake throws `ArgumentException` or `InvalidOperationException`. A second `SubscribeAsync` is an example.
 
 Handler error classification:
 

@@ -7,6 +7,12 @@
 //!
 //! # Error Classification
 //!
+//! The C# layer maps each [`FfiError`] variant to one public exception type.
+//! A caller mistake arrives as [`FfiError::InvalidArgument`] or
+//! [`FfiError::InvalidOperation`]. A keyed-state failure arrives as
+//! [`FfiError::PermanentState`] or [`FfiError::TransientState`]. Every other
+//! variant is a broker or runtime failure.
+//!
 //! [`CsHandlerError`] implements [`ClassifyError`] to distinguish transient
 //! errors (which should be retried) from permanent errors (which should not).
 
@@ -15,11 +21,12 @@ use std::ffi::NulError;
 use prosody::admin::{ProsodyAdminClientError, TopicConfigurationBuilderError, ValidationErrors};
 use prosody::cassandra::config::CassandraConfigurationBuilderError;
 use prosody::codec::{BinaryCodecError, JsonExtractError};
-use prosody::consumer::ConsumerConfigurationBuilderError;
 use prosody::consumer::event_context::{BoxEventContextError, ErasedCategory, ErasedStateError};
+use prosody::consumer::middleware::defer::DeferInitError;
+use prosody::consumer::{ConsumerConfigurationBuilderError, ConsumerError};
 use prosody::error::{ClassifyError, ErrorCategory};
 use prosody::high_level::HighLevelClientError;
-use prosody::high_level::erased::ErasedClientBuildError;
+use prosody::high_level::erased::{ErasedClientBuildError, ErasedReaderBuildError};
 use prosody::loader::KafkaLoaderConfigError;
 use prosody::producer::ProducerError;
 use prosody::requester::RequestError;
@@ -27,17 +34,11 @@ use prosody::state_reader::StateReaderError;
 use prosody::telemetry::emitter::TelemetryEmitterConfigurationBuilderError;
 use prosody::timers::datetime::CompactDateTimeError;
 use prosody::tracing::TracingError;
-use tokio::task::JoinError;
 
-/// Primary error type for FFI boundary operations.
-///
-/// `UniFFI` generates a corresponding `FfiException` type in C#. The
-/// `flat_error` attribute serializes all variants to strings via their
-/// `Display` implementation, preserving error messages across the language
-/// boundary.
-///
-/// All variants support automatic conversion via [`From`] implementations,
-/// allowing use of the `?` operator in FFI functions.
+/// The codec error type of every client operation.
+type Codec = BinaryCodecError<JsonExtractError>;
+
+/// The error of every exported call, which C# receives as `FfiException`.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 #[uniffi(flat_error)]
 pub enum FfiError {
@@ -58,17 +59,16 @@ pub enum FfiError {
     #[error("unexpected callback error: {0:#}")]
     UnexpectedCallback(#[from] uniffi::UnexpectedUniFFICallbackError),
 
+    /// The admin client configuration is invalid, such as an empty server
+    /// list.
+    #[error("admin configuration failed: {0:#}")]
+    AdminConfiguration(#[from] ValidationErrors),
+
     /// A Kafka admin operation failed.
     ///
     /// Wraps errors from topic creation, deletion, and metadata operations.
     #[error("admin operation failed: {0:#}")]
     Admin(#[from] ProsodyAdminClientError),
-
-    /// Configuration validation failed.
-    ///
-    /// One or more configuration values did not pass validation rules.
-    #[error("configuration validation failed: {0:#}")]
-    Validation(#[from] ValidationErrors),
 
     /// A telemetry emitter configuration builder could not be finalized.
     ///
@@ -106,25 +106,33 @@ pub enum FfiError {
     #[error("topic configuration failed: {0:#}")]
     TopicConfiguration(#[from] TopicConfigurationBuilderError),
 
-    /// A high-level client operation failed.
+    /// A high-level client operation failed at the broker or at run time.
     ///
-    /// Wraps errors from the main Prosody client API.
+    /// The conversion from [`HighLevelClientError`] routes configuration and
+    /// call-order errors to [`InvalidOperation`](Self::InvalidOperation).
     #[error("client operation failed: {0:#}")]
-    Client(#[from] HighLevelClientError<BinaryCodecError<JsonExtractError>>),
+    Client(HighLevelClientError<Codec>),
 
-    /// A request failed before it returned subsystem results.
+    /// Kafka did not accept a request.
+    ///
+    /// The conversion from [`RequestError`] routes invalid arguments to
+    /// [`InvalidArgument`](Self::InvalidArgument).
     #[error("request failed: {0:#}")]
-    Request(#[from] RequestError<BinaryCodecError<JsonExtractError>>),
+    Request(RequestError<Codec>),
 
-    /// Construction of the backend-erased FFI client failed.
-    #[error("client construction failed: {0:#}")]
-    ClientBuild(#[from] ErasedClientBuildError<BinaryCodecError<JsonExtractError>>),
+    /// The caller passed an argument that Prosody cannot accept.
+    #[error("{0}")]
+    InvalidArgument(String),
+
+    /// The options are invalid, or the call does not suit the client state.
+    #[error("{0}")]
+    InvalidOperation(String),
 
     /// A producer operation failed.
     ///
     /// Occurs when publishing messages to Kafka fails.
     #[error("producer operation failed: {0:#}")]
-    Producer(#[from] ProducerError<BinaryCodecError<JsonExtractError>>),
+    Producer(#[from] ProducerError<Codec>),
 
     /// An event context operation failed.
     ///
@@ -136,17 +144,12 @@ pub enum FfiError {
     #[error("invalid timestamp: {0:#}")]
     CompactDateTime(#[from] CompactDateTimeError),
 
-    /// A background task failed or panicked.
-    ///
-    /// Indicates that an async task did not complete successfully.
-    #[error("task join failed: {0:#}")]
-    Join(#[from] JoinError),
-
     /// A permanent keyed-state failure that must not be retried.
     ///
     /// Recovered structurally from the erased seam's
     /// [`ErasedCategory::Permanent`]: configuration or deployment mistakes
-    /// (unregistered name, identity mismatch, duplicate name, invalid TTL). The
+    /// (unregistered name, identity mismatch, duplicate name, invalid TTL) and
+    /// a JSON `null` write. The
     /// `flat_error` attribute generates a distinct `FfiException` subclass, so
     /// the C# layer recovers the category from the exception type, never by
     /// parsing the message.
@@ -156,13 +159,64 @@ pub enum FfiError {
     /// A transient keyed-state failure that may succeed on retry.
     ///
     /// Recovered structurally from the erased seam's
-    /// [`ErasedCategory::Transient`], and the classification every caller/input
-    /// mistake the glue detects folds into (null or unrepresentable writes,
-    /// invalid values or indices) so a data-dependent handler bug
-    /// retries rather than silently committing the offset and losing the
-    /// message.
+    /// [`ErasedCategory::Transient`]. A caller mistake that the glue detects,
+    /// such as an invalid index, also folds into this category, so the event
+    /// retries.
     #[error("transient state error: {0}")]
     TransientState(String),
+}
+
+/// Routes configuration and call-order errors to
+/// [`FfiError::InvalidOperation`]. A state reader error keeps its category.
+impl From<HighLevelClientError<Codec>> for FfiError {
+    fn from(error: HighLevelClientError<Codec>) -> Self {
+        match error {
+            HighLevelClientError::StateReader(error) => error.into(),
+            HighLevelClientError::ProducerConfiguration(_)
+            | HighLevelClientError::SchedulerConfiguration(_)
+            | HighLevelClientError::ConsumerConfiguration(_)
+            | HighLevelClientError::StateRegistration(_)
+            | HighLevelClientError::AlreadySubscribed
+            | HighLevelClientError::UnconfiguredConsumer
+            | HighLevelClientError::NotSubscribed
+            | HighLevelClientError::Closed => Self::InvalidOperation(error.to_string()),
+            HighLevelClientError::Consumer(ref consumer) if consumer_configuration(consumer) => {
+                Self::InvalidOperation(error.to_string())
+            }
+            error @ (HighLevelClientError::Producer(_)
+            | HighLevelClientError::Consumer(_)
+            | HighLevelClientError::ShutdownFailed(_)
+            | HighLevelClientError::TopicsNotFound(_)
+            | HighLevelClientError::TelemetryEmitter(_)) => Self::Client(error),
+        }
+    }
+}
+
+/// Routes invalid request arguments to [`FfiError::InvalidArgument`].
+impl From<RequestError<Codec>> for FfiError {
+    fn from(error: RequestError<Codec>) -> Self {
+        match error {
+            RequestError::NoSubsystems
+            | RequestError::DuplicateSubsystem { .. }
+            | RequestError::ReservedHeader { .. }
+            | RequestError::DeadlineOutOfRange => Self::InvalidArgument(error.to_string()),
+            RequestError::ShuttingDown => Self::InvalidOperation(error.to_string()),
+            error @ RequestError::Produce(_) => Self::Request(error),
+        }
+    }
+}
+
+/// Routes configuration errors to [`FfiError::InvalidOperation`].
+impl From<ErasedClientBuildError<Codec>> for FfiError {
+    fn from(error: ErasedClientBuildError<Codec>) -> Self {
+        match error {
+            ErasedClientBuildError::Client(error) => error.into(),
+            error @ (ErasedClientBuildError::MockConfiguration(_)
+            | ErasedClientBuildError::CassandraConfiguration(_)) => {
+                Self::InvalidOperation(error.to_string())
+            }
+        }
+    }
 }
 
 /// Recovers the state-error category structurally from [`ErasedStateError`].
@@ -172,18 +226,32 @@ pub enum FfiError {
 /// exhaustive over [`ErasedCategory`], which has no `Terminal`, so a state
 /// error is never surfaced as terminal.
 ///
-/// This fold forwards core's category verbatim, including cases core hard-codes
-/// as `Permanent` (e.g. `ErasedStateError::null_write`). Because this client
-/// requires every caller mistake (null or unrepresentable writes, wrong item
-/// shapes, invalid indices, invalid direction tokens) to classify transient,
-/// all such validation must be performed in the glue (`crate::state`) before a
-/// value crosses into core and reaches this conversion; the pre-checks there
-/// are what uphold that invariant, not this generic mapping.
+/// This fold forwards core's category verbatim. A JSON `null` write therefore
+/// surfaces as `Permanent`, the category that core gives it.
 impl From<ErasedStateError> for FfiError {
     fn from(error: ErasedStateError) -> Self {
         match error.category() {
             ErasedCategory::Permanent => Self::PermanentState(error.message().to_owned()),
             ErasedCategory::Transient => Self::TransientState(error.message().to_owned()),
+        }
+    }
+}
+
+/// Classifies a failure to open a published reader.
+///
+/// An empty subsystem name is a caller mistake. A state reader error keeps
+/// the category that Prosody gives it. Any other client failure, such as a
+/// broker that is not available, is transient.
+impl From<ErasedReaderBuildError<Codec>> for FfiError {
+    fn from(error: ErasedReaderBuildError<Codec>) -> Self {
+        match error {
+            ErasedReaderBuildError::InvalidSubsystem(error) => {
+                Self::InvalidArgument(error.to_string())
+            }
+            ErasedReaderBuildError::Client(HighLevelClientError::StateReader(error)) => {
+                error.into()
+            }
+            ErasedReaderBuildError::Client(error) => Self::TransientState(error.to_string()),
         }
     }
 }
@@ -199,20 +267,21 @@ impl From<StateReaderError> for FfiError {
     }
 }
 
-/// Represents errors from C# event handler callbacks.
-///
-/// This type wraps errors that originate in C# code and cross back into Rust.
-/// Error messages from C# exceptions are preserved for logging and diagnostics.
-///
-/// # Error Classification
-///
-/// This type implements [`ClassifyError`] to support retry logic:
-/// - [`Transient`][Self::Transient] is classified as transient (retriable).
-/// - An [`Ffi`][Self::Ffi]-wrapped [`FfiError::PermanentState`] classifies as
-///   permanent (a config/deploy state error that escaped the handler and
-///   round-tripped back through the FFI boundary); all other [`Ffi`][Self::Ffi]
-///   variants are infrastructure failures and classify as transient.
-/// - [`Permanent`][Self::Permanent] errors should not be retried.
+/// Reports whether a consumer start failed because an option is invalid.
+fn consumer_configuration(error: &ConsumerError) -> bool {
+    matches!(
+        error,
+        ConsumerError::Configuration(_)
+            | ConsumerError::AllowedEventsPattern(_)
+            | ConsumerError::InvalidSlabSize(_)
+            | ConsumerError::Scheduler(_)
+            | ConsumerError::Timeout(_)
+            | ConsumerError::Monopolization(_)
+            | ConsumerError::Defer(DeferInitError::Validation(_))
+    )
+}
+
+/// An error that a C# event handler callback returns to Rust.
 #[derive(Debug, thiserror::Error)]
 pub enum CsHandlerError {
     /// A transient error that may succeed on retry.
@@ -255,6 +324,7 @@ impl From<FfiError> for CsHandlerError {
 impl ClassifyError for CsHandlerError {
     fn classify_error(&self) -> ErrorCategory {
         match self {
+            // A permanent state error that escaped the handler stays permanent.
             Self::Ffi(error) if matches!(error.as_ref(), FfiError::PermanentState(_)) => {
                 ErrorCategory::Permanent
             }
