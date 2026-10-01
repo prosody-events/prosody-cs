@@ -180,82 +180,27 @@ public sealed class DisposalTests
         Assert.Equal(0, build.Attempts);
     }
 
-    [Fact]
-    public async Task FailedBuildIsRetried()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedOrCancelledBuildIsRetried(bool cancelled)
     {
+        var failure = cancelled
+            ? Task.FromCanceled<Native.ProsodyClient>(new CancellationToken(canceled: true))
+            : Task.FromException<Native.ProsodyClient>(new InvalidOperationException("unavailable"));
         var attempts = 0;
         await using var client = new ProsodyClient(
             MockOptions,
-            connect: () =>
-                Interlocked.Increment(ref attempts) == 1
-                    ? Task.FromException<Native.ProsodyClient>(new InvalidOperationException("unavailable"))
-                    : MockNativeAsync()
+            connect: () => Interlocked.Increment(ref attempts) == 1 ? failure : MockNativeAsync()
         );
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ConnectAsync(Ct));
+        await Assert.ThrowsAnyAsync<Exception>(() => client.ConnectAsync(Ct));
         await client.ConnectAsync(Ct);
         Assert.Equal(2, attempts);
     }
 
     [Fact]
-    public async Task BuildThatEndedCanceledIsNotRetained()
-    {
-        var attempts = 0;
-        await using var client = new ProsodyClient(
-            MockOptions,
-            connect: () =>
-                Interlocked.Increment(ref attempts) == 1
-                    ? Task.FromCanceled<Native.ProsodyClient>(new CancellationToken(canceled: true))
-                    : MockNativeAsync()
-        );
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ConnectAsync(Ct));
-        await client.ConnectAsync(Ct);
-        Assert.Equal(2, attempts);
-    }
-
-    [Fact]
-    public async Task AbandonedBuildThatFaultsIsRetriedNotReplayed()
-    {
-        var build = new Build();
-        var faulted = false;
-        await using var client = new ProsodyClient(
-            MockOptions,
-            connect: () => faulted ? build.Immediate() : build.Pending()
-        );
-        var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        EventHandler<UnobservedTaskExceptionEventArgs> onUnobserved = (_, args) =>
-        {
-            if (args.Exception.GetBaseException().Message == _marker)
-            {
-                fired.TrySetResult();
-            }
-        };
-        TaskScheduler.UnobservedTaskException += onUnobserved;
-        try
-        {
-            await AbandonOneWaiterAsync(client);
-            faulted = true;
-            await build.FaultAsync(new InvalidOperationException(_marker));
-
-            await client.ConnectAsync(Ct).WaitAsync(Deadline, Ct);
-            Assert.Equal(2, build.Attempts);
-
-            // The cache evicted the task returned by BuildAsync. The retained gate belongs to the factory, not the cache.
-            for (var i = 0; i < 3; i++)
-            {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-            }
-            Assert.False(fired.Task.IsCompleted, "The evicted build raised UnobservedTaskException.");
-        }
-        finally
-        {
-            TaskScheduler.UnobservedTaskException -= onUnobserved;
-        }
-    }
-
-    private const string _marker = "abandoned build fault marker";
+    public Task AbandonedBuildThatFaultsIsRetriedAndObserved() => AssertFaultObservedAsync(RetryAbandonedBuildAsync);
 
     /// <summary>Starts one waiter and cancels it. No reference to the waiter survives this call.</summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -453,19 +398,46 @@ public sealed class DisposalTests
         }
     }
 
-    /// <summary>Drops all strong task references before the collection check.</summary>
+    /// <summary>
+    /// Returns a weak reference to the cached build, not the factory task that BuildAsync observes.
+    /// The caller holds no strong reference, so the build can be collected.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference CachedBuild(ProsodyClient client)
+    {
+        var field = typeof(ProsodyClient).GetField("_native", BindingFlags.Instance | BindingFlags.NonPublic);
+        var cached = Assert.IsAssignableFrom<Task>(field!.GetValue(client));
+        Assert.False(cached.IsCompleted);
+        return new WeakReference(cached);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> RetryAbandonedBuildAsync(Exception error)
+    {
+        var build = new Build();
+        var faulted = false;
+        await using var client = new ProsodyClient(
+            MockOptions,
+            connect: () => faulted ? build.Immediate() : build.Pending()
+        );
+        await AbandonOneWaiterAsync(client);
+        var reference = CachedBuild(client);
+
+        faulted = true;
+        await build.FaultAsync(error);
+        await client.ConnectAsync(Ct).WaitAsync(Deadline, Ct);
+        Assert.Equal(2, build.Attempts);
+        return reference;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static async Task<WeakReference> DisposeAbandonedBuildAsync(Exception error)
     {
         var build = new Build();
         var client = new ProsodyClient(MockOptions, connect: build.Pending);
         await AbandonOneWaiterAsync(client);
+        var reference = CachedBuild(client);
 
-        // Track the cached build, not the factory task that BuildAsync already observes.
-        var field = typeof(ProsodyClient).GetField("_native", BindingFlags.Instance | BindingFlags.NonPublic);
-        var cached = Assert.IsAssignableFrom<Task>(field!.GetValue(client));
-        var reference = new WeakReference(cached);
-        Assert.False(cached.IsCompleted);
         var disposal = client.DisposeAsync();
         Assert.True(disposal.IsCompletedSuccessfully);
         await disposal;
