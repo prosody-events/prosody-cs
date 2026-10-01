@@ -23,11 +23,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier => StateInterop.JsonToValue(await _handle.Get(key, carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
     }
@@ -40,9 +36,9 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         ArgumentNullException.ThrowIfNull(keys);
         var keyArray = keys as string[] ?? [.. keys];
         return StateInterop.RunAsync<IReadOnlyList<StateValue<TValue>>>(
-            async () =>
+            async carrier =>
             {
-                var items = await _handle.GetMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false);
+                var items = await _handle.GetMany(keyArray, carrier).ConfigureAwait(false);
                 return Array.ConvertAll(items, item => StateInterop.JsonToValue(item.Bytes, _typeInfo));
             },
             cancellationToken
@@ -53,23 +49,23 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         var bytes = StateInterop.SerializeJson(value, _typeInfo);
-        return StateInterop.RunAsync(() => _handle.Set(key, bytes, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Set(key, bytes, carrier), cancellationToken);
     }
 
     public Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.ContainsKey(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.ContainsKey(key, carrier), cancellationToken);
     }
 
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.Remove(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Remove(key, carrier), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
     public Task<IReadOnlyList<bool>> ContainsManyAsync(
         IEnumerable<string> keys,
@@ -79,13 +75,13 @@ internal sealed class MapState<TValue> : IMapState<TValue>
         ArgumentNullException.ThrowIfNull(keys);
         var keyArray = keys as string[] ?? [.. keys];
         return StateInterop.RunAsync<IReadOnlyList<bool>>(
-            async () => await _handle.ContainsMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async carrier => await _handle.ContainsMany(keyArray, carrier).ConfigureAwait(false),
             cancellationToken
         );
     }
 
     public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.IsEmpty(carrier), cancellationToken);
 
     public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
         StateInterop.Keys(_handle.Keys, query, cancellationToken);

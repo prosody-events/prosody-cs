@@ -21,10 +21,7 @@ public sealed class PublishedSet
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(member);
-        return StateInterop.RunAsync(
-            () => _handle.Contains(key, member, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(carrier => _handle.Contains(key, member, carrier), cancellationToken);
     }
 
     /// <summary>Tests several members for a user key in one batch. <c>result[i]</c> answers the i-th member.</summary>
@@ -43,8 +40,7 @@ public sealed class PublishedSet
         ArgumentNullException.ThrowIfNull(members);
         var memberArray = members as string[] ?? [.. members];
         return StateInterop.RunAsync<IReadOnlyList<bool>>(
-            async () =>
-                await _handle.ContainsMany(key, memberArray, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async carrier => await _handle.ContainsMany(key, memberArray, carrier).ConfigureAwait(false),
             cancellationToken
         );
     }
@@ -57,7 +53,7 @@ public sealed class PublishedSet
     public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.IsEmpty(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.IsEmpty(key, carrier), cancellationToken);
     }
 
     /// <summary>Enumerates members in member order.</summary>

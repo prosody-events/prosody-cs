@@ -27,9 +27,9 @@ public sealed class PublishedDeque<T>
         ArgumentNullException.ThrowIfNull(key);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         return StateInterop.RunAsync(
-            async () =>
+            async carrier =>
                 StateInterop.JsonToValue(
-                    await _handle.Get(key, (ulong)index, StateInterop.CreateCarrier()).ConfigureAwait(false),
+                    await _handle.Get(key, (ulong)index, carrier).ConfigureAwait(false),
                     _typeInfo
                 ),
             cancellationToken
@@ -72,7 +72,7 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.RunAsync(
-            async () => checked((int)await _handle.Len(key, StateInterop.CreateCarrier()).ConfigureAwait(false)),
+            async carrier => checked((int)await _handle.Len(key, carrier).ConfigureAwait(false)),
             cancellationToken
         );
     }
@@ -85,7 +85,7 @@ public sealed class PublishedDeque<T>
     public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.IsEmpty(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.IsEmpty(key, carrier), cancellationToken);
     }
 
     /// <summary>Reads the front element for a user key without removing it.</summary>
@@ -97,11 +97,8 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.PeekFront(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier =>
+                StateInterop.JsonToValue(await _handle.PeekFront(key, carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
     }
@@ -115,11 +112,8 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.PeekBack(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier =>
+                StateInterop.JsonToValue(await _handle.PeekBack(key, carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
     }

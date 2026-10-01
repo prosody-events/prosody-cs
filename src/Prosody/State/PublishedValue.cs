@@ -23,11 +23,7 @@ public sealed class PublishedValue<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier => StateInterop.JsonToValue(await _handle.Get(key, carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
     }

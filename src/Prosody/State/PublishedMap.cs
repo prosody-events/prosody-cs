@@ -26,11 +26,8 @@ public sealed class PublishedMap<TValue>
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(mapKey);
         return StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(key, mapKey, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier =>
+                StateInterop.JsonToValue(await _handle.Get(key, mapKey, carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
     }
@@ -51,9 +48,9 @@ public sealed class PublishedMap<TValue>
         ArgumentNullException.ThrowIfNull(mapKeys);
         var keys = mapKeys as string[] ?? [.. mapKeys];
         return StateInterop.RunAsync<IReadOnlyList<StateValue<TValue>>>(
-            async () =>
+            async carrier =>
             {
-                var items = await _handle.GetMany(key, keys, StateInterop.CreateCarrier()).ConfigureAwait(false);
+                var items = await _handle.GetMany(key, keys, carrier).ConfigureAwait(false);
                 return Array.ConvertAll(items, item => StateInterop.JsonToValue(item.Bytes, _typeInfo));
             },
             cancellationToken
@@ -70,10 +67,7 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(mapKey);
-        return StateInterop.RunAsync(
-            () => _handle.ContainsKey(key, mapKey, StateInterop.CreateCarrier()),
-            cancellationToken
-        );
+        return StateInterop.RunAsync(carrier => _handle.ContainsKey(key, mapKey, carrier), cancellationToken);
     }
 
     /// <summary>Tests several entries for a user key in one batch. <c>result[i]</c> answers the i-th map key.</summary>
@@ -92,7 +86,7 @@ public sealed class PublishedMap<TValue>
         ArgumentNullException.ThrowIfNull(mapKeys);
         var keys = mapKeys as string[] ?? [.. mapKeys];
         return StateInterop.RunAsync<IReadOnlyList<bool>>(
-            async () => await _handle.ContainsMany(key, keys, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async carrier => await _handle.ContainsMany(key, keys, carrier).ConfigureAwait(false),
             cancellationToken
         );
     }
@@ -105,7 +99,7 @@ public sealed class PublishedMap<TValue>
     public Task<bool> IsEmptyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.IsEmpty(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.IsEmpty(key, carrier), cancellationToken);
     }
 
     /// <summary>Enumerates keys without reading values.</summary>

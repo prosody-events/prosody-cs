@@ -80,7 +80,7 @@ public sealed partial class ProsodyClient
         ArgumentNullException.ThrowIfNull(subsystem);
         ArgumentNullException.ThrowIfNull(definition);
         return StateInterop.RunAsync(
-            () => open(subsystem, definition.Name, definition.ReadCache?.Policy),
+            _ => open(subsystem, definition.Name, definition.ReadCache?.Policy),
             cancellationToken
         );
     }

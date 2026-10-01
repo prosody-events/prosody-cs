@@ -20,22 +20,18 @@ internal sealed class ValueState<T> : IValueState<T>
 
     public Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
+            async carrier => StateInterop.JsonToValue(await _handle.Get(carrier).ConfigureAwait(false), _typeInfo),
             cancellationToken
         );
 
     public Task SetAsync(T value, CancellationToken cancellationToken = default)
     {
         var bytes = StateInterop.SerializeJson(value, _typeInfo);
-        return StateInterop.RunAsync(() => _handle.Set(bytes, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Set(bytes, carrier), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
     public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);

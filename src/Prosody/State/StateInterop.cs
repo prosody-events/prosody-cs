@@ -11,34 +11,35 @@ namespace Prosody.State;
 internal static class StateInterop
 {
     /// <summary>
-    /// Runs one asynchronous native state operation with <see cref="NativeErrors.RunAsync(Func{Task}, string?)"/>.
-    /// A cancelled token faults the task with <see cref="OperationCanceledException"/> and starts no
-    /// operation. A started native operation always runs to completion, so no later operation races it
-    /// on the same context.
+    /// Runs one asynchronous native state operation with a fresh carrier and
+    /// <see cref="NativeErrors.RunAsync(Func{Task}, string?)"/>. A cancelled token faults the task with
+    /// <see cref="OperationCanceledException"/> and starts no operation. A started native operation
+    /// always runs to completion, so no later operation races it on the same context.
     /// </summary>
-    internal static async Task RunAsync(Func<Task> operation, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await NativeErrors.RunAsync(operation).ConfigureAwait(false);
-    }
-
-    /// <summary>Runs one asynchronous native state operation that produces a value, like <see cref="RunAsync(Func{Task}, CancellationToken)"/>.</summary>
-    internal static async Task<TResult> RunAsync<TResult>(
-        Func<Task<TResult>> operation,
+    internal static async Task RunAsync(
+        Func<Dictionary<string, string>, Task> operation,
         CancellationToken cancellationToken
     )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return await NativeErrors.RunAsync(operation).ConfigureAwait(false);
+        await NativeErrors.RunAsync(() => operation(CreateCarrier())).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Runs one native commit or rollback with a fresh carrier and converts its outcome.
-    /// </summary>
+    /// <summary>Runs one asynchronous native state operation that produces a value, like <see cref="RunAsync(Func{Dictionary{string, string}, Task}, CancellationToken)"/>.</summary>
+    internal static async Task<TResult> RunAsync<TResult>(
+        Func<Dictionary<string, string>, Task<TResult>> operation,
+        CancellationToken cancellationToken
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await NativeErrors.RunAsync(() => operation(CreateCarrier())).ConfigureAwait(false);
+    }
+
+    /// <summary>Runs one native commit or rollback and converts its outcome.</summary>
     internal static Task<StoreOutcome> RunOutcomeAsync(
         Func<Dictionary<string, string>, Task<Native.StoreOutcome>> operation,
         CancellationToken cancellationToken
-    ) => RunAsync(async () => ToPublic(await operation(CreateCarrier()).ConfigureAwait(false)), cancellationToken);
+    ) => RunAsync(async carrier => ToPublic(await operation(carrier).ConfigureAwait(false)), cancellationToken);
 
     /// <summary>Opens a lazy scan of the keys that <paramref name="query"/> selects.</summary>
     internal static IAsyncEnumerable<string> Keys(

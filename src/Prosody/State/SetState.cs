@@ -14,19 +14,19 @@ internal sealed class SetState : ISetState
     public Task AddAsync(string member, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(member);
-        return StateInterop.RunAsync(() => _handle.Insert(member, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Insert(member, carrier), cancellationToken);
     }
 
     public Task RemoveAsync(string member, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(member);
-        return StateInterop.RunAsync(() => _handle.Remove(member, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Remove(member, carrier), cancellationToken);
     }
 
     public Task<bool> ContainsAsync(string member, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(member);
-        return StateInterop.RunAsync(() => _handle.Contains(member, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Contains(member, carrier), cancellationToken);
     }
 
     public Task<IReadOnlyList<bool>> ContainsManyAsync(
@@ -37,16 +37,16 @@ internal sealed class SetState : ISetState
         ArgumentNullException.ThrowIfNull(members);
         var memberArray = members as string[] ?? [.. members];
         return StateInterop.RunAsync<IReadOnlyList<bool>>(
-            async () => await _handle.ContainsMany(memberArray, StateInterop.CreateCarrier()).ConfigureAwait(false),
+            async carrier => await _handle.ContainsMany(memberArray, carrier).ConfigureAwait(false),
             cancellationToken
         );
     }
 
     public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.IsEmpty(carrier), cancellationToken);
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
     public IAsyncEnumerable<string> EnumerateAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
         StateInterop.Keys(_handle.Keys, query, cancellationToken);
