@@ -19,10 +19,7 @@ internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload
     }
 
     public Task<StateValue<Message<TPayload>>> GetAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async carrier => MessageInterop.MessageToValue(await _handle.Get(carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.Get, _typeInfo, cancellationToken);
 
     public Task SetAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {

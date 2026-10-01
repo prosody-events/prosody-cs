@@ -136,6 +136,15 @@ internal static class StateInterop
     internal static KeyValuePair<string, T> JsonMapEntry<T>(Native.JsonMapEntry item, JsonTypeInfo<T> typeInfo)
         where T : notnull => KeyValuePair.Create(item.Key, DeserializeJson(item.Bytes, typeInfo));
 
+    /// <summary>Runs one native read with <see cref="RunAsync{TResult}"/> and decodes the optional JSON item.</summary>
+    internal static Task<StateValue<T>> ReadJsonAsync<T>(
+        Func<Dictionary<string, string>, Task<byte[]?>> read,
+        JsonTypeInfo<T> typeInfo,
+        CancellationToken cancellationToken
+    )
+        where T : notnull =>
+        RunAsync(async carrier => JsonToValue(await read(carrier).ConfigureAwait(false), typeInfo), cancellationToken);
+
     /// <summary>Projects optional JSON bytes into a typed value.</summary>
     internal static StateValue<T> JsonToValue<T>(byte[]? bytes, JsonTypeInfo<T> typeInfo)
         where T : notnull => bytes is null ? StateValue<T>.None : new StateValue<T>(DeserializeJson(bytes, typeInfo));

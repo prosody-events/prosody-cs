@@ -25,11 +25,7 @@ public sealed class PublishedMap<TValue>
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(mapKey);
-        return StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(await _handle.Get(key, mapKey, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.Get(key, mapKey, carrier), _typeInfo, cancellationToken);
     }
 
     /// <summary>Reads several entries for a user key in one batch.</summary>

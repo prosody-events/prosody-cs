@@ -22,10 +22,7 @@ internal sealed class MapState<TValue> : IMapState<TValue>
     public Task<StateValue<TValue>> GetAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async carrier => StateInterop.JsonToValue(await _handle.Get(key, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.Get(key, carrier), _typeInfo, cancellationToken);
     }
 
     public Task<IReadOnlyList<StateValue<TValue>>> GetManyAsync(

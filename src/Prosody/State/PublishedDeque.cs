@@ -26,12 +26,9 @@ public sealed class PublishedDeque<T>
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        return StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(key, (ulong)index, carrier).ConfigureAwait(false),
-                    _typeInfo
-                ),
+        return StateInterop.ReadJsonAsync(
+            carrier => _handle.Get(key, (ulong)index, carrier),
+            _typeInfo,
             cancellationToken
         );
     }
@@ -96,11 +93,7 @@ public sealed class PublishedDeque<T>
     public Task<StateValue<T>> PeekFrontAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(await _handle.PeekFront(key, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.PeekFront(key, carrier), _typeInfo, cancellationToken);
     }
 
     /// <summary>Reads the back element for a user key without removing it.</summary>
@@ -111,11 +104,7 @@ public sealed class PublishedDeque<T>
     public Task<StateValue<T>> PeekBackAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(await _handle.PeekBack(key, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.PeekBack(key, carrier), _typeInfo, cancellationToken);
     }
 
     /// <summary>Enumerates elements in position order.</summary>

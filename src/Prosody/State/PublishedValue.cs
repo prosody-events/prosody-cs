@@ -22,9 +22,6 @@ public sealed class PublishedValue<T>
     public Task<StateValue<T>> GetAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async carrier => StateInterop.JsonToValue(await _handle.Get(key, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.Get(key, carrier), _typeInfo, cancellationToken);
     }
 }

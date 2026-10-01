@@ -22,11 +22,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     public Task<StateValue<Message<TPayload>>> GetAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async carrier =>
-                MessageInterop.MessageToValue(await _handle.Get(key, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return MessageInterop.ReadAsync(carrier => _handle.Get(key, carrier), _typeInfo, cancellationToken);
     }
 
     public Task<IReadOnlyList<StateValue<Message<TPayload>>>> GetManyAsync(

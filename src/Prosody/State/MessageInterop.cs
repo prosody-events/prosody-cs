@@ -47,6 +47,17 @@ internal static class MessageInterop
             );
     }
 
+    /// <summary>Runs one native read with <see cref="StateInterop.RunAsync{TResult}"/> and decodes the optional message.</summary>
+    internal static Task<StateValue<Message<TPayload>>> ReadAsync<TPayload>(
+        Func<Dictionary<string, string>, Task<Native.Message?>> read,
+        JsonTypeInfo<TPayload> typeInfo,
+        CancellationToken cancellationToken
+    ) =>
+        StateInterop.RunAsync(
+            async carrier => MessageToValue(await read(carrier).ConfigureAwait(false), typeInfo),
+            cancellationToken
+        );
+
     /// <summary>Projects an optional native message into a typed message value.</summary>
     internal static StateValue<Message<TPayload>> MessageToValue<TPayload>(
         Native.Message? item,

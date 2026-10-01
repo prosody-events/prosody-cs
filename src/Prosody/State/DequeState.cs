@@ -32,42 +32,25 @@ internal sealed class DequeState<T> : IDequeState<T>
     }
 
     public Task<StateValue<T>> PopFrontAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async carrier => StateInterop.JsonToValue(await _handle.PopFront(carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        StateInterop.ReadJsonAsync(_handle.PopFront, _typeInfo, cancellationToken);
 
     public Task<StateValue<T>> PopBackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async carrier => StateInterop.JsonToValue(await _handle.PopBack(carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        StateInterop.ReadJsonAsync(_handle.PopBack, _typeInfo, cancellationToken);
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
     public Task<StateValue<T>> PeekFrontAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(await _handle.PeekFront(carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        StateInterop.ReadJsonAsync(_handle.PeekFront, _typeInfo, cancellationToken);
 
     public Task<StateValue<T>> PeekBackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async carrier => StateInterop.JsonToValue(await _handle.PeekBack(carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        StateInterop.ReadJsonAsync(_handle.PeekBack, _typeInfo, cancellationToken);
 
     public Task<StateValue<T>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
-        return StateInterop.RunAsync(
-            async carrier =>
-                StateInterop.JsonToValue(await _handle.Get((ulong)index, carrier).ConfigureAwait(false), _typeInfo),
-            cancellationToken
-        );
+        return StateInterop.ReadJsonAsync(carrier => _handle.Get((ulong)index, carrier), _typeInfo, cancellationToken);
     }
 
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
