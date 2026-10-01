@@ -1519,13 +1519,13 @@ Enum representing the operating mode:
 
 Definition factories (each returns an immutable, validated record used both in `WithStateCollections(...)` and with `context.State(...)`):
 
-- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
-- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
-- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
-- `StateDefinition.Set(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `SetStateDefinition`
-- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null)` → `MessageValueDefinition<TPayload>`
-- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
-- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool? readUncommitted = null, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
+- `StateDefinition.Value<T>(string name, TimeSpan? ttl = null, bool readUncommitted = false, bool published = false, StateReadCache? readCache = null)` → `ValueStateDefinition<T>`
+- `StateDefinition.Map<TValue>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `MapStateDefinition<TValue>`
+- `StateDefinition.Deque<T>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? capacity = null, bool published = false, StateReadCache? readCache = null)` → `DequeStateDefinition<T>`
+- `StateDefinition.Set(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null, bool published = false, StateReadCache? readCache = null)` → `SetStateDefinition`
+- `StateDefinition.MessageValue<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false)` → `MessageValueDefinition<TPayload>`
+- `StateDefinition.MessageMap<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? keysetLimit = null)` → `MessageMapDefinition<TPayload>`
+- `StateDefinition.MessageDeque<TPayload>(string name, TimeSpan? ttl = null, bool readUncommitted = false, int? capacity = null)` → `MessageDequeDefinition<TPayload>`
 
 Each definition exposes its validated `Name`.
 

@@ -6,7 +6,7 @@ public sealed record SetStateDefinition : StateDefinition
     internal SetStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         int? keysetLimit,
         bool published,
         StateReadCache? readCache

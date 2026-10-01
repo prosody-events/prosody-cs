@@ -69,8 +69,8 @@ pub struct StateCollectionConfig {
     pub ttl: Option<Duration>,
 
     /// Opts out of transactional staging when true.
-    #[uniffi(default = None)]
-    pub read_uncommitted: Option<bool>,
+    #[uniffi(default = false)]
+    pub read_uncommitted: bool,
 
     /// Whether owners advertise this collection for cross-group reads.
     #[uniffi(default = false)]

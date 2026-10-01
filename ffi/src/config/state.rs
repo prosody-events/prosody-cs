@@ -204,7 +204,7 @@ fn with_def<D: StateDescriptor>(
     if let Some(ttl) = ttl_seconds {
         descriptor = descriptor.ttl(CompactDuration::new(ttl));
     }
-    if collection.read_uncommitted == Some(true) {
+    if collection.read_uncommitted {
         descriptor = descriptor.read_uncommitted();
     }
     descriptor.published(collection.published)

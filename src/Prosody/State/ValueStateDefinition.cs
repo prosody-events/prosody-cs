@@ -8,7 +8,7 @@ public sealed record ValueStateDefinition<T> : StateDefinition
     internal ValueStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         bool published,
         StateReadCache? readCache
     )

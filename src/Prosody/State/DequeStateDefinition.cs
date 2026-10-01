@@ -8,7 +8,7 @@ public sealed record DequeStateDefinition<T> : StateDefinition
     internal DequeStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         int? capacity,
         bool published,
         StateReadCache? readCache

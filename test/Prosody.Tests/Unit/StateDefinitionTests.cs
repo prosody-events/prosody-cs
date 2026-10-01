@@ -28,7 +28,7 @@ public sealed class StateDefinitionTests
         Assert.Multiple(
             () =>
                 Assert.Equal(
-                    new Native.StateCollectionConfig("v", new Native.StateKind.Value(json), ttl, null, true),
+                    new Native.StateCollectionConfig("v", new Native.StateKind.Value(json), ttl, false, true),
                     StateDefinition.Value<int>("v", ttl: ttl, published: true).ToNative()
                 ),
             () =>
@@ -38,22 +38,22 @@ public sealed class StateDefinitionTests
                 ),
             () =>
                 Assert.Equal(
-                    new Native.StateCollectionConfig("d", new Native.StateKind.Deque(json, 100), null, null, false),
+                    new Native.StateCollectionConfig("d", new Native.StateKind.Deque(json, 100), null, false, false),
                     StateDefinition.Deque<int>("d", capacity: 100).ToNative()
                 ),
             () =>
                 Assert.Equal(
-                    new Native.StateCollectionConfig("s", new Native.StateKind.Set(64), null, null, false),
+                    new Native.StateCollectionConfig("s", new Native.StateKind.Set(64), null, false, false),
                     StateDefinition.Set("s", keysetLimit: 64).ToNative()
                 ),
             () =>
                 Assert.Equal(
-                    new Native.StateCollectionConfig("mv", new Native.StateKind.Value(message), null, null, false),
+                    new Native.StateCollectionConfig("mv", new Native.StateKind.Value(message), null, false, false),
                     StateDefinition.MessageValue<int>("mv").ToNative()
                 ),
             () =>
                 Assert.Equal(
-                    new Native.StateCollectionConfig("mm", new Native.StateKind.Map(message, 8), null, null, false),
+                    new Native.StateCollectionConfig("mm", new Native.StateKind.Map(message, 8), null, false, false),
                     StateDefinition.MessageMap<int>("mm", keysetLimit: 8).ToNative()
                 ),
             () =>
@@ -62,7 +62,7 @@ public sealed class StateDefinitionTests
                         "md",
                         new Native.StateKind.Deque(message, null),
                         null,
-                        null,
+                        false,
                         false
                     ),
                     StateDefinition.MessageDeque<int>("md").ToNative()

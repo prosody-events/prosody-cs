@@ -8,7 +8,7 @@ public sealed record MapStateDefinition<TValue> : StateDefinition
     internal MapStateDefinition(
         string name,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         int? keysetLimit,
         bool published,
         StateReadCache? readCache

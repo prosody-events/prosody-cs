@@ -4,7 +4,7 @@ namespace Prosody.State;
 /// <typeparam name="TPayload">The message payload type.</typeparam>
 public sealed record MessageMapDefinition<TPayload> : StateDefinition
 {
-    internal MessageMapDefinition(string name, TimeSpan? ttl, bool? readUncommitted, int? keysetLimit)
+    internal MessageMapDefinition(string name, TimeSpan? ttl, bool readUncommitted, int? keysetLimit)
         : base(name, new Native.StateKind.Map(Native.StatePayload.Message, Bound(keysetLimit)), ttl, readUncommitted)
     { }
 }

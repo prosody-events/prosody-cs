@@ -27,7 +27,7 @@ public abstract record StateDefinition
         string name,
         Native.StateKind kind,
         TimeSpan? ttl,
-        bool? readUncommitted,
+        bool readUncommitted,
         bool published = false,
         StateReadCache? readCache = null
     )
@@ -48,7 +48,7 @@ public abstract record StateDefinition
 
     internal TimeSpan? Ttl { get; }
 
-    internal bool? ReadUncommitted { get; }
+    internal bool ReadUncommitted { get; }
 
     internal bool Published { get; }
 
@@ -67,7 +67,7 @@ public abstract record StateDefinition
     public static ValueStateDefinition<T> Value<T>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         bool published = false,
         StateReadCache? readCache = null
     )
@@ -87,7 +87,7 @@ public abstract record StateDefinition
     public static MapStateDefinition<TValue> Map<TValue>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? keysetLimit = null,
         bool published = false,
         StateReadCache? readCache = null
@@ -112,7 +112,7 @@ public abstract record StateDefinition
     public static DequeStateDefinition<T> Deque<T>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? capacity = null,
         bool published = false,
         StateReadCache? readCache = null
@@ -132,7 +132,7 @@ public abstract record StateDefinition
     public static SetStateDefinition Set(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? keysetLimit = null,
         bool published = false,
         StateReadCache? readCache = null
@@ -149,7 +149,7 @@ public abstract record StateDefinition
     public static MessageValueDefinition<TPayload> MessageValue<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null
+        bool readUncommitted = false
     ) => new(name, ttl, readUncommitted);
 
     /// <summary>
@@ -164,7 +164,7 @@ public abstract record StateDefinition
     public static MessageMapDefinition<TPayload> MessageMap<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? keysetLimit = null
     ) => new(name, ttl, readUncommitted, keysetLimit);
 
@@ -183,7 +183,7 @@ public abstract record StateDefinition
     public static MessageDequeDefinition<TPayload> MessageDeque<TPayload>(
         string name,
         TimeSpan? ttl = null,
-        bool? readUncommitted = null,
+        bool readUncommitted = false,
         int? capacity = null
     ) => new(name, ttl, readUncommitted, capacity);
 
