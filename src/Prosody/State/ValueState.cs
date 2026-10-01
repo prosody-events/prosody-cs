@@ -19,27 +19,20 @@ internal sealed class ValueState<T> : IValueState<T>
     }
 
     public Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                StateInterop.JsonToValue(
-                    await _handle.Get(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        StateInterop.ReadJsonAsync(_handle.Get, _typeInfo, cancellationToken);
 
     public Task SetAsync(T value, CancellationToken cancellationToken = default)
     {
-        var bytes = StateInterop.SerializeJsonOrThrowNull(value, _typeInfo, "Use ClearAsync to delete instead.");
-        return StateInterop.RunAsync(() => _handle.Set(bytes, StateInterop.CreateCarrier()), cancellationToken);
+        var bytes = StateInterop.SerializeJson(value, _typeInfo);
+        return StateInterop.RunAsync(carrier => _handle.Set(bytes, carrier), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
 }

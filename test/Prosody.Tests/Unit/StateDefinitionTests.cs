@@ -9,125 +9,81 @@ namespace Prosody.Tests.Unit;
 public sealed class StateDefinitionTests
 {
     [Fact]
-    public void Value_ValidName_Constructs()
+    public void NegativeBound_Throws()
     {
-        var definition = StateDefinition.Value<int>("counter");
-        Assert.Equal("counter", definition.Name);
-    }
-
-    [Fact]
-    public void Keyset_Zero_Ok()
-    {
-        var definition = StateDefinition.Map<int>("m", keysetLimit: 0);
-        Assert.Equal("m", definition.Name);
-    }
-
-    [Fact]
-    public void Keyset_Negative_Throws()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Map<int>("m", keysetLimit: -1));
-    }
-
-    [Fact]
-    public void ToNative_Value_MapsKindAndPayload()
-    {
-        var native = StateDefinition.Value<int>("v", ttl: TimeSpan.FromSeconds(2)).ToNative();
-
         Assert.Multiple(
-            () => Assert.Equal("v", native.Name),
-            () => Assert.Equal(Native.StateKind.Value, native.Kind),
-            () => Assert.Equal(Native.StatePayload.Json, native.Payload),
-            () => Assert.Equal(TimeSpan.FromSeconds(2), native.Ttl),
-            () => Assert.Null(native.ReadUncommitted),
-            () => Assert.Null(native.KeysetLimit)
+            () => Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Map<int>("m", keysetLimit: -1)),
+            () => Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Set("s", keysetLimit: -1)),
+            () => Assert.Throws<ArgumentOutOfRangeException>(() => StateDefinition.Deque<int>("d", capacity: -1))
         );
     }
 
     [Fact]
-    public void ToNative_Value_MapsPublicationAndReadCache()
+    public void EachFactory_MapsToItsNativeCollection()
     {
-        var native = StateDefinition
-            .Value<int>("v", published: true, readCache: StateReadCache.For(TimeSpan.FromSeconds(2)))
-            .ToNative();
+        var json = Native.StatePayload.Json;
+        var message = Native.StatePayload.Message;
+        var ttl = TimeSpan.FromSeconds(5);
 
         Assert.Multiple(
-            () => Assert.True(native.Published),
-            () => Assert.Equal(TimeSpan.FromSeconds(2), native.ReadCacheTtl),
-            () => Assert.False(native.ReadCacheDisabled)
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("v", new Native.StateKind.Value(json), ttl, false, true),
+                    StateDefinition.Value<int>("v", ttl: ttl, published: true).ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("m", new Native.StateKind.Map(json, 0), null, true, false),
+                    StateDefinition.Map<int>("m", readUncommitted: true, keysetLimit: 0).ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("d", new Native.StateKind.Deque(json, 100), null, false, false),
+                    StateDefinition.Deque<int>("d", capacity: 100).ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("s", new Native.StateKind.Set(64), null, false, false),
+                    StateDefinition.Set("s", keysetLimit: 64).ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("mv", new Native.StateKind.Value(message), null, false, false),
+                    StateDefinition.MessageValue<int>("mv").ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig("mm", new Native.StateKind.Map(message, 8), null, false, false),
+                    StateDefinition.MessageMap<int>("mm", keysetLimit: 8).ToNative()
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.StateCollectionConfig(
+                        "md",
+                        new Native.StateKind.Deque(message, null),
+                        null,
+                        false,
+                        false
+                    ),
+                    StateDefinition.MessageDeque<int>("md").ToNative()
+                )
         );
     }
 
     [Fact]
-    public void ReadCache_ZeroTtl_IsPassedToProsody()
+    public void ReadCache_MapsToTheNativePolicy()
     {
-        Assert.Equal(
-            TimeSpan.Zero,
-            StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ToNative().ReadCacheTtl
-        );
-    }
-
-    [Fact]
-    public void ToNative_MessageDeque_MapsKindAndPayload()
-    {
-        var native = StateDefinition.MessageDeque<int>("d").ToNative();
-
         Assert.Multiple(
-            () => Assert.Equal(Native.StateKind.Deque, native.Kind),
-            () => Assert.Equal(Native.StatePayload.Message, native.Payload)
-        );
-    }
-
-    [Fact]
-    public void ToNative_Map_MapsKeysetLimit()
-    {
-        var native = StateDefinition.Map<int>("m", keysetLimit: 8).ToNative();
-
-        Assert.Multiple(
-            () => Assert.Equal(Native.StateKind.Map, native.Kind),
-            () => Assert.Equal(Native.StatePayload.Json, native.Payload),
-            () => Assert.Equal(8u, native.KeysetLimit)
-        );
-    }
-
-    [Fact]
-    public void Deque_Capacity_Positive_Ok()
-    {
-        var definition = StateDefinition.Deque<int>("d", capacity: 3);
-        Assert.Equal("d", definition.Name);
-    }
-
-    [Fact]
-    public void ToNative_Deque_MapsCapacity()
-    {
-        var native = StateDefinition.Deque<int>("d", capacity: 100).ToNative();
-
-        Assert.Multiple(
-            () => Assert.Equal(Native.StateKind.Deque, native.Kind),
-            () => Assert.Equal(100u, native.Capacity)
-        );
-    }
-
-    [Fact]
-    public void ToNative_Deque_NoCapacity_IsNull()
-    {
-        Assert.Null(StateDefinition.Deque<int>("d").ToNative().Capacity);
-    }
-
-    [Fact]
-    public void Deque_Capacity_IsNotIdentity()
-    {
-        // A bounded and an unbounded same-name deque carry identical registration identity: capacity
-        // is runtime-only and not part of (name, kind, payload). This pins the C#-observable half of
-        // that contract; core owns the cross-restart mutability/convergence property tests.
-        var bounded = StateDefinition.Deque<int>("d", capacity: 5).ToNative();
-        var unbounded = StateDefinition.Deque<int>("d").ToNative();
-
-        Assert.Multiple(
-            () => Assert.Equal(bounded.Name, unbounded.Name),
-            () => Assert.Equal(bounded.Kind, unbounded.Kind),
-            () => Assert.Equal(bounded.Payload, unbounded.Payload),
-            () => Assert.Equal(5u, bounded.Capacity),
-            () => Assert.Null(unbounded.Capacity)
+            () =>
+                Assert.Equal(
+                    new Native.ReadCache.Ttl(TimeSpan.Zero),
+                    StateDefinition.Value<int>("v", readCache: StateReadCache.For(TimeSpan.Zero)).ReadCache?.Policy
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.ReadCache.Disabled(),
+                    StateDefinition.Set("s", readCache: StateReadCache.Disabled).ReadCache?.Policy
+                )
         );
     }
 }

@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Prosody.Configuration;
-using Prosody.Infrastructure;
 using Prosody.Tests.TestHelpers;
 
 namespace Prosody.Tests.Unit;
@@ -195,13 +194,29 @@ public sealed class ProsodyClientSendTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SendAsync_SendOptions_ThrowsOnNullOptions()
+    public async Task SendAndRequest_SendOptions_ThrowOnNullOptions()
     {
         var typeInfo = SnakeCaseSendContext.Default.SendTestPayload;
+        var payload = new SendTestPayload("10.00", 1);
         var ct = TestContext.Current.CancellationToken;
         await Assert.ThrowsAsync<ArgumentNullException>(
             "options",
-            () => _client.SendAsync("topic", "key", new SendTestPayload("10.00", 1), typeInfo, null!, ct)
+            () => _client.SendAsync("topic", "key", payload, typeInfo, null!, ct)
+        );
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            "options",
+            () =>
+                _client.RequestAsync(
+                    "topic",
+                    "key",
+                    payload,
+                    typeInfo,
+                    typeInfo,
+                    ["subsystem"],
+                    TimeSpan.FromSeconds(1),
+                    null!,
+                    ct
+                )
         );
     }
 
@@ -220,8 +235,8 @@ public sealed class ProsodyClientSendTests : IAsyncLifetime
 }
 
 /// <summary>
-/// Tests for the <see cref="SendOptions"/> record contract and the override-vs-extract coalesce
-/// logic in <see cref="ProsodyClient.SendAsync{T}(string,string,T,JsonTypeInfo{T},SendOptions,CancellationToken)"/>.
+/// Tests for the <see cref="SendOptions"/> record contract and the event metadata that send and
+/// request both build with it.
 /// </summary>
 public sealed class SendOptionsTests
 {
@@ -251,30 +266,34 @@ public sealed class SendOptionsTests
         Assert.Equal(a, b);
     }
 
-    // B3 fallback: Message<T> does not expose consumed EventMetadata headers, so the coalesce
-    // logic at ProsodyClient.SendCoreAsync:252-253 is verified directly via TypedEventMetadataExtractor
-    // (internal, accessible via InternalsVisibleTo).
+    /// <summary>
+    /// A set option replaces the payload value, and an unset option keeps it. Send and request both
+    /// build their metadata with <see cref="SendOptions.Metadata{T}"/>. A received message does not
+    /// expose its metadata, so this test reads the built value directly.
+    /// </summary>
     [Fact]
-    public void OverrideAndFallback_CoalesceMatchesSendCore()
+    public void Metadata_PrefersSetOptionsOverThePayload()
     {
         var payload = new MetadataTestPayload { EventId = "payload-id", EventType = "payload.type" };
         var typeInfo =
             (JsonTypeInfo<MetadataTestPayload>)JsonSerializerOptions.Default.GetTypeInfo(typeof(MetadataTestPayload));
 
-        var (extractedId, extractedType) = TypedEventMetadataExtractor.Extract(payload, typeInfo);
-
-        // Explicit options override extracted values (mirrors SendCoreAsync:252-253)
-        var withOverrides = new SendOptions { EventId = "override-id", EventType = "override.type" };
         Assert.Multiple(
-            () => Assert.Equal("override-id", withOverrides.EventId ?? extractedId),
-            () => Assert.Equal("override.type", withOverrides.EventType ?? extractedType)
-        );
-
-        // Null option values fall back to extracted (mirrors SendCoreAsync:252-253 when properties are null)
-        var withNulls = new SendOptions();
-        Assert.Multiple(
-            () => Assert.Equal("payload-id", withNulls.EventId ?? extractedId),
-            () => Assert.Equal("payload.type", withNulls.EventType ?? extractedType)
+            () =>
+                Assert.Equal(
+                    new Native.EventMetadata("override-id", "override.type"),
+                    new SendOptions { EventId = "override-id", EventType = "override.type" }.Metadata(payload, typeInfo)
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.EventMetadata("override-id", "payload.type"),
+                    new SendOptions { EventId = "override-id" }.Metadata(payload, typeInfo)
+                ),
+            () =>
+                Assert.Equal(
+                    new Native.EventMetadata("payload-id", "payload.type"),
+                    new SendOptions().Metadata(payload, typeInfo)
+                )
         );
     }
 }

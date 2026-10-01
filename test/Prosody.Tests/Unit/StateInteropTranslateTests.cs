@@ -8,6 +8,7 @@ namespace Prosody.Tests.Unit;
 /// Unit tests proving <c>StateInterop.Translate</c> recovers the error category from the generated
 /// exception <b>type</b>: a native permanent failure surfaces as a <see cref="PermanentStateException"/>
 /// with <see cref="StateErrorCategory.Permanent"/>. Swapping the two Translate arms turns this red.
+/// A cancelled token throws <see cref="OperationCanceledException"/> itself and starts no operation.
 /// </summary>
 public sealed class StateInteropTranslateTests
 {
@@ -22,6 +23,10 @@ public sealed class StateInteropTranslateTests
         );
 
         Assert.Equal(StateErrorCategory.Permanent, exception.Category);
+
+        var cancelled = new CancellationToken(canceled: true);
+        await Assert.ThrowsAsync<OperationCanceledException>(() => state.ClearAsync(cancelled));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => state.CommitAsync(cancelled));
     }
 
     /// <summary>A native value handle whose <c>Commit</c> raises a generated permanent state failure.</summary>
@@ -33,8 +38,10 @@ public sealed class StateInteropTranslateTests
 
         public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;
 
-        public Task Commit(Dictionary<string, string> carrier) => throw new Native.FfiException.PermanentState("boom");
+        public Task<Native.StoreOutcome> Commit(Dictionary<string, string> carrier) =>
+            throw new Native.FfiException.PermanentState("boom");
 
-        public Task Rollback(Dictionary<string, string> carrier) => Task.CompletedTask;
+        public Task<Native.StoreOutcome> Rollback(Dictionary<string, string> carrier) =>
+            Task.FromResult(Native.StoreOutcome.NoOp);
     }
 }

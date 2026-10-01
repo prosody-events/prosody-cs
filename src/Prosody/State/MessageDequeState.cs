@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Infrastructure;
 using Prosody.Messaging;
 
 namespace Prosody.State;
@@ -21,95 +22,56 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     public Task PushBackAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(() => _handle.PushBack(native, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.PushBack(native, carrier), cancellationToken);
     }
 
     public Task PushFrontAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(() => _handle.PushFront(native, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.PushFront(native, carrier), cancellationToken);
     }
 
     public Task<StateValue<Message<TPayload>>> PopFrontAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.PopFront(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.PopFront, _typeInfo, cancellationToken);
 
     public Task<StateValue<Message<TPayload>>> PopBackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.PopBack(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.PopBack, _typeInfo, cancellationToken);
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
     public Task<StateValue<Message<TPayload>>> PeekFrontAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.PeekFront(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.PeekFront, _typeInfo, cancellationToken);
 
     public Task<StateValue<Message<TPayload>>> PeekBackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.PeekBack(StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        MessageInterop.ReadAsync(_handle.PeekBack, _typeInfo, cancellationToken);
 
     public Task<StateValue<Message<TPayload>>> GetAsync(int index, CancellationToken cancellationToken = default)
     {
-        if (index < 0)
-        {
-            throw new TransientStateException($"Deque index must be non-negative, got {index}.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
 
-        return StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.Get((ulong)index, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        return MessageInterop.ReadAsync(carrier => _handle.Get((ulong)index, carrier), _typeInfo, cancellationToken);
     }
 
     public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(
-            async () => checked((int)await _handle.Len(StateInterop.CreateCarrier()).ConfigureAwait(false)),
+            async carrier => checked((int)await _handle.Len(carrier).ConfigureAwait(false)),
             cancellationToken
         );
 
     public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.IsEmpty(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.IsEmpty(carrier), cancellationToken);
 
     public IAsyncEnumerable<Message<TPayload>> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
+        PositionQuery query,
         CancellationToken cancellationToken = default
     )
     {
+        ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
+        var native = PositionQuery.ToNative(query);
         return new StateScanSequence<Native.IMessageDequeCursor, Native.Message, Message<TPayload>>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
+            () => NativeErrors.Run(() => _handle.Values(native)),
             static (cursor, carrier) => cursor.NextChunk(carrier),
             static cursor => cursor.Close(),
             message => MessageInterop.FromNative(message, _typeInfo),
@@ -118,11 +80,11 @@ internal sealed class MessageDequeState<TPayload> : IDequeState<Message<TPayload
     }
 
     public IAsyncEnumerator<Message<TPayload>> GetAsyncEnumerator(CancellationToken cancellationToken = default) =>
-        EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        EnumerateAsync(new PositionQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
 }

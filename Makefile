@@ -253,6 +253,7 @@ test: build
 	@echo "  PROSODY_BOOTSTRAP_SERVERS=$(PROSODY_BOOTSTRAP_SERVERS)"
 	@echo "  PROSODY_CASSANDRA_NODES=$(PROSODY_CASSANDRA_NODES)"
 	@echo "  PROSODY_CASSANDRA_KEYSPACE=$(PROSODY_CASSANDRA_KEYSPACE)"
+	cargo test -p prosody-ffi
 	dotnet run --project test/Prosody.Tests --framework net10.0 --no-build
 
 # ==============================================================================

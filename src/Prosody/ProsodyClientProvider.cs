@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Prosody.Errors;
 using Prosody.Logging;
 #if NET9_0_OR_GREATER
 using ProviderLock = System.Threading.Lock;
@@ -22,6 +23,11 @@ public sealed class ProsodyClientProvider : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Gets the shared client without blocking the calling thread.</summary>
+    /// <remarks>A failed construction is not cached. The next call tries again.</remarks>
+    /// <exception cref="ObjectDisposedException">The provider is disposed.</exception>
+    /// <exception cref="InvalidOperationException">The options are invalid.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
+    /// <exception cref="ProsodyException">Prosody cannot connect to Kafka or Cassandra.</exception>
     public async Task<ProsodyClient> GetAsync()
     {
         Task<ProsodyClient> pending;

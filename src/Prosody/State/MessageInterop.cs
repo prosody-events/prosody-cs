@@ -26,7 +26,9 @@ internal static class MessageInterop
             native.Offset(),
             new DateTimeOffset(native.Timestamp(), TimeSpan.Zero),
             payload,
-            native
+            native,
+            native.SourceSystem(),
+            native.IsResponseRequested()
         );
     }
 
@@ -37,16 +39,24 @@ internal static class MessageInterop
     /// </summary>
     internal static Native.Message ToNative<TPayload>(Message<TPayload> message)
     {
-        if (message is null)
-        {
-            throw new NullValueException("Cannot write a null message to a keyed-state collection.");
-        }
+        ArgumentNullException.ThrowIfNull(message);
 
         return message.NativeHandle
             ?? throw new TransientStateException(
                 "Only a message received by this handler (or read from a message collection) can be stored."
             );
     }
+
+    /// <summary>Runs one native read with <see cref="StateInterop.RunAsync{TResult}"/> and decodes the optional message.</summary>
+    internal static Task<StateValue<Message<TPayload>>> ReadAsync<TPayload>(
+        Func<Dictionary<string, string>, Task<Native.Message?>> read,
+        JsonTypeInfo<TPayload> typeInfo,
+        CancellationToken cancellationToken
+    ) =>
+        StateInterop.RunAsync(
+            async carrier => MessageToValue(await read(carrier).ConfigureAwait(false), typeInfo),
+            cancellationToken
+        );
 
     /// <summary>Projects an optional native message into a typed message value.</summary>
     internal static StateValue<Message<TPayload>> MessageToValue<TPayload>(

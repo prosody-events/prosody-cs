@@ -88,6 +88,18 @@ public sealed class LoggingTests : IDisposable
     }
 
     [Fact]
+    public void ConfigureCanBeCalledAgainAfterResetForTesting()
+    {
+        using var factory1 = new FakeLoggerFactory();
+        using var factory2 = new FakeLoggerFactory();
+
+        ProsodyLogging.Configure(factory1);
+        ProsodyLogging.ResetForTesting();
+
+        Assert.Null(Record.Exception(() => ProsodyLogging.Configure(factory2)));
+    }
+
+    [Fact]
     public async Task ClearAndConfigureAreAtomicUnderConcurrency()
     {
         // Exercises the race window between Clear() and Configure().

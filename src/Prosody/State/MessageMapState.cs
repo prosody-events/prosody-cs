@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization.Metadata;
+using Prosody.Infrastructure;
 using Prosody.Messaging;
 
 namespace Prosody.State;
@@ -21,14 +22,7 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     public Task<StateValue<Message<TPayload>>> GetAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(
-            async () =>
-                MessageInterop.MessageToValue(
-                    await _handle.Get(key, StateInterop.CreateCarrier()).ConfigureAwait(false),
-                    _typeInfo
-                ),
-            cancellationToken
-        );
+        return MessageInterop.ReadAsync(carrier => _handle.Get(key, carrier), _typeInfo, cancellationToken);
     }
 
     public Task<IReadOnlyList<StateValue<Message<TPayload>>>> GetManyAsync(
@@ -39,16 +33,10 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
         ArgumentNullException.ThrowIfNull(keys);
         var keyArray = keys as string[] ?? [.. keys];
         return StateInterop.RunAsync<IReadOnlyList<StateValue<Message<TPayload>>>>(
-            async () =>
+            async carrier =>
             {
-                var items = await _handle.GetMany(keyArray, StateInterop.CreateCarrier()).ConfigureAwait(false);
-                var results = new StateValue<Message<TPayload>>[items.Length];
-                for (var i = 0; i < items.Length; i++)
-                {
-                    results[i] = MessageInterop.MessageToValue(items[i], _typeInfo);
-                }
-
-                return results;
+                var items = await _handle.GetMany(keyArray, carrier).ConfigureAwait(false);
+                return Array.ConvertAll(items, item => MessageInterop.MessageToValue(item, _typeInfo));
             },
             cancellationToken
         );
@@ -58,71 +46,83 @@ internal sealed class MessageMapState<TPayload> : IMapState<Message<TPayload>>
     {
         ArgumentNullException.ThrowIfNull(key);
         var native = MessageInterop.ToNative(value);
-        return StateInterop.RunAsync(() => _handle.Set(key, native, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Set(key, native, carrier), cancellationToken);
     }
 
     public Task<bool> ContainsKeyAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.ContainsKey(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.ContainsKey(key, carrier), cancellationToken);
     }
 
     public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return StateInterop.RunAsync(() => _handle.Remove(key, StateInterop.CreateCarrier()), cancellationToken);
+        return StateInterop.RunAsync(carrier => _handle.Remove(key, carrier), cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Clear(StateInterop.CreateCarrier()), cancellationToken);
+        StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 
-    public IAsyncEnumerable<string> EnumerateKeysAsync(
-        ScanDirection direction = ScanDirection.Forward,
+    public Task<IReadOnlyList<bool>> ContainsManyAsync(
+        IEnumerable<string> keys,
         CancellationToken cancellationToken = default
     )
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<Native.IMapKeyCursor, string, string>(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.ScanKeys(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
-            static key => key,
+        ArgumentNullException.ThrowIfNull(keys);
+        var keyArray = keys as string[] ?? [.. keys];
+        return StateInterop.RunAsync<IReadOnlyList<bool>>(
+            async carrier => await _handle.ContainsMany(keyArray, carrier).ConfigureAwait(false),
             cancellationToken
         );
     }
 
+    public Task<bool> IsEmptyAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(carrier => _handle.IsEmpty(carrier), cancellationToken);
+
+    public IAsyncEnumerable<string> EnumerateKeysAsync(KeyQuery query, CancellationToken cancellationToken = default) =>
+        StateInterop.Keys(_handle.Keys, query, cancellationToken);
+
     public IAsyncEnumerable<KeyValuePair<string, Message<TPayload>>> EnumerateAsync(
-        ScanDirection direction = ScanDirection.Forward,
+        KeyQuery query,
         CancellationToken cancellationToken = default
-    )
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return new StateScanSequence<
-            Native.IMessageMapCursor,
-            Native.MessageMapEntry,
-            KeyValuePair<string, Message<TPayload>>
-        >(
-            () =>
-                StateInterop.RunSync(() =>
-                    _handle.Scan(StateInterop.ToNative(direction), StateInterop.CreateCarrier())
-                ),
-            static (cursor, carrier) => cursor.NextChunk(carrier),
-            static cursor => cursor.Close(),
+    ) =>
+        Entries(
+            query,
             entry => KeyValuePair.Create(entry.Key, MessageInterop.FromNative(entry.Message, _typeInfo)),
             cancellationToken
         );
-    }
+
+    public IAsyncEnumerable<Message<TPayload>> EnumerateValuesAsync(
+        KeyQuery query,
+        CancellationToken cancellationToken = default
+    ) => Entries(query, entry => MessageInterop.FromNative(entry.Message, _typeInfo), cancellationToken);
 
     public IAsyncEnumerator<KeyValuePair<string, Message<TPayload>>> GetAsyncEnumerator(
         CancellationToken cancellationToken = default
-    ) => EnumerateAsync(ScanDirection.Forward, cancellationToken).GetAsyncEnumerator(cancellationToken);
+    ) => EnumerateAsync(new KeyQuery(), cancellationToken).GetAsyncEnumerator(cancellationToken);
 
-    public Task CommitAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Commit(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Commit, cancellationToken);
 
-    public Task RollbackAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(() => _handle.Rollback(StateInterop.CreateCarrier()), cancellationToken);
+    public Task<StoreOutcome> RollbackAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunOutcomeAsync(_handle.Rollback, cancellationToken);
+
+    private StateScanSequence<Native.IMessageMapCursor, Native.MessageMapEntry, TItem> Entries<TItem>(
+        KeyQuery query,
+        Func<Native.MessageMapEntry, TItem> transform,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        cancellationToken.ThrowIfCancellationRequested();
+        var native = KeyQuery.ToNative(query);
+        return new StateScanSequence<Native.IMessageMapCursor, Native.MessageMapEntry, TItem>(
+            () => NativeErrors.Run(() => _handle.Entries(native)),
+            static (cursor, carrier) => cursor.NextChunk(carrier),
+            static cursor => cursor.Close(),
+            transform,
+            cancellationToken
+        );
+    }
 }

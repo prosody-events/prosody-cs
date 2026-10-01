@@ -1,0 +1,232 @@
+//! The keyed-state configuration and the registration of each declared
+//! collection.
+//!
+//! Every error here is [`FfiError::InvalidOperation`], because the options
+//! are invalid.
+
+use prosody::ByteSize;
+use prosody::codec::{JsonBinaryCodec, JsonBinaryMessageCodec};
+use prosody::consumer::KeyedStateConfiguration;
+use prosody::consumer::kafka_state::{message_deque_state, message_map_state, message_state};
+use prosody::loader::KafkaLoader;
+use prosody::state::descriptor::{
+    DequeDescriptor, StateDescriptor, deque_state, map_state, set_state, value_state,
+};
+use prosody::state::order_codec::Utf8KeyCodec;
+use prosody::subsystem::SubsystemName;
+use prosody::timers::duration::CompactDuration;
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use crate::error::FfiError;
+use crate::types::{ClientOptions, ReadCache, StateCollectionConfig, StateKind, StatePayload};
+
+/// Builds the keyed-state configuration from client options.
+///
+/// Maps each declared collection into a typed descriptor. The normal Prosody
+/// construction path validates the result.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`] if a host value cannot be mapped.
+pub(super) fn build_keyed_state_config(
+    options: &ClientOptions,
+) -> Result<KeyedStateConfiguration, FfiError> {
+    let mut builder = KeyedStateConfiguration::builder();
+
+    if let Some(dir) = &options.state_cache_dir {
+        builder.cache_dir(PathBuf::from(dir));
+    }
+
+    if let Some(size) = &options.state_owned_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| FfiError::InvalidOperation(format!("StateOwnedCacheSize: {error}")))?;
+        builder.owned_cache_size(Some(size));
+    }
+
+    if let Some(size) = &options.state_memtable_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| FfiError::InvalidOperation(format!("StateMemtableSize: {error}")))?;
+        builder.memtable_size(Some(size));
+    }
+
+    if let Some(size) = &options.state_read_cache_size {
+        let size = size
+            .parse::<ByteSize>()
+            .map_err(|error| FfiError::InvalidOperation(format!("StateReadCacheSize: {error}")))?;
+        builder.read_cache_size(Some(size));
+    }
+
+    match options.state_read_cache {
+        Some(ReadCache::Disabled) => {
+            builder.read_cache_ttl(None);
+        }
+        Some(ReadCache::Ttl { ttl }) => {
+            builder.read_cache_ttl(Some(ttl));
+        }
+        None => {}
+    }
+
+    if let Some(subsystem) = &options.subsystem {
+        builder.subsystem(Some(
+            SubsystemName::try_new(subsystem.clone())
+                .map_err(|error| FfiError::InvalidOperation(error.to_string()))?,
+        ));
+    }
+
+    let mut keyed = builder
+        .build()
+        .map_err(|error| FfiError::InvalidOperation(error.to_string()))?;
+
+    if let Some(collections) = &options.state_collections {
+        for (index, collection) in collections.iter().enumerate() {
+            register_state_collection(&mut keyed, index, collection)?;
+        }
+    }
+
+    Ok(keyed)
+}
+
+/// Validates one collection and registers its descriptor.
+///
+/// JSON collections use the [`BinaryPayload`](prosody::codec::BinaryPayload)
+/// passthrough codec, so Rust never parses the JSON bytes. They claim the
+/// shared `"json"` format id. Message collections use
+/// `KafkaLoader<JsonBinaryMessageCodec>`, the codec of the consumer. Their
+/// stored identity does not depend on the loader, because the message-ref
+/// codec and resolver carry fixed `"message-ref"` identifiers. Thus this
+/// registration matches the identity that the erased vend path checks.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`] if a host value cannot be mapped into
+/// its Prosody type.
+fn register_state_collection(
+    keyed: &mut KeyedStateConfiguration,
+    index: usize,
+    collection: &StateCollectionConfig,
+) -> Result<(), FfiError> {
+    let ttl = collection
+        .ttl
+        .map(|ttl| whole_seconds(ttl, &format!("StateCollections[{index}] ttl")))
+        .transpose()?;
+    let name = collection.name.as_str();
+
+    match collection.kind {
+        StateKind::Value {
+            payload: StatePayload::Json,
+        } => {
+            let descriptor = value_state::<JsonBinaryCodec>(name);
+            let _ = keyed.register(with_def(descriptor, ttl, collection));
+        }
+        StateKind::Value {
+            payload: StatePayload::Message,
+        } => {
+            let descriptor = message_state::<KafkaLoader<JsonBinaryMessageCodec>>(name);
+            let _ = keyed.register(with_def(descriptor, ttl, collection));
+        }
+        StateKind::Map {
+            payload: StatePayload::Json,
+            keyset_limit,
+        } => {
+            let descriptor = map_state::<Utf8KeyCodec, JsonBinaryCodec>(name);
+            let descriptor = with_def(descriptor, ttl, collection);
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
+        }
+        StateKind::Map {
+            payload: StatePayload::Message,
+            keyset_limit,
+        } => {
+            let descriptor =
+                message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryMessageCodec>>(name);
+            let descriptor = with_def(descriptor, ttl, collection);
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
+        }
+        StateKind::Deque {
+            payload: StatePayload::Json,
+            capacity,
+        } => {
+            let descriptor = with_def(deque_state::<JsonBinaryCodec>(name), ttl, collection);
+            let _ = keyed.register(with_capacity(descriptor, capacity, index)?);
+        }
+        StateKind::Deque {
+            payload: StatePayload::Message,
+            capacity,
+        } => {
+            let descriptor = message_deque_state::<KafkaLoader<JsonBinaryMessageCodec>>(name);
+            let descriptor = with_def(descriptor, ttl, collection);
+            let _ = keyed.register(with_capacity(descriptor, capacity, index)?);
+        }
+        StateKind::Set { keyset_limit } => {
+            let descriptor = with_def(set_state::<Utf8KeyCodec>(name), ttl, collection);
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
+        }
+    }
+
+    Ok(())
+}
+
+/// Converts a duration into the whole seconds that Prosody descriptors use.
+///
+/// The field arrives as a [`Duration`] (a C# `TimeSpan`), so a fractional or
+/// out-of-range value reaches this check and is not truncated. Prosody keeps
+/// the semantic duration limits.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`] if the duration cannot be represented
+/// as whole `u32` seconds.
+fn whole_seconds(duration: Duration, field: &str) -> Result<u32, FfiError> {
+    if duration.subsec_nanos() != 0 {
+        return Err(FfiError::InvalidOperation(format!(
+            "{field}: must be a whole number of seconds"
+        )));
+    }
+    u32::try_from(duration.as_secs())
+        .map_err(|_| FfiError::InvalidOperation(format!("{field}: exceeds the u32 seconds range")))
+}
+
+/// Applies the shared descriptor options: TTL, commit mode, and publication.
+fn with_def<D: StateDescriptor>(
+    mut descriptor: D,
+    ttl_seconds: Option<u32>,
+    collection: &StateCollectionConfig,
+) -> D {
+    if let Some(ttl) = ttl_seconds {
+        descriptor = descriptor.ttl(CompactDuration::new(ttl));
+    }
+    if collection.read_uncommitted {
+        descriptor = descriptor.read_uncommitted();
+    }
+    descriptor.published(collection.published)
+}
+
+/// Applies the deque capacity bound when configured.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`] if the capacity is zero.
+fn with_capacity<T>(
+    descriptor: DequeDescriptor<T>,
+    capacity: Option<u32>,
+    index: usize,
+) -> Result<DequeDescriptor<T>, FfiError> {
+    let Some(capacity) = capacity else {
+        return Ok(descriptor);
+    };
+    let capacity = NonZeroUsize::new(capacity as usize).ok_or_else(|| {
+        FfiError::InvalidOperation(format!(
+            "StateCollections[{index}] capacity: must be a positive integer"
+        ))
+    })?;
+    Ok(descriptor.capacity(capacity))
+}
