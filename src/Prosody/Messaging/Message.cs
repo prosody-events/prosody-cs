@@ -23,7 +23,7 @@ public sealed class Message<T>
         T? payload,
         Native.Message? nativeHandle,
         string? sourceSystem = null,
-        bool responseRequested = false
+        bool isResponseRequested = false
     )
     {
         ArgumentNullException.ThrowIfNull(topic);
@@ -37,7 +37,7 @@ public sealed class Message<T>
         Payload = payload;
         NativeHandle = nativeHandle;
         SourceSystem = sourceSystem;
-        ResponseRequested = responseRequested;
+        IsResponseRequested = isResponseRequested;
     }
 
     /// <summary>
@@ -81,7 +81,7 @@ public sealed class Message<T>
     /// Gets a value indicating whether the sender waits for a response to this message. A handler can
     /// skip the work that only a response needs when this value is <see langword="false"/>.
     /// </summary>
-    public bool ResponseRequested { get; }
+    public bool IsResponseRequested { get; }
 
     /// <summary>
     /// Gets the deserialized JSON payload.

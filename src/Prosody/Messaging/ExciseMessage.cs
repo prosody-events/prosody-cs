@@ -10,7 +10,7 @@ public sealed class ExciseMessage
         long offset,
         DateTimeOffset timestamp,
         string? sourceSystem = null,
-        bool responseRequested = false
+        bool isResponseRequested = false
     )
     {
         ArgumentNullException.ThrowIfNull(topic);
@@ -21,7 +21,7 @@ public sealed class ExciseMessage
         Offset = offset;
         Timestamp = timestamp;
         SourceSystem = sourceSystem;
-        ResponseRequested = responseRequested;
+        IsResponseRequested = isResponseRequested;
     }
 
     /// <summary>Gets the topic name.</summary>
@@ -46,5 +46,5 @@ public sealed class ExciseMessage
     public string? SourceSystem { get; }
 
     /// <summary>Gets a value indicating whether the sender waits for a response to this record.</summary>
-    public bool ResponseRequested { get; }
+    public bool IsResponseRequested { get; }
 }

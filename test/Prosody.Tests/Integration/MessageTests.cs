@@ -9,7 +9,7 @@ namespace Prosody.Tests.Integration;
 /// </summary>
 public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTestBase(fixture)
 {
-    private sealed record RequestResponse(string Key, bool ResponseRequested, string? SourceSystem);
+    private sealed record RequestResponse(string Key, bool IsResponseRequested, string? SourceSystem);
 
     private sealed class RequestHandler : IProsodyRequestHandler<TestPayload, RequestResponse>
     {
@@ -17,13 +17,13 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             ProsodyContext prosodyContext,
             Message<TestPayload> message,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(message.Key, message.ResponseRequested, message.SourceSystem));
+        ) => Task.FromResult(new RequestResponse(message.Key, message.IsResponseRequested, message.SourceSystem));
 
         public Task<RequestResponse> OnExciseAsync(
             ProsodyContext prosodyContext,
             ExciseMessage message,
             CancellationToken cancellationToken
-        ) => Task.FromResult(new RequestResponse(message.Key, message.ResponseRequested, message.SourceSystem));
+        ) => Task.FromResult(new RequestResponse(message.Key, message.IsResponseRequested, message.SourceSystem));
 
         public Task OnTimerAsync(
             ProsodyContext prosodyContext,
@@ -138,7 +138,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             () => Assert.Equal("test-key", received.Key),
             () => Assert.Equal("Hello, Kafka!", received.Payload?.Content),
             () => Assert.Equal(ctx.Client.SourceSystem, received.SourceSystem),
-            () => Assert.False(received.ResponseRequested)
+            () => Assert.False(received.IsResponseRequested)
         );
     }
 
@@ -165,7 +165,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         Assert.Multiple(
             () => Assert.Equal("obsolete-key", message.Key),
             () => Assert.Equal(ctx.Client.SourceSystem, message.SourceSystem),
-            () => Assert.False(message.ResponseRequested)
+            () => Assert.False(message.IsResponseRequested)
         );
     }
 

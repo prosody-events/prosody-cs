@@ -183,7 +183,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         var timestamp = new DateTimeOffset(message.Timestamp(), TimeSpan.Zero);
         var bytes = message.Payload();
         var sourceSystem = message.SourceSystem();
-        var responseRequested = message.ResponseRequested();
+        var isResponseRequested = message.IsResponseRequested();
 
         return HandleMessageAsync(
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
@@ -197,7 +197,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             carrier,
             message,
             sourceSystem,
-            responseRequested
+            isResponseRequested
         );
     }
 
@@ -215,7 +215,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             message.Offset(),
             new DateTimeOffset(message.Timestamp(), TimeSpan.Zero),
             message.SourceSystem(),
-            message.ResponseRequested()
+            message.IsResponseRequested()
         );
         return EventHandlerBridge.InvokeHandlerAsync(
             ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
@@ -262,7 +262,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         Dictionary<string, string> carrier,
         Native.Message? nativeMessage = null,
         string? sourceSystem = null,
-        bool responseRequested = false
+        bool isResponseRequested = false
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             async ct =>
@@ -277,7 +277,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
                     deserialized,
                     nativeMessage,
                     sourceSystem,
-                    responseRequested
+                    isResponseRequested
                 );
                 return await _onMessage(prosodyContext, msg, ct).ConfigureAwait(false);
             },

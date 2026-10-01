@@ -28,7 +28,7 @@ internal static class MessageInterop
             payload,
             native,
             native.SourceSystem(),
-            native.ResponseRequested()
+            native.IsResponseRequested()
         );
     }
 

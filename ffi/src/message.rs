@@ -88,7 +88,7 @@ impl Message {
 
     /// Whether the sender waits for a response to this message.
     #[must_use]
-    pub fn response_requested(&self) -> bool {
+    pub fn is_response_requested(&self) -> bool {
         self.inner.response_requested()
     }
 }
@@ -146,7 +146,7 @@ impl ExciseMessage {
 
     /// Whether the sender waits for a response to this record.
     #[must_use]
-    pub fn response_requested(&self) -> bool {
+    pub fn is_response_requested(&self) -> bool {
         self.inner.response_requested()
     }
 }
