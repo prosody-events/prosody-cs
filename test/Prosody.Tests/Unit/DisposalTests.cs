@@ -122,7 +122,7 @@ public sealed partial class DisposalTests
     public async Task DisposeAsyncIsIdempotent()
     {
         var client = await ProsodyClient.CreateAsync(MockOptions);
-        await client.SubscribeAsync(new NoOpHandler(), TestContext.Current.CancellationToken);
+        await client.SubscribeAsync(new NoOpHandler());
         await client.DisposeAsync();
 
         await client.DisposeAsync();
@@ -367,7 +367,7 @@ public sealed partial class DisposalTests
 
         await client.ShutdownAsync().WaitAsync(Deadline, Ct);
 
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync(Ct).WaitAsync(Deadline, Ct));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync().WaitAsync(Deadline, Ct));
         await client.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
         Assert.Equal(1, shutdowns);
         Assert.True(IsReleased(await ready));
@@ -382,7 +382,7 @@ public sealed partial class DisposalTests
         await client.ShutdownAsync();
 
         Assert.Equal(0, build.Attempts);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync(Ct).WaitAsync(Deadline, Ct));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync().WaitAsync(Deadline, Ct));
     }
 
     [Fact]
@@ -396,21 +396,6 @@ public sealed partial class DisposalTests
 
         var connect = client.ConnectAsync(Ct);
         await client.UnsubscribeAsync().WaitAsync(Deadline, Ct);
-        Assert.False(connect.IsCompleted);
-        Assert.Equal(1, build.Attempts);
-    }
-
-    [Fact]
-    public async Task QueryWithACancelledTokenThrowsWhileTheBuildStaysPending()
-    {
-        var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
-        var connect = client.ConnectAsync(Ct);
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            client.IsStalledAsync(new CancellationToken(canceled: true)).WaitAsync(Deadline, Ct)
-        );
-
         Assert.False(connect.IsCompleted);
         Assert.Equal(1, build.Attempts);
     }

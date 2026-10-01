@@ -986,7 +986,9 @@ public class ProsodyWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await _client.SubscribeAsync(new MyHandler(), stoppingToken);
+        // A stop during the connect ends the wait before the subscribe.
+        await _client.ConnectAsync(stoppingToken);
+        await _client.SubscribeAsync(new MyHandler());
 
         try
         {
@@ -1409,9 +1411,9 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<ProsodyClient> ProsodyClient.CreateAsync(ClientOptions options)`: Create a client and connect it.
 - `Task ConnectAsync(CancellationToken cancellationToken = default)`: Connect now instead of on first use.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
-- `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer. An overload takes a `CancellationToken` that bounds the connect wait only.
-- `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer. An overload takes a `CancellationToken`.
-- `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions. An overload takes a `CancellationToken`.
+- `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
+- `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.
+- `Task<bool> IsStalledAsync()`: Check if the consumer has stalled partitions.
 - `Task<PublishedValue<T>> StateAsync<T>(string subsystem, ValueStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published value.
 - `Task<PublishedMap<TValue>> StateAsync<TValue>(string subsystem, MapStateDefinition<TValue> definition, CancellationToken cancellationToken = default)`: Open a read-only published map.
 - `Task<PublishedDeque<T>> StateAsync<T>(string subsystem, DequeStateDefinition<T> definition, CancellationToken cancellationToken = default)`: Open a read-only published deque.
@@ -1425,10 +1427,10 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestAsync<TPayload, TResponse>(..., JsonTypeInfo<TPayload>, JsonTypeInfo<TResponse>, IReadOnlyList<string> subsystems, TimeSpan timeout, SendOptions options, ...)`: Override event metadata during a trim-safe request.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(...)`: Return one excise outcome for each subsystem.
 - `Task<IReadOnlyDictionary<string, Outcome<TResponse>>> RequestExciseAsync<TResponse>(..., JsonTypeInfo<TResponse>, ...)`: Return excise outcomes in trimmed applications.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, CancellationToken cancellationToken)`: Start event processing with a typed payload handler. The token bounds the connect wait only.
-- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Classify errors without reflection. Use this overload in trimmed applications.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, CancellationToken cancellationToken)`: Subscribe with typed request responses.
-- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier, CancellationToken cancellationToken)`: Use explicit request-handler error classification.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler)`: Start event processing with a typed payload handler.
+- `Task SubscribeAsync<T>(IProsodyHandler<T> handler, IPermanentErrorClassifier classifier)`: Classify errors without reflection. Use this overload in trimmed applications.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler)`: Subscribe with typed request responses.
+- `Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler, IPermanentErrorClassifier classifier)`: Use explicit request-handler error classification.
 - `Task UnsubscribeAsync()`: Stop the consumer. You can subscribe again later.
 - `Task ShutdownAsync()`: Stop all client services. Concurrent and repeated calls await the same operation.
 - `void Dispose()`: Close the client and schedule shutdown and resource release on the thread pool. Return without waiting. Prefer `DisposeAsync`.

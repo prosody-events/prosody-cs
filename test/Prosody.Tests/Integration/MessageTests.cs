@@ -57,7 +57,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     public async Task RequestReturnsLocalHandlerResponse()
     {
         await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
-        await ctx.Client.SubscribeAsync(new RequestHandler(), TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(new RequestHandler());
 
         var results = await ctx.Client.RequestAsync<TestPayload, RequestResponse>(
             ctx.Topic,
@@ -76,7 +76,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     public async Task ExciseRequestReturnsLocalHandlerResponse()
     {
         await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
-        await ctx.Client.SubscribeAsync(new RequestHandler(), TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(new RequestHandler());
 
         var results = await ctx.Client.RequestExciseAsync<RequestResponse>(
             ctx.Topic,
@@ -94,7 +94,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
     public async Task RequestReturnsHandlerFailure()
     {
         await using var ctx = await CreateTestContextAsync(options => options.Subsystem = "inventory");
-        await ctx.Client.SubscribeAsync(new RejectingRequestHandler(), TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(new RejectingRequestHandler());
 
         var results = await ctx.Client.RequestAsync<TestPayload, RequestResponse>(
             ctx.Topic,
@@ -123,7 +123,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
 
         var testPayload = new TestPayload { Content = "Hello, Kafka!" };
         await ctx.Client.SendAsync(ctx.Topic, "test-key", testPayload, TestContext.Current.CancellationToken);
@@ -155,7 +155,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.ExciseAsync(ctx.Topic, "obsolete-key", TestContext.Current.CancellationToken);
         var message = await messages.ReceiveAsync(
             IntegrationTestFixture.DefaultTimeout,
@@ -183,7 +183,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
 
         var messagesToSend = new[]
         {
@@ -246,7 +246,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             "hanging-key",
@@ -260,7 +260,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         await processingAborted.WaitAsync(TestContext.Current.CancellationToken);
         await unsubscribeTask;
 
-        var state = await ctx.Client.GetConsumerStateAsync(TestContext.Current.CancellationToken);
+        var state = await ctx.Client.GetConsumerStateAsync();
         Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
@@ -281,7 +281,7 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
 
         // MessageContent is a multi-word property: snake_case → "message_content"; camelCase → "messageContent".
         // This asserts that the snake_case override is actually applied end-to-end and not silently ignored.

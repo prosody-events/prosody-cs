@@ -16,13 +16,9 @@ public sealed partial class ProsodyClient
     /// <exception cref="InvalidOperationException">
     /// Thrown when the consumer configuration failed during build, with the full error message.
     /// </exception>
-    public Task<ConsumerState> GetConsumerStateAsync() => GetConsumerStateAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="GetConsumerStateAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<ConsumerState> GetConsumerStateAsync(CancellationToken cancellationToken)
+    public async Task<ConsumerState> GetConsumerStateAsync()
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
         Native.ConsumerState state = await native.ConsumerState().ConfigureAwait(false);
         return state switch
         {
@@ -40,26 +36,18 @@ public sealed partial class ProsodyClient
     /// <summary>
     /// Gets the number of partitions currently assigned to this consumer.
     /// </summary>
-    public Task<uint> AssignedPartitionCountAsync() => AssignedPartitionCountAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="AssignedPartitionCountAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<uint> AssignedPartitionCountAsync(CancellationToken cancellationToken)
+    public async Task<uint> AssignedPartitionCountAsync()
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
         return await native.AssignedPartitionCount().ConfigureAwait(false);
     }
 
     /// <summary>
     /// Gets a value indicating whether the consumer is currently stalled.
     /// </summary>
-    public Task<bool> IsStalledAsync() => IsStalledAsync(CancellationToken.None);
-
-    /// <inheritdoc cref="IsStalledAsync()"/>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The query itself is not cancellable.</param>
-    public async Task<bool> IsStalledAsync(CancellationToken cancellationToken)
+    public async Task<bool> IsStalledAsync()
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
         return await native.IsStalled().ConfigureAwait(false);
     }
 
@@ -92,40 +80,14 @@ public sealed partial class ProsodyClient
         "GetInterfaceMap requires handler type methods to be preserved. Use SubscribeAsync(handler, classifier) to avoid this requirement."
     )]
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler) =>
-        SubscribeAsync(handler, CancellationToken.None);
-
-    /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload})"/>
-    /// <param name="handler">The event handler to process messages and timers.</param>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
-    [RequiresUnreferencedCode(
-        "Reads PermanentErrorAttribute from handler methods via reflection. Use SubscribeAsync(handler, classifier) to avoid the reflection path."
-    )]
-    [RequiresDynamicCode(
-        "GetInterfaceMap requires handler type methods to be preserved. Use SubscribeAsync(handler, classifier) to avoid this requirement."
-    )]
-    public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, CancellationToken cancellationToken) =>
-        SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions), cancellationToken);
+        SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, _stateDefinitions));
 
     /// <summary>Subscribes with a handler that returns subsystem responses.</summary>
     /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload}, IPermanentErrorClassifier)" path="/exception"/>
     [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
     [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
     public Task SubscribeAsync<TPayload, TResponse>(IProsodyRequestHandler<TPayload, TResponse> handler) =>
-        SubscribeAsync(handler, CancellationToken.None);
-
-    /// <inheritdoc cref="SubscribeAsync{TPayload, TResponse}(IProsodyRequestHandler{TPayload, TResponse})"/>
-    /// <param name="handler">The handler to process messages, timers, and requests.</param>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
-    [RequiresUnreferencedCode("Reads PermanentErrorAttribute from handler methods and resolves JSON metadata.")]
-    [RequiresDynamicCode("Resolves handler methods and JSON metadata at run time.")]
-    public Task SubscribeAsync<TPayload, TResponse>(
-        IProsodyRequestHandler<TPayload, TResponse> handler,
-        CancellationToken cancellationToken
-    ) =>
-        SubscribeCoreAsync(
-            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions),
-            cancellationToken
-        );
+        SubscribeCoreAsync(EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions));
 
     /// <summary>Subscribes with a response handler and an explicit error classifier.</summary>
     /// <remarks>This overload does not inspect <see cref="PermanentErrorAttribute"/>.</remarks>
@@ -133,20 +95,9 @@ public sealed partial class ProsodyClient
     public Task SubscribeAsync<TPayload, TResponse>(
         IProsodyRequestHandler<TPayload, TResponse> handler,
         IPermanentErrorClassifier classifier
-    ) => SubscribeAsync(handler, classifier, CancellationToken.None);
-
-    /// <inheritdoc cref="SubscribeAsync{TPayload, TResponse}(IProsodyRequestHandler{TPayload, TResponse}, IPermanentErrorClassifier)"/>
-    /// <param name="handler">The handler to process messages, timers, and requests.</param>
-    /// <param name="classifier">Classifies exceptions thrown by <paramref name="handler"/> as permanent or transient.</param>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
-    public Task SubscribeAsync<TPayload, TResponse>(
-        IProsodyRequestHandler<TPayload, TResponse> handler,
-        IPermanentErrorClassifier classifier,
-        CancellationToken cancellationToken
     ) =>
         SubscribeCoreAsync(
-            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier),
-            cancellationToken
+            EventHandlerBridge<TPayload>.Responding(handler, JsonOptions, _stateDefinitions, classifier)
         );
 
     /// <summary>
@@ -171,50 +122,29 @@ public sealed partial class ProsodyClient
     /// </exception>
     /// <exception cref="ProsodyException">The consumer failed to start.</exception>
     public Task SubscribeAsync<TPayload>(IProsodyHandler<TPayload> handler, IPermanentErrorClassifier classifier) =>
-        SubscribeAsync(handler, classifier, CancellationToken.None);
-
-    /// <inheritdoc cref="SubscribeAsync{TPayload}(IProsodyHandler{TPayload}, IPermanentErrorClassifier)"/>
-    /// <param name="handler">The event handler to process messages and timers.</param>
-    /// <param name="classifier">Classifies exceptions thrown by <paramref name="handler"/> as permanent or transient.</param>
-    /// <param name="cancellationToken">Bounds the wait for the connect only. The subscribe itself is not cancellable.</param>
-    public Task SubscribeAsync<TPayload>(
-        IProsodyHandler<TPayload> handler,
-        IPermanentErrorClassifier classifier,
-        CancellationToken cancellationToken
-    ) =>
-        SubscribeCoreAsync(
-            new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions),
-            cancellationToken
-        );
+        SubscribeCoreAsync(new EventHandlerBridge<TPayload>(handler, JsonOptions, classifier, _stateDefinitions));
 
     /// <summary>
     /// Stops the consumer. You can subscribe again later.
     /// </summary>
     /// <remarks>
-    /// A client that has not connected has no consumer to stop. This method returns at once in
-    /// that case and never starts or waits on a build, so a worker's <c>StopAsync</c> cannot hang
-    /// on a connect that has not finished.
+    /// This method never starts or waits on a connect. A client that has not connected has no
+    /// consumer, so the call returns at once.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The consumer is not subscribed.</exception>
     /// <exception cref="ProsodyException">The consumer failed to stop.</exception>
     public async Task UnsubscribeAsync()
     {
-        Task<Native.ProsodyClient>? pending;
-        lock (_gate)
+        if (Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } connected)
         {
-            pending = _native;
-        }
-
-        if (pending is { IsCompletedSuccessfully: true })
-        {
-            var native = await pending.ConfigureAwait(false);
+            var native = await connected.ConfigureAwait(false);
             await NativeErrors.RunAsync(native.Unsubscribe).ConfigureAwait(false);
         }
     }
 
-    private async Task SubscribeCoreAsync(Native.EventHandler bridge, CancellationToken cancellationToken)
+    private async Task SubscribeCoreAsync(Native.EventHandler bridge)
     {
-        var native = await NativeAsync(cancellationToken).ConfigureAwait(false);
+        var native = await NativeAsync(CancellationToken.None).ConfigureAwait(false);
         await NativeErrors.RunAsync(() => native.Subscribe(bridge)).ConfigureAwait(false);
     }
 }

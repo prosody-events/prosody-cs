@@ -77,7 +77,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -119,7 +119,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(run1Handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(run1Handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -151,7 +151,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
                 }
             );
 
-            await run2.SubscribeAsync(run2Handler, TestContext.Current.CancellationToken);
+            await run2.SubscribeAsync(run2Handler);
             await run2.SendAsync(
                 ctx.Topic,
                 TopicGenerator.GenerateKey(),
@@ -167,7 +167,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
         }
         finally
         {
-            if (await run2.GetConsumerStateAsync(TestContext.Current.CancellationToken) == ConsumerState.Running)
+            if (await run2.GetConsumerStateAsync() == ConsumerState.Running)
             {
                 await run2.UnsubscribeAsync();
             }
@@ -192,7 +192,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -227,7 +227,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -288,7 +288,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),
@@ -342,7 +342,7 @@ public sealed class StateErrorTests(IntegrationTestFixture fixture) : Integratio
             }
         );
 
-        await ctx.Client.SubscribeAsync(handler, TestContext.Current.CancellationToken);
+        await ctx.Client.SubscribeAsync(handler);
         await ctx.Client.SendAsync(
             ctx.Topic,
             TopicGenerator.GenerateKey(),

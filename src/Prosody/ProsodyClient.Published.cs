@@ -22,8 +22,12 @@ public sealed partial class ProsodyClient
     )
         where T : notnull =>
         new(
-            await OpenPublishedAsync(subsystem, definition, static (native, subsystem, name, cache) => native.PublishedValue(subsystem, name, cache),
-                cancellationToken)
+            await OpenPublishedAsync(
+                    subsystem,
+                    definition,
+                    static (native, subsystem, name, cache) => native.PublishedValue(subsystem, name, cache),
+                    cancellationToken
+                )
                 .ConfigureAwait(false),
             StateInterop.ResolveTypeInfo<T>(JsonOptions)
         );
@@ -37,8 +41,12 @@ public sealed partial class ProsodyClient
     )
         where TValue : notnull =>
         new(
-            await OpenPublishedAsync(subsystem, definition, static (native, subsystem, name, cache) => native.PublishedMap(subsystem, name, cache),
-                cancellationToken)
+            await OpenPublishedAsync(
+                    subsystem,
+                    definition,
+                    static (native, subsystem, name, cache) => native.PublishedMap(subsystem, name, cache),
+                    cancellationToken
+                )
                 .ConfigureAwait(false),
             StateInterop.ResolveTypeInfo<TValue>(JsonOptions)
         );
@@ -52,8 +60,12 @@ public sealed partial class ProsodyClient
     )
         where T : notnull =>
         new(
-            await OpenPublishedAsync(subsystem, definition, static (native, subsystem, name, cache) => native.PublishedDeque(subsystem, name, cache),
-                cancellationToken)
+            await OpenPublishedAsync(
+                    subsystem,
+                    definition,
+                    static (native, subsystem, name, cache) => native.PublishedDeque(subsystem, name, cache),
+                    cancellationToken
+                )
                 .ConfigureAwait(false),
             StateInterop.ResolveTypeInfo<T>(JsonOptions)
         );
@@ -66,8 +78,12 @@ public sealed partial class ProsodyClient
         CancellationToken cancellationToken = default
     ) =>
         new(
-            await OpenPublishedAsync(subsystem, definition, static (native, subsystem, name, cache) => native.PublishedSet(subsystem, name, cache),
-                cancellationToken)
+            await OpenPublishedAsync(
+                    subsystem,
+                    definition,
+                    static (native, subsystem, name, cache) => native.PublishedSet(subsystem, name, cache),
+                    cancellationToken
+                )
                 .ConfigureAwait(false)
         );
 
