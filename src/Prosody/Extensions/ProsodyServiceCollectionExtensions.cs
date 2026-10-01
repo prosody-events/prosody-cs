@@ -194,17 +194,11 @@ public static class ProsodyServiceCollectionExtensions
     private sealed record Registration(string ConfigSectionPath);
 
     /// <summary>Configures logging in the starting phase, so an eager client connect in the start phase logs.</summary>
-    private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory)
-        : IHostedLifecycleService,
-            IDisposable
+    private sealed class ProsodyLoggingHostedService(ILoggerFactory loggerFactory) : IHostedLifecycleService
     {
-        // Only this service can clear the configuration it acquired. Stop and disposal share the release.
-        private bool _configured;
-
         public Task StartingAsync(CancellationToken cancellationToken)
         {
             ProsodyLogging.Configure(loggerFactory);
-            _configured = true;
             return Task.CompletedTask;
         }
 
@@ -216,19 +210,10 @@ public static class ProsodyServiceCollectionExtensions
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            Dispose();
+            ProsodyLogging.Clear();
             return Task.CompletedTask;
         }
 
         public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-        public void Dispose()
-        {
-            if (_configured)
-            {
-                _configured = false;
-                ProsodyLogging.Clear();
-            }
-        }
     }
 }
