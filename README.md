@@ -1223,6 +1223,21 @@ The provider disposes the client when the host stops.
 A failed `GetAsync` call does not poison the provider. A later call retries client construction.
 Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
 
+To inject `ProsodyClient` directly, create the client before you build the host, and register that instance:
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddProsodyLogging();
+
+var options = builder.Configuration.GetSection("Prosody").Get<ClientOptions>() ?? new ClientOptions();
+await using var client = await ProsodyClient.CreateAsync(options);
+builder.Services.AddSingleton(client);
+
+await builder.Build().RunAsync();
+```
+
+The container does not dispose an instance that it did not create. The application owns the client, and `await using` disposes it after the host stops.
+
 Log messages are emitted under the `Prosody.Native` category.
 
 ## Error Monitoring (Sentry)
