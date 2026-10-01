@@ -12,24 +12,15 @@ namespace Prosody.Extensions;
 /// <remarks>
 /// <para>
 /// <see cref="StartAsync"/> connects the client when <see cref="ClientOptions.ConnectOnStart"/>
-/// is <c>true</c>. A cancelled or failed connection aborts host startup.
-/// With sequential startup, hosted services registered after the client start after the connection completes.
-/// With <c>HostOptions.ServicesStartConcurrently = true</c>, those services can start while the connection is pending.
-/// Client operations still await the shared connection.
+/// is <c>true</c>. A failed or cancelled connect stops host startup. The logging hosted service
+/// configures <see cref="ProsodyLogging"/> in the starting phase, so this connect logs.
 /// </para>
 /// <para>
-/// The connection runs in the start phase. The logging hosted service configures
-/// <see cref="ProsodyLogging"/> in the starting phase, before the connection, regardless of registration order.
-/// </para>
-/// <para>
-/// <see cref="StoppedAsync"/> disposes the client after every hosted service has stopped, inside
-/// the host's stop deadline. If the deadline fires first, the wait is abandoned and logged.
-/// The disposal still completes in the background.
-/// </para>
-/// <para>
-/// The service logs through the injected logger, not <see cref="ProsodyLogging"/>. The logging
-/// hosted service clears <see cref="ProsodyLogging"/> in its stop phase, which runs before
-/// <see cref="StoppedAsync"/>.
+/// <see cref="StoppedAsync"/> disposes the client after every hosted service stops, inside the
+/// host's stop deadline. If the deadline fires first, the service logs that it stopped the wait.
+/// Disposal continues in the background and logs its own failures. This service logs through
+/// the injected logger, because the logging hosted service clears <see cref="ProsodyLogging"/>
+/// before this phase.
 /// </para>
 /// </remarks>
 internal sealed class ProsodyClientLifecycle(
@@ -44,7 +35,7 @@ internal sealed class ProsodyClientLifecycle(
         IOptions<ClientOptions> options,
         ILogger<ProsodyClientLifecycle> logger
     )
-        : this(client.ConnectAsync, client.DisposeAsync, options.Value.ConnectOnStart == true, logger) { }
+        : this(client.ConnectAsync, client.DisposeAsync, options.Value.ConnectOnStart, logger) { }
 
     public Task StartingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -59,34 +50,14 @@ internal sealed class ProsodyClientLifecycle(
 
     public async Task StoppedAsync(CancellationToken cancellationToken)
     {
-        // The client closes itself before this call returns and releases the native handle on
-        // the pool. Calling it inline here means a deadline that fires first still leaves nothing
-        // for container disposal to claim and wait on.
-        var disposal = dispose().AsTask();
-        await AwaitDisposalAsync(disposal, disposal.WaitAsync(cancellationToken), cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Handles the disposal task and its deadline wait. A cancelled wait is abandoned even if disposal has since completed.
-    /// </summary>
-    internal async Task AwaitDisposalAsync(Task disposal, Task wait, CancellationToken cancellationToken)
-    {
+        // The client closes before dispose() returns, so container disposal later finds nothing to wait on.
         try
         {
-            await wait.ConfigureAwait(false);
+            await dispose().AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             LogHelper.LogDisposalAbandoned(logger);
-            _ = disposal.ContinueWith(
-                static (completed, state) =>
-                    LogHelper.LogShutdownFailed((ILogger)state!, completed.Exception!.GetBaseException()),
-                logger,
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default
-            );
         }
     }
 }

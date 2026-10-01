@@ -149,21 +149,20 @@ public sealed class HostLoggingTests
         ProsodyLogging.Configure(factory);
         try
         {
-            var failure = new InvalidOperationException("shutdown failed");
-            await using var client = new ProsodyClient(
-                new ClientOptions { Mock = true, SourceSystem = "background-shutdown" },
-                connect: null,
-                shutdownNative: _ => Task.FromException(failure)
-            );
+            var options = new ClientOptions { Mock = true, SourceSystem = "background-shutdown" };
+            var native = await Native.ProsodyClient.ProsodyClientAsync(options.ToNative());
+            await using var client = new ProsodyClient(options, connect: () => Task.FromResult(native));
             await client.ConnectAsync(TestContext.Current.CancellationToken);
             ProsodyLogging.Clear();
             collector.Clear();
 
+            // A released handle makes the native shutdown throw.
+            native.Dispose();
             await Task.Run(client.Dispose, TestContext.Current.CancellationToken);
 
             await logged.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
             var record = Assert.Single(collector.GetSnapshot(), item => item.Id.Id == 5);
-            Assert.Same(failure, record.Exception);
+            Assert.IsType<ObjectDisposedException>(record.Exception);
         }
         finally
         {
@@ -171,10 +170,8 @@ public sealed class HostLoggingTests
         }
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task HostStopLogsNativeShutdownFailureAfterLoggingStops(bool timeout)
+    [Fact]
+    public async Task HostStopLogsNativeShutdownFailureAfterLoggingStops()
     {
         var options = new ClientOptions
         {
@@ -184,16 +181,15 @@ public sealed class HostLoggingTests
         };
         var collector = new FakeLogCollector();
         using var factory = new FakeLoggerFactory(collector);
-        Exception failure = timeout ? new TimeoutException() : new Native.FfiException.Cancelled("shutdown failed");
+        var ready = Native.ProsodyClient.ProsodyClientAsync(options.ToNative());
         var builder = Host.CreateEmptyApplicationBuilder(null);
         builder.Services.AddSingleton<ILoggerFactory>(factory);
         builder.Services.AddProsodyLogging();
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddSingleton(sp => new ProsodyClient(
             options,
-            connect: null,
-            shutdownNative: _ => Task.FromException(failure),
-            logger: sp.GetRequiredService<ILogger<ProsodyClient>>()
+            sp.GetRequiredService<ILogger<ProsodyClient>>(),
+            () => ready
         ));
         builder.Services.AddHostedService<ProsodyClientLifecycle>();
         using var host = builder.Build();
@@ -203,14 +199,13 @@ public sealed class HostLoggingTests
             await host.Services.GetRequiredService<ProsodyClient>().ConnectAsync(TestContext.Current.CancellationToken);
             collector.Clear();
 
+            // A released handle makes the native shutdown throw.
+            (await ready).Dispose();
             await host.StopAsync(TestContext.Current.CancellationToken);
 
-            var record = Assert.Single(collector.GetSnapshot(), item => item.Id.Id == (timeout ? 7 : 5));
-            Assert.Equal(timeout ? LogLevel.Warning : LogLevel.Error, record.Level);
-            if (!timeout)
-            {
-                Assert.Same(failure, record.Exception);
-            }
+            var record = Assert.Single(collector.GetSnapshot(), item => item.Id.Id == 5);
+            Assert.Equal(LogLevel.Error, record.Level);
+            Assert.IsType<ObjectDisposedException>(record.Exception);
         }
         finally
         {

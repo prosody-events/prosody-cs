@@ -1219,7 +1219,9 @@ builder.Services.AddProsodyClient();
 var host = builder.Build();
 ```
 
-Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects under that operation's cancellation token. A caller that cancels abandons only its own wait; the connect continues for later callers. A failed connect is not retained; the next operation retries.
+Inject `ProsodyClient` into hosted services. Construction does no I/O. The first operation connects, and all operations share that connect. A caller that cancels stops only its own wait; the connect continues. A failed connect is not kept; the next operation tries again.
+
+Call `ConnectAsync(cancellationToken)` to limit the connect wait. For example, a health check calls it with the check's token before `IsStalledAsync`, so a connect that does not finish cannot block the probe. `UnsubscribeAsync` never starts or waits on a connect.
 
 Set `ConnectOnStart` to `true` to connect when the host starts. Host startup waits for the connection. A failed or cancelled connection aborts startup.
 

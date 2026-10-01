@@ -101,10 +101,9 @@ public sealed partial class ClientOptions
     /// Connect when the host starts instead of on first use. Default: <c>false</c>.
     /// </summary>
     /// <remarks>
-    /// Read only by <c>AddProsodyClient</c>. A failed or cancelled connect aborts host startup.
-    /// The native client does not see this value.
+    /// Only <c>AddProsodyClient</c> reads this value. A failed or cancelled connect stops host startup.
     /// </remarks>
-    public bool? ConnectOnStart { get; set; }
+    public bool ConnectOnStart { get; set; }
 
     /// <summary>Address for the peer listener.</summary>
     /// <remarks>
@@ -182,8 +181,8 @@ public sealed partial class ClientOptions
     public TimeSpan? StallThreshold { get; set; }
 
     /// <summary>
-    /// Time the native client gives handlers to finish during shutdown. Cancellation fires near
-    /// the end of it. Default: 30 seconds. Maximum: one day.
+    /// Shutdown budget; handlers complete freely before cancellation fires near the deadline.
+    /// Default: 30 seconds.
     /// </summary>
     public TimeSpan? ShutdownTimeout { get; set; }
 
@@ -353,14 +352,6 @@ public sealed partial class ClientOptions
         ?? Environment.GetEnvironmentVariable("PROSODY_SOURCE_SYSTEM")
         ?? GroupId
         ?? Environment.GetEnvironmentVariable("PROSODY_GROUP_ID");
-
-    /// <summary>
-    /// Resolves the shutdown timeout with the same precedence as the native client: explicit
-    /// <see cref="ShutdownTimeout"/>, then <c>PROSODY_SHUTDOWN_TIMEOUT</c>. Returns <c>null</c>
-    /// when neither is set.
-    /// </summary>
-    internal TimeSpan? ResolveShutdownTimeout() =>
-        ShutdownTimeout ?? Duration.FromEnvironment("PROSODY_SHUTDOWN_TIMEOUT");
 
     /// <summary>
     /// Creates an independent copy of this <see cref="ClientOptions"/> instance,

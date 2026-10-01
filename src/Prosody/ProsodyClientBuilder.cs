@@ -387,6 +387,6 @@ public sealed class ProsodyClientBuilder
     public ProsodyClient Build()
     {
         _options.Validate();
-        return new ProsodyClient(_options.Clone());
+        return new ProsodyClient(_options);
     }
 }

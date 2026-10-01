@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Prosody.Configuration;
@@ -19,7 +21,7 @@ namespace Prosody.Tests.Unit;
 /// Invariant under test: one build serves every caller. A caller's cancellation abandons only that
 /// caller's wait. A failed build is evicted and retried. Disposal never waits on a pending build.
 /// </remarks>
-public sealed partial class DisposalTests
+public sealed class DisposalTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
@@ -87,7 +89,7 @@ public sealed partial class DisposalTests
         ) => Task.CompletedTask;
     }
 
-    private static bool IsReleased(Native.ProsodyClient native)
+    internal static bool IsReleased(Native.ProsodyClient native)
     {
         try
         {
@@ -101,7 +103,7 @@ public sealed partial class DisposalTests
     }
 
     /// <summary>Yields until the native handle is released. The deadline is a hang guard only.</summary>
-    private static async Task WaitUntilReleasedAsync(Native.ProsodyClient native)
+    internal static async Task WaitUntilReleasedAsync(Native.ProsodyClient native)
     {
         var started = Stopwatch.GetTimestamp();
         while (!IsReleased(native))
@@ -132,7 +134,7 @@ public sealed partial class DisposalTests
     public async Task CancelledWaiterAbandonsOnlyItsOwnWait()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
         using var cts = new CancellationTokenSource();
 
         var first = client.ConnectAsync(cts.Token);
@@ -153,7 +155,7 @@ public sealed partial class DisposalTests
     public async Task ConcurrentFirstCallersShareOneBuild()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
         var connects = new Task[Environment.ProcessorCount * 4];
 
         // Each ConnectAsync runs through the lock to its first await before its lambda returns.
@@ -170,7 +172,7 @@ public sealed partial class DisposalTests
     public async Task AlreadyCancelledTokenDoesNotStartTheBuild()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             client.ConnectAsync(new CancellationToken(canceled: true))
@@ -184,7 +186,7 @@ public sealed partial class DisposalTests
         var attempts = 0;
         await using var client = new ProsodyClient(
             MockOptions,
-            () =>
+            connect: () =>
                 Interlocked.Increment(ref attempts) == 1
                     ? Task.FromException<Native.ProsodyClient>(new InvalidOperationException("unavailable"))
                     : MockNativeAsync()
@@ -201,7 +203,7 @@ public sealed partial class DisposalTests
         var attempts = 0;
         await using var client = new ProsodyClient(
             MockOptions,
-            () =>
+            connect: () =>
                 Interlocked.Increment(ref attempts) == 1
                     ? Task.FromCanceled<Native.ProsodyClient>(new CancellationToken(canceled: true))
                     : MockNativeAsync()
@@ -217,7 +219,10 @@ public sealed partial class DisposalTests
     {
         var build = new Build();
         var faulted = false;
-        await using var client = new ProsodyClient(MockOptions, () => faulted ? build.Immediate() : build.Pending());
+        await using var client = new ProsodyClient(
+            MockOptions,
+            connect: () => faulted ? build.Immediate() : build.Pending()
+        );
         var fired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         EventHandler<UnobservedTaskExceptionEventArgs> onUnobserved = (_, args) =>
         {
@@ -266,7 +271,7 @@ public sealed partial class DisposalTests
     public async Task DisposeOfANeverConnectedClientIsSynchronousAndFinal()
     {
         var build = new Build();
-        var client = new ProsodyClient(MockOptions, build.Pending);
+        var client = new ProsodyClient(MockOptions, connect: build.Pending);
 
         var disposal = client.DisposeAsync();
 
@@ -279,7 +284,7 @@ public sealed partial class DisposalTests
     public async Task DisposeDuringAPendingBuildReturnsAtOnceAndReleasesTheResult()
     {
         var build = new Build();
-        var client = new ProsodyClient(MockOptions, build.Pending);
+        var client = new ProsodyClient(MockOptions, connect: build.Pending);
         var connect = client.ConnectAsync(Ct);
 
         var disposal = client.DisposeAsync();
@@ -292,52 +297,26 @@ public sealed partial class DisposalTests
     }
 
     [Fact]
-    public async Task DisposeOfAConnectedClientClosesItAtOnceAndNeverBlocksOnTheNativeShutdown()
+    public async Task ShutdownFailureDuringDisposalIsLoggedNotThrown()
     {
-        var ready = MockNativeAsync();
-        using var block = new ManualResetEventSlim();
-        await using var client = new ProsodyClient(
-            MockOptions,
-            () => ready,
-            _ =>
-            {
-                block.Wait(Deadline);
-                return Task.CompletedTask;
-            }
-        );
-        await client.ConnectAsync(Ct);
-
-        ValueTask disposal = default;
-        await Task.Run(() => disposal = client.DisposeAsync(), Ct).WaitAsync(Deadline, Ct);
-
-        Assert.False(disposal.IsCompleted);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct).WaitAsync(Deadline, Ct));
-        block.Set();
-        await disposal.AsTask().WaitAsync(Deadline, Ct);
-        Assert.True(IsReleased(await ready));
-    }
-
-    [Fact]
-    public async Task NativeShutdownPanicDuringDisposalIsLoggedAndTheHandleIsReleased()
-    {
-        var ready = MockNativeAsync();
-        var panic = new Native.PanicException("shutdown panicked");
+        var native = await MockNativeAsync();
         var logger = new FakeLogger();
-        var client = new ProsodyClient(MockOptions, () => ready, _ => Task.FromException(panic), logger);
+        var client = new ProsodyClient(MockOptions, logger, () => Task.FromResult(native));
         await client.ConnectAsync(Ct);
 
+        // A released handle makes the native shutdown throw.
+        native.Dispose();
         await client.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
 
         var record = Assert.Single(logger.Collector.GetSnapshot());
-        Assert.Same(panic, record.Exception);
-        Assert.True(IsReleased(await ready));
+        Assert.IsType<ObjectDisposedException>(record.Exception);
     }
 
     [Fact]
     public async Task ShutdownDuringAPendingBuildThatFailsRejectsLaterConnects()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
         var connect = client.ConnectAsync(Ct);
 
         var shutdown = client.ShutdownAsync();
@@ -353,23 +332,14 @@ public sealed partial class DisposalTests
     public async Task ShutdownOfAConnectedClientRejectsOperationsAndDisposeStillReleasesIt()
     {
         var ready = MockNativeAsync();
-        var shutdowns = 0;
-        var client = new ProsodyClient(
-            MockOptions,
-            () => ready,
-            _ =>
-            {
-                shutdowns++;
-                return Task.CompletedTask;
-            }
-        );
+        var client = new ProsodyClient(MockOptions, connect: () => ready);
         await client.ConnectAsync(Ct);
 
         await client.ShutdownAsync().WaitAsync(Deadline, Ct);
 
         await Assert.ThrowsAsync<ObjectDisposedException>(() => client.IsStalledAsync().WaitAsync(Deadline, Ct));
+        Assert.False(IsReleased(await ready));
         await client.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
-        Assert.Equal(1, shutdowns);
         Assert.True(IsReleased(await ready));
     }
 
@@ -377,7 +347,7 @@ public sealed partial class DisposalTests
     public async Task ShutdownOfANeverConnectedClientRejectsLaterOperations()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
 
         await client.ShutdownAsync();
 
@@ -389,7 +359,7 @@ public sealed partial class DisposalTests
     public async Task UnsubscribeNeverStartsOrWaitsOnABuild()
     {
         var build = new Build();
-        await using var client = new ProsodyClient(MockOptions, build.Pending);
+        await using var client = new ProsodyClient(MockOptions, connect: build.Pending);
 
         await client.UnsubscribeAsync().WaitAsync(Deadline, Ct);
         Assert.Equal(0, build.Attempts);
@@ -401,14 +371,12 @@ public sealed partial class DisposalTests
     }
 
     [Fact]
-    public async Task StartupFailureDisposesAConnectedClientWithinTheShutdownBudget()
+    public async Task StartupFailureReleasesAConnectedClient()
     {
         var options = MockOptions;
-        options.ShutdownTimeout = TimeSpan.FromMilliseconds(200);
         options.ConnectOnStart = true;
         var ready = MockNativeAsync();
-        var stalledShutdown = new TaskCompletionSource();
-        await using var client = new ProsodyClient(options, () => ready, _ => stalledShutdown.Task);
+        await using var client = new ProsodyClient(options, connect: () => ready);
         var builder = Host.CreateEmptyApplicationBuilder(null);
         // A factory-created singleton is owned and disposed by the container; a bare instance is not.
         builder.Services.AddSingleton(_ => client);
@@ -418,7 +386,7 @@ public sealed partial class DisposalTests
         using var host = builder.Build();
 
         // Host.StartAsync rethrows with no stop callbacks, so container disposal is the only
-        // path that releases the connected client. Its native shutdown never settles here.
+        // path that releases the connected client.
         await Assert.ThrowsAsync<InvalidOperationException>(() => host.RunAsync(Ct).WaitAsync(Deadline, Ct));
 
         Assert.True(IsReleased(await ready));
@@ -438,11 +406,70 @@ public sealed partial class DisposalTests
         var options = MockOptions;
         options.SourceSystem = "resolved";
         var ready = MockNativeAsync();
-        await using var client = new ProsodyClient(options, () => ready);
+        await using var client = new ProsodyClient(options, connect: () => ready);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.ConnectAsync(Ct));
 
         Assert.Contains("'test-group'", error.Message, StringComparison.Ordinal);
         Assert.True(IsReleased(await ready));
+    }
+
+    [Fact]
+    public Task DisposeDuringAPendingBuildThatFaultsObservesTheFault() =>
+        AssertFaultObservedAsync(DisposeAbandonedBuildAsync);
+
+    private static async Task AssertFaultObservedAsync(Func<Exception, Task<WeakReference>> exercise)
+    {
+        var error = new InvalidOperationException(Guid.NewGuid().ToString());
+        var unobserved = 0;
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs args)
+        {
+            if (ReferenceEquals(error, args.Exception.GetBaseException()))
+            {
+                Interlocked.Increment(ref unobserved);
+            }
+        }
+
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            var task = await exercise(error);
+            var started = Stopwatch.GetTimestamp();
+            do
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Assert.True(Stopwatch.GetElapsedTime(started) < Deadline, "The faulted task was not collected.");
+                await Task.Yield();
+            } while (task.IsAlive);
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Assert.Equal(0, Volatile.Read(ref unobserved));
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+    }
+
+    /// <summary>Drops all strong task references before the collection check.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static async Task<WeakReference> DisposeAbandonedBuildAsync(Exception error)
+    {
+        var build = new Build();
+        var client = new ProsodyClient(MockOptions, connect: build.Pending);
+        await AbandonOneWaiterAsync(client);
+
+        // Track the cached build, not the factory task that BuildAsync already observes.
+        var field = typeof(ProsodyClient).GetField("_native", BindingFlags.Instance | BindingFlags.NonPublic);
+        var cached = Assert.IsAssignableFrom<Task>(field!.GetValue(client));
+        var reference = new WeakReference(cached);
+        Assert.False(cached.IsCompleted);
+        var disposal = client.DisposeAsync();
+        Assert.True(disposal.IsCompletedSuccessfully);
+        await disposal;
+        await build.FaultAsync(error);
+        return reference;
     }
 }

@@ -24,15 +24,14 @@ namespace Prosody;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Construction is synchronous and does no I/O. The first operation, or
-/// <see cref="ConnectAsync"/>, starts the native build. A caller's cancellation abandons that
-/// caller's wait only: the build continues, stays cached, and serves later callers or is torn
-/// down by <see cref="DisposeAsync"/>. The native build never starts a second time because a
-/// caller cancelled. A failed build is not retained; the next operation retries.
+/// Construction does no I/O. The first operation, or <see cref="ConnectAsync"/>, starts the
+/// connect. All operations share one connect. A cancelled caller stops only its own wait, and
+/// the connect continues for later callers. A failed connect is not kept, so the next operation
+/// tries again.
 /// </para>
 /// <para>
-/// <see cref="DisposeAsync"/> never waits on a pending build. It disposes whatever the build
-/// produces once the build settles.
+/// <see cref="DisposeAsync"/> never waits on a pending connect. It releases the result when the
+/// connect completes.
 /// </para>
 /// </remarks>
 public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
@@ -45,29 +44,17 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     internal const string DefaultResolverAotWarning =
         "Auto-installs DefaultJsonTypeInfoResolver when no TypeInfoResolver is set via ConfigureJsonOptions. Configure a source-generated JsonSerializerContext to avoid runtime code generation.";
 
-    /// <summary>The crate's default handler-drain timeout, used when <see cref="ClientOptions.ShutdownTimeout"/> is unset.</summary>
-    private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(30);
-
-    /// <summary>Added to the shutdown timeout so the crate's own terminate fires before disposal gives up.</summary>
-    private static readonly TimeSpan ShutdownMargin = TimeSpan.FromSeconds(5);
-
     private readonly ClientLock _gate = new();
     private readonly Func<Task<Native.ProsodyClient>> _connect;
-    private readonly Func<Native.ProsodyClient, Task> _shutdownNative;
-
-    // The budget is the resolved ShutdownTimeout plus ShutdownMargin. Container disposal has no
-    // host deadline after startup fails, so this bounds native shutdown. Validation caps the
-    // timeout, so the sum cannot overflow.
-    private readonly TimeSpan _shutdownBudget;
     private readonly ILogger _logger;
     private readonly IReadOnlySet<StateDefinition> _stateDefinitions;
     private readonly Lazy<Task> _shutdown;
 
-    // Invariant: _native is null or the one build every caller shares. NativeAsync creates it.
-    // Only completed unsuccessful builds leave the cache. _closed and _claimed change only
-    // from false to true. A closed client starts no build. _claimed gives one disposer the
-    // build for release. _gate protects every write. NativeAsync reads _closed and _native
-    // without the lock on its fast path; a stale read there falls through to the locked path.
+    // Invariant: _native is null, a pending build, or a completed build that every caller shares.
+    // A successful build is never replaced. SharedBuild evicts a failed build, so the next
+    // operation retries. _closed and _claimed change only from false to true. A closed client
+    // starts no build and hands out no native client. _claimed gives one disposer the build to
+    // release. _gate guards every write. Reads outside the lock use Volatile.Read.
     private Task<Native.ProsodyClient>? _native;
     private bool _closed;
     private bool _claimed;
@@ -75,33 +62,27 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     internal JsonSerializerOptions JsonOptions { get; }
 
     /// <summary>Creates an unconnected client from validated options.</summary>
-    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
-    [RequiresDynamicCode(DefaultResolverAotWarning)]
-    internal ProsodyClient(ClientOptions validated, ILogger? logger = null)
-        : this(validated, connect: null, shutdownNative: null, logger) { }
-
-    /// <summary>
-    /// Creates an unconnected client. Tests pass <paramref name="connect"/> to drive the native
-    /// build and <paramref name="shutdownNative"/> to drive the native shutdown.
-    /// </summary>
+    /// <param name="validated">The options. The client keeps a copy.</param>
+    /// <param name="logger">Logs disposal failures. The default comes from <see cref="ProsodyLogging"/>.</param>
+    /// <param name="connect">Builds the native client. Tests replace it to control the build.</param>
+    /// <exception cref="InvalidOperationException">No source system or consumer group id is configured.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A duration option is negative.</exception>
     [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
     [RequiresDynamicCode(DefaultResolverAotWarning)]
     internal ProsodyClient(
         ClientOptions validated,
-        Func<Task<Native.ProsodyClient>>? connect,
-        Func<Native.ProsodyClient, Task>? shutdownNative = null,
-        ILogger? logger = null
+        ILogger? logger = null,
+        Func<Task<Native.ProsodyClient>>? connect = null
     )
     {
         var options = validated.Clone();
+        var nativeOptions = options.ToNative();
         JsonOptions = BuildJsonOptions(options);
         _stateDefinitions = RegisteredStateDefinitions(options);
         SourceSystem =
             options.ResolveSourceSystem()
             ?? throw new InvalidOperationException("No source system or consumer group id is configured.");
-        _connect = connect ?? (() => Native.ProsodyClient.ProsodyClientAsync(options.ToNative()));
-        _shutdownNative = shutdownNative ?? (native => NativeErrors.RunAsync(native.Shutdown));
-        _shutdownBudget = (options.ResolveShutdownTimeout() ?? DefaultShutdownTimeout) + ShutdownMargin;
+        _connect = connect ?? (() => Native.ProsodyClient.ProsodyClientAsync(nativeOptions));
         // Keep the logger after the logging service clears its factory during host stop.
         _logger = logger ?? ProsodyLogging.CreateLogger(nameof(ProsodyClient));
         _shutdown = new(ShutdownCoreAsync, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -147,73 +128,42 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Connects now instead of on first use. Safe to call more than once.</summary>
+    /// <remarks>Use the token to limit the connect wait, for example in a health check or a worker.</remarks>
     /// <exception cref="OperationCanceledException">The caller's token was cancelled. The build continues.</exception>
     /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
     public async Task ConnectAsync(CancellationToken cancellationToken = default) =>
         await NativeAsync(cancellationToken).ConfigureAwait(false);
 
+    /// <summary>Returns the connected native client. Starts the shared build when none is cached.</summary>
+    /// <exception cref="OperationCanceledException">The caller's token was cancelled. The build continues.</exception>
+    /// <exception cref="ObjectDisposedException">The client is disposed or shut down.</exception>
     private async ValueTask<Native.ProsodyClient> NativeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Steady state: a connected, open client takes no lock.
-        if (!Volatile.Read(ref _closed) && Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } ready)
-        {
-            return await ready.ConfigureAwait(false);
-        }
+        // A connected client takes no lock.
+        var build = Volatile.Read(ref _native) is { IsCompletedSuccessfully: true } ready ? ready : SharedBuild();
+        var native = await build.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-        Task<Native.ProsodyClient> pending;
+        // A wait can outlive ShutdownAsync or DisposeAsync.
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed), this);
+        return native;
+    }
+
+    private Task<Native.ProsodyClient> SharedBuild()
+    {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_closed, this);
-            // A build that failed after every waiter had cancelled is still cached here.
-            // Evict it so this call retries instead of replaying the old failure.
-            // IsFaulted alone is not enough: a build that ended Canceled would stay forever.
+
+            // A failed build leaves the cache here, so this call retries it. A cancelled build
+            // counts as failed. Reading Exception marks a fault observed.
             if (_native is { IsCompleted: true, IsCompletedSuccessfully: false } failed)
             {
-                // Reading Exception marks the fault observed. A cancelled WaitAsync waiter removes
-                // its continuation from the build, so nothing else observes it once evicted.
                 _ = failed.Exception;
                 _native = null;
             }
-            pending = _native ??= BuildAsync();
-        }
-
-        return await AwaitNativeAsync(pending, pending.WaitAsync(cancellationToken)).ConfigureAwait(false);
-    }
-
-    /// <summary>Checks the build after its caller's wait completes. A cancelled wait can precede a build fault.</summary>
-    internal async ValueTask<Native.ProsodyClient> AwaitNativeAsync(
-        Task<Native.ProsodyClient> pending,
-        Task<Native.ProsodyClient> wait
-    )
-    {
-        try
-        {
-            var native = await wait.ConfigureAwait(false);
-            // A waiter that outlived ShutdownAsync or DisposeAsync must not start work on a
-            // handle that is shut down or about to be released.
-            lock (_gate)
-            {
-                ObjectDisposedException.ThrowIf(_closed, this);
-            }
-            return native;
-        }
-        catch when (pending.IsCompleted && !pending.IsCompletedSuccessfully)
-        {
-            // Observe a build fault even when the caller's wait completed through cancellation.
-            _ = pending.Exception;
-
-            // Only a failed build resets the cache. A caller cancelling must not
-            // trigger a second native build while the first is still connecting.
-            lock (_gate)
-            {
-                if (ReferenceEquals(_native, pending))
-                {
-                    _native = null;
-                }
-            }
-            throw;
+            return _native ??= BuildAsync();
         }
     }
 
@@ -258,107 +208,84 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     private async Task ShutdownCoreAsync()
     {
-        Task<Native.ProsodyClient>? pending;
+        Task<Native.ProsodyClient>? build;
         lock (_gate)
         {
             _closed = true;
-            pending = _native;
+            build = _native;
         }
 
-        if (pending is not null && await SettleAsync(pending).ConfigureAwait(false) is { } native)
+        if (build is not null && await SettleAsync(build).ConfigureAwait(false) is { } native)
         {
-            await _shutdownNative(native).ConfigureAwait(false);
+            await NativeErrors.RunAsync(native.Shutdown).ConfigureAwait(false);
         }
     }
 
     /// <summary>Awaits a build without throwing. Returns the client on success, otherwise <c>null</c>.</summary>
-    private static async Task<Native.ProsodyClient?> SettleAsync(Task<Native.ProsodyClient> pending)
+    private static async Task<Native.ProsodyClient?> SettleAsync(Task<Native.ProsodyClient> build)
     {
-        await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
-        return pending.IsCompletedSuccessfully ? await pending.ConfigureAwait(false) : null;
+        // SuppressThrowing also marks a fault observed. Disposal can be the only code that sees it.
+        await ((Task)build).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        return build.IsCompletedSuccessfully ? await build.ConfigureAwait(false) : null;
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Closes the client before this call returns. Releases the native handle on the thread pool.
-    /// The returned task waits for release only if the build has already completed.
-    /// Native shutdown uses the resolved <see cref="ClientOptions.ShutdownTimeout"/> plus a five-second margin.
-    /// A native shutdown error is logged, not thrown. A late release fault is logged.
+    /// Closes the client before this call returns. When the build has completed, the returned
+    /// task shuts the native client down and releases it. A pending build is never awaited:
+    /// the release runs when it settles. A shutdown error is logged, not thrown.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
-        if (!TryClose(out var pending))
+        if (!TryClose(out var build))
         {
             return ValueTask.CompletedTask;
         }
 
-        var release = Task.Run(() => DisposeNativeAsync(pending));
-        if (pending.IsCompleted)
-        {
-            return new ValueTask(release);
-        }
-
-        LogWhenFaulted(release);
-        return ValueTask.CompletedTask;
+        var release = ReleaseAsync(build);
+        return build.IsCompleted ? new ValueTask(release) : ValueTask.CompletedTask;
     }
 
     /// <inheritdoc/>
-    /// <remarks>Starts shutdown and release without blocking. Prefer <see cref="DisposeAsync"/>.</remarks>
+    /// <remarks>Starts shutdown and release without waiting for them. Prefer <see cref="DisposeAsync"/>.</remarks>
     public void Dispose()
     {
-        if (TryClose(out var pending))
+        if (TryClose(out var build))
         {
-            LogWhenFaulted(Task.Run(() => DisposeNativeAsync(pending)));
+            _ = ReleaseAsync(build);
         }
     }
 
     /// <summary>Closes the client and claims the shared build for release. Returns it on the first claim only.</summary>
-    private bool TryClose([NotNullWhen(true)] out Task<Native.ProsodyClient>? pending)
+    private bool TryClose([NotNullWhen(true)] out Task<Native.ProsodyClient>? build)
     {
         lock (_gate)
         {
             _closed = true;
-            pending = _claimed ? null : _native;
+            build = _claimed ? null : _native;
             _claimed = true;
-            return pending is not null;
+            return build is not null;
         }
     }
 
-    private void LogWhenFaulted(Task release) =>
-        _ = release.ContinueWith(
-            static (disposal, logger) =>
-                LogHelper.LogShutdownFailed((ILogger)logger!, disposal.Exception!.GetBaseException()),
-            _logger,
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default
-        );
-
-    private async Task DisposeNativeAsync(Task<Native.ProsodyClient> pending)
+    /// <summary>Shuts down and releases the native client of <paramref name="build"/>. Never throws.</summary>
+    /// <remarks>Disposal often has no caller left to observe a fault, so every error is logged here.</remarks>
+    private async Task ReleaseAsync(Task<Native.ProsodyClient> build)
     {
-        if (await SettleAsync(pending).ConfigureAwait(false) is not { } native)
+        if (await SettleAsync(build).ConfigureAwait(false) is not { } native)
         {
             return;
         }
 
         try
         {
-            await ShutdownAsync().WaitAsync(_shutdownBudget).ConfigureAwait(false);
+            await ShutdownAsync().ConfigureAwait(false);
         }
-        catch (ProsodyException error)
+#pragma warning disable CA1031 // Release must reach native.Dispose() whatever shutdown throws.
+        catch (Exception error)
+#pragma warning restore CA1031
         {
             LogHelper.LogShutdownFailed(_logger, error);
-        }
-        catch (Native.UniffiException error)
-        {
-            // Covers the panic, allocation, and internal errors that NativeErrors does not translate.
-            LogHelper.LogShutdownFailed(_logger, error);
-        }
-        catch (TimeoutException)
-        {
-            // Disposal must observe shutdown faults after its bounded wait ends.
-            LogWhenFaulted(ShutdownAsync());
-            LogHelper.LogNativeShutdownAbandoned(_logger, _shutdownBudget);
         }
         finally
         {

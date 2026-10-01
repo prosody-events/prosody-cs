@@ -6,7 +6,7 @@ namespace Prosody;
 /// so existing <c>GetRequiredService&lt;ProsodyClientProvider&gt;()</c> calls keep resolving. New code
 /// injects <see cref="ProsodyClient"/> and calls operations directly.
 /// </remarks>
-[Obsolete("Inject ProsodyClient instead. Every operation awaits the connect under its own cancellation token.")]
+[Obsolete("Inject ProsodyClient instead. Its first operation connects.")]
 public sealed class ProsodyClientProvider : IDisposable, IAsyncDisposable
 {
     private readonly ProsodyClient _client;

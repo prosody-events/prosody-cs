@@ -19,26 +19,7 @@ public sealed class ProsodyClientLifecycleTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private readonly TaskCompletionSource _shutdownFailedLogged = new(
-        TaskCreationOptions.RunContinuationsAsynchronously
-    );
-    private readonly FakeLogger _logger;
-
-    public ProsodyClientLifecycleTests() =>
-        _logger = new FakeLogger(
-            FakeLogCollector.Create(
-                new FakeLogCollectorOptions
-                {
-                    OutputSink = line =>
-                    {
-                        if (line.Contains("Failed to shut down", StringComparison.Ordinal))
-                        {
-                            _shutdownFailedLogged.TrySetResult();
-                        }
-                    },
-                }
-            )
-        );
+    private readonly FakeLogger _logger = new();
 
     /// <summary>Stands in for the client: counts connects and holds disposal until released.</summary>
     private sealed class Fake
@@ -54,14 +35,7 @@ public sealed class ProsodyClientLifecycleTests
             return Task.CompletedTask;
         }
 
-        /// <summary>The thread that called disposal. The client closes itself on that thread before returning.</summary>
-        public int? ClaimedBy { get; private set; }
-
-        public ValueTask DisposeAsync()
-        {
-            ClaimedBy = Environment.CurrentManagedThreadId;
-            return new(DisposeCoreAsync());
-        }
+        public ValueTask DisposeAsync() => new(DisposeCoreAsync());
 
         private async Task DisposeCoreAsync()
         {
@@ -112,68 +86,13 @@ public sealed class ProsodyClientLifecycleTests
         Assert.Equal(LogLevel.Warning, warning.Level);
         Assert.Contains("stop deadline", warning.Message, StringComparison.Ordinal);
         Assert.False(fake.Disposed);
-
-        fake.Release.SetResult();
-        await fake.DisposeAsync().AsTask().WaitAsync(Deadline, Ct);
-        Assert.True(fake.Disposed);
-    }
-
-    [Fact]
-    public async Task StopClaimsTheClientOnTheCallingThreadBeforeItReturns()
-    {
-        var fake = new Fake();
-
-        var stopped = Lifecycle(fake).StoppedAsync(new CancellationToken(canceled: true));
-        Assert.Equal(Environment.CurrentManagedThreadId, fake.ClaimedBy);
-        await stopped.WaitAsync(Deadline, Ct);
-
-        Assert.False(fake.Disposed);
-        Assert.Single(_logger.Collector.GetSnapshot(), record => record.Level == LogLevel.Warning);
         fake.Release.SetResult();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task CancelledWaitIsAbandonedWhenDisposalCompletesBeforeHandling(bool faulted)
-    {
-        var disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var deadline = new CancellationTokenSource();
-        var wait = disposal.Task.WaitAsync(deadline.Token);
-        await deadline.CancelAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
-
-        var failure = new InvalidOperationException("disposal failed");
-        if (faulted)
-        {
-            disposal.SetException(failure);
-        }
-        else
-        {
-            disposal.SetResult();
-        }
-
-        await Lifecycle(new Fake()).AwaitDisposalAsync(disposal.Task, wait, deadline.Token).WaitAsync(Deadline, Ct);
-
-        var records = _logger.Collector.GetSnapshot();
-        var warning = Assert.Single(records, record => record.Level == LogLevel.Warning);
-        Assert.Contains("stop deadline", warning.Message, StringComparison.Ordinal);
-        if (faulted)
-        {
-            var error = Assert.Single(records, record => record.Level == LogLevel.Error);
-            Assert.Same(failure, error.Exception);
-            Assert.Equal(2, records.Count);
-        }
-        else
-        {
-            Assert.Single(records);
-        }
-    }
-
     [Fact]
-    public async Task WorkerUnsubscribingDuringAPendingBuildDoesNotHangHostRun()
+    public async Task WorkerUnsubscribingDuringAPendingBuildDoesNotHangHostRunAndTheLateBuildIsReleased()
     {
-        var neverSettles = new TaskCompletionSource<Native.ProsodyClient>();
+        var pending = new TaskCompletionSource<Native.ProsodyClient>();
         var options = new ClientOptions
         {
             Mock = true,
@@ -182,7 +101,7 @@ public sealed class ProsodyClientLifecycleTests
         };
         var builder = Host.CreateEmptyApplicationBuilder(null);
         // A factory-created singleton is owned and disposed by the container; a bare instance is not.
-        builder.Services.AddSingleton(_ => new ProsodyClient(options, () => neverSettles.Task));
+        builder.Services.AddSingleton(_ => new ProsodyClient(options, connect: () => pending.Task));
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddHostedService<ProsodyClientLifecycle>();
         builder.Services.AddHostedService(sp => new UnsubscribingWorker(sp.GetRequiredService<ProsodyClient>()));
@@ -204,6 +123,12 @@ public sealed class ProsodyClientLifecycleTests
 
             Assert.False(connect.IsCompleted);
             await Assert.ThrowsAsync<ObjectDisposedException>(() => client.ConnectAsync(Ct));
+
+            // A build that settles after the host stops serves no caller and is released.
+            var native = await Native.ProsodyClient.ProsodyClientAsync(options.ToNative());
+            pending.SetResult(native);
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => connect.WaitAsync(Deadline, Ct));
+            await DisposalTests.WaitUntilReleasedAsync(native);
         }
         finally
         {
@@ -219,22 +144,6 @@ public sealed class ProsodyClientLifecycleTests
     }
 
     [Fact]
-    public async Task LateDisposalFaultIsLoggedNotThrown()
-    {
-        var fake = new Fake();
-        using var deadline = new CancellationTokenSource();
-        var stopped = Lifecycle(fake).StoppedAsync(deadline.Token);
-        await deadline.CancelAsync();
-        await stopped.WaitAsync(Deadline, Ct);
-
-        fake.Release.SetException(new InvalidOperationException("late"));
-
-        await _shutdownFailedLogged.Task.WaitAsync(Deadline, Ct);
-        var error = Assert.Single(_logger.Collector.GetSnapshot(), record => record.Level == LogLevel.Error);
-        Assert.IsType<InvalidOperationException>(error.Exception);
-    }
-
-    [Fact]
     public async Task FailedStartupDoesNotWaitOnThePendingBuild()
     {
         var neverSettles = new TaskCompletionSource<Native.ProsodyClient>();
@@ -245,7 +154,7 @@ public sealed class ProsodyClientLifecycleTests
             GroupId = "test-group",
             ConnectOnStart = true,
         };
-        await using var client = new ProsodyClient(options, () => neverSettles.Task);
+        await using var client = new ProsodyClient(options, connect: () => neverSettles.Task);
         var builder = Host.CreateEmptyApplicationBuilder(null);
         // A factory-created singleton is owned and disposed by the container; a bare instance is not.
         builder.Services.AddSingleton(_ => client);

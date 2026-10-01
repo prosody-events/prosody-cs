@@ -97,7 +97,7 @@ public sealed class SourceSystemTests
         Task<Native.ProsodyClient>? build = null;
         await using var client = new ProsodyClient(
             options,
-            () => build = Native.ProsodyClient.ProsodyClientAsync(options.ToNative())
+            connect: () => build = Native.ProsodyClient.ProsodyClientAsync(options.ToNative())
         );
 
         Assert.Equal(expected, client.SourceSystem);

@@ -29,11 +29,4 @@ internal static partial class LogHelper
         Message = "The host's stop deadline fired before the Prosody client finished disposal. Disposal continues in the background."
     )]
     internal static partial void LogDisposalAbandoned(ILogger logger);
-
-    [LoggerMessage(
-        EventId = 7,
-        Level = LogLevel.Warning,
-        Message = "Native shutdown did not finish within the shutdown budget of {Budget}. The native client is released anyway."
-    )]
-    internal static partial void LogNativeShutdownAbandoned(ILogger logger, TimeSpan budget);
 }
