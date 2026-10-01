@@ -260,26 +260,21 @@ public sealed class LogSinkBridgeTests
     }
 
     [Fact]
-    public void IsEnabledReturnsFalseWhenLoggerThrows()
+    public void FaultyProviderDoesNotSilenceHealthyProvider()
     {
-        using var provider = new ThrowingLoggerProvider(ThrowFrom.IsEnabled);
-        using var factory = new LoggerFactory([provider]);
+        var collector = new FakeLogCollector();
+        using var faulty = new ThrowingLoggerProvider(ThrowFrom.IsEnabled);
+        using var healthy = new FakeLoggerProvider(collector);
+
+        // The faulty provider comes first, so LoggerFactory throws from IsEnabled after it finds the healthy one.
+        using var factory = new LoggerFactory([faulty, healthy]);
         var bridge = new LogSinkBridge(factory);
 
-        Assert.False(bridge.IsEnabled(NativeLogLevel.Error));
-        Assert.Equal(1, provider.ThrownCallCount);
-    }
-
-    [Fact]
-    public void LogDropsRecordWhenLoggerThrows()
-    {
-        using var provider = new ThrowingLoggerProvider(ThrowFrom.Log);
-        using var factory = new LoggerFactory([provider]);
-        var bridge = new LogSinkBridge(factory);
-
+        Assert.True(bridge.IsEnabled(NativeLogLevel.Error));
         bridge.Log(NativeLogLevel.Error, "my.target", "hello", null, null, EmptyLogFields());
 
-        Assert.Equal(1, provider.ThrownCallCount);
+        Assert.Equal("[my.target] hello", SingleRecord(collector).Message);
+        Assert.True(faulty.ThrownCallCount > 0, "the faulty provider never threw, so this test proves nothing");
     }
 
     /// <summary>

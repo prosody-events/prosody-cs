@@ -34,7 +34,8 @@ console apps, and Azure Functions isolated workers. These hosts install no
 Do not call the client from a thread that has a `SynchronizationContext`. That
 includes the UI thread of WPF, WinForms, WinUI, MAUI, and Avalonia apps, and a
 Blazor Server component. The generated native bindings capture that context on
-every await. A blocked UI thread then deadlocks the call.
+every await. If that thread then blocks on the call, for example with `.Result`
+or `.Wait()`, the call deadlocks.
 
 A desktop app can still use Prosody. Host the client in a `BackgroundService`
 or a separate worker service. Pass results to the UI through a channel or an

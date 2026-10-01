@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Prosody.Native;
 using MsLogLevel = Microsoft.Extensions.Logging.LogLevel;
@@ -14,13 +13,9 @@ namespace Prosody.Logging;
 /// Invariant: a logger exception never reaches native code. The native <see cref="LogSink"/>
 /// methods return <see cref="bool"/> and <see langword="void"/>, so the callback has no error
 /// channel and UniFFI panics on an unexpected error. A failed <see cref="IsEnabled"/> reports
-/// <see langword="false"/>. A failed <see cref="Log"/> drops the record.
+/// <see langword="true"/>, so one faulty provider cannot silence the others. A failed
+/// <see cref="Log"/> loses only the faulty provider's copy of the record.
 /// </remarks>
-[SuppressMessage(
-    "Design",
-    "CA1031:Do not catch general exception types",
-    Justification = "The callback has no error channel"
-)]
 internal sealed class LogSinkBridge : LogSink
 {
     private static readonly EventId NativeLogEvent = new(99, "ProsodyNative");
@@ -40,36 +35,37 @@ internal sealed class LogSinkBridge : LogSink
             // Cast works because enum values match Microsoft.Extensions.Logging.LogLevel
             return _logger.IsEnabled((MsLogLevel)level);
         }
-        catch
+#pragma warning disable CA1031 // The callback has no error channel. See the class remarks.
+        catch (Exception)
         {
-            return false;
+            return true;
         }
+#pragma warning restore CA1031
     }
 
     /// <inheritdoc />
     public void Log(NativeLogLevel level, string target, string message, string? file, uint? line, LogFields fields)
     {
-        var logLevel = (MsLogLevel)level;
+        // Native code checks IsEnabled first. Keep this gate so a direct caller cannot emit a disabled level.
+        if (!IsEnabled(level))
+        {
+            return;
+        }
+
         try
         {
-            if (!_logger.IsEnabled(logLevel))
-            {
-                return;
-            }
-
             var state = new NativeLogState(target, message, file, line, fields);
             _logger.Log(
-                logLevel,
+                (MsLogLevel)level,
                 NativeLogEvent,
                 state: state,
                 exception: null,
                 formatter: static (s, _) => s.Formatted
             );
         }
-        catch
-        {
-            // The bridge drops the record. Logging must not change client control flow.
-        }
+#pragma warning disable CA1031, RCS1075 // The callback has no error channel. See the class remarks.
+        catch (Exception) { }
+#pragma warning restore CA1031, RCS1075
     }
 
     /// <summary>

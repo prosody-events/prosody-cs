@@ -19,12 +19,16 @@ internal enum ThrowFrom
 /// </summary>
 internal sealed class ThrowingLoggerProvider(ThrowFrom where) : ILoggerProvider
 {
-    /// <summary>The number of logger calls that threw.</summary>
-    public int ThrownCallCount { get; private set; }
+    private int _thrownCallCount;
+
+    /// <summary>The number of logger calls that threw. Native code can call from more than one thread.</summary>
+    public int ThrownCallCount => _thrownCallCount;
 
     public ILogger CreateLogger(string categoryName) => new ThrowingLogger(this, where);
 
     public void Dispose() { }
+
+    private void RecordThrow() => Interlocked.Increment(ref _thrownCallCount);
 
     private sealed class ThrowingLogger(ThrowingLoggerProvider owner, ThrowFrom where) : ILogger
     {
@@ -43,7 +47,7 @@ internal sealed class ThrowingLoggerProvider(ThrowFrom where) : ILoggerProvider
 
         private InvalidOperationException Fault()
         {
-            owner.ThrownCallCount++;
+            owner.RecordThrow();
             return new InvalidOperationException("provider fault");
         }
     }
