@@ -89,24 +89,12 @@ public sealed class NativeErrorTests
         await client.SubscribeAsync(new LambdaHandler<JsonElement>());
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => ProsodyClient.CreateAsync(invalidSize));
+        Assert.Throws<InvalidOperationException>(() => new ProsodyClient(invalidSize).Dispose());
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             client.SubscribeAsync(new LambdaHandler<JsonElement>())
         );
         await client.UnsubscribeAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(client.UnsubscribeAsync);
-    }
-
-    [Fact]
-    public async Task BlockingConstructorMatchesCreateAsync()
-    {
-        var invalidSize = MockOptions;
-        invalidSize.StateOwnedCacheSize = "lots";
-        await using var created = await ProsodyClient.CreateAsync(MockOptions);
-        await using var blocking = new ProsodyClient(MockOptions);
-
-        Assert.Equal(created.SourceSystem, blocking.SourceSystem);
-        Assert.Equal(await created.GetConsumerStateAsync(), await blocking.GetConsumerStateAsync());
-        Assert.Throws<InvalidOperationException>(() => new ProsodyClient(invalidSize).Dispose());
     }
 
     [Fact]

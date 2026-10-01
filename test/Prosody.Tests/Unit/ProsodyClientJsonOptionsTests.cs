@@ -17,22 +17,18 @@ internal sealed partial class JsonOptionsTestPayloadContext : JsonSerializerCont
 /// <summary>
 /// Tests that <see cref="ProsodyClient"/> builds and exposes the correct <see cref="JsonSerializerOptions"/>.
 /// </summary>
-public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
+public sealed class ProsodyClientJsonOptionsTests : IAsyncDisposable
 {
-    private ProsodyClient _client = null!;
-
-    public async ValueTask InitializeAsync()
-    {
-        _client = await ProsodyClient.CreateAsync(
-            new ClientOptions
-            {
-                Mock = true,
-                BootstrapServers = [TestDefaults.BootstrapServers],
-                GroupId = "test-group",
-                SourceSystem = "test",
-            }
-        );
-    }
+    // The blocking constructor builds the shared client, so the default tests also cover it.
+    private readonly ProsodyClient _client = new(
+        new ClientOptions
+        {
+            Mock = true,
+            BootstrapServers = [TestDefaults.BootstrapServers],
+            GroupId = "test-group",
+            SourceSystem = "test",
+        }
+    );
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 
@@ -80,6 +76,23 @@ public sealed class ProsodyClientJsonOptionsTests : IAsyncLifetime
         Assert.True(invoked, "ConfigureJsonOptions callback should have been invoked");
         Assert.Equal(JsonNamingPolicy.CamelCase, capturedPolicy);
         Assert.Equal(JsonNamingPolicy.SnakeCaseLower, client.JsonOptions.PropertyNamingPolicy);
+    }
+
+    [Fact]
+    public async Task ConfigureJsonOptions_FailureOpensNoConnection()
+    {
+        // Nothing listens on this Cassandra address, so a client that connects first throws a native error.
+        var options = new ClientOptions
+        {
+            BootstrapServers = [TestDefaults.BootstrapServers],
+            GroupId = "test-group",
+            SourceSystem = "test",
+            CassandraNodes = ["127.0.0.1:1"],
+            ConfigureJsonOptions = _ => throw new FormatException("bad resolver"),
+        };
+
+        await Assert.ThrowsAsync<FormatException>(() => ProsodyClient.CreateAsync(options));
+        Assert.Throws<FormatException>(() => new ProsodyClient(options).Dispose());
     }
 
     [Fact]

@@ -32,10 +32,12 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     internal JsonSerializerOptions JsonOptions { get; }
 
+    // The native client is the last parameter, so a caller evaluates it last.
+    // If the JSON options fail to build, the caller opens no connection.
     private ProsodyClient(
-        Native.ProsodyClient native,
         JsonSerializerOptions jsonOptions,
-        IReadOnlySet<StateDefinition> stateDefinitions
+        IReadOnlySet<StateDefinition> stateDefinitions,
+        Native.ProsodyClient native
     )
     {
         _native = native;
@@ -61,12 +63,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     /// </remarks>
     [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
     [RequiresDynamicCode(DefaultResolverAotWarning)]
-    public static async Task<ProsodyClient> CreateAsync(ClientOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        options.Validate();
-        return await FromValidatedOptionsAsync(options).ConfigureAwait(false);
-    }
+    public static async Task<ProsodyClient> CreateAsync(ClientOptions options) =>
+        await FromValidatedOptionsAsync(Validated(options)).ConfigureAwait(false);
 
     /// <summary>
     /// Creates a new Prosody client with the given options and blocks the calling thread until it is ready.
@@ -76,14 +74,18 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
     [RequiresDynamicCode(DefaultResolverAotWarning)]
     public ProsodyClient(ClientOptions options)
-        // Arguments evaluate left to right, so NewBlocking validates the options before they are read.
-        : this(NewBlocking(options), BuildJsonOptions(options), RegisteredStateDefinitions(options)) { }
+        // Arguments evaluate left to right, so the options are valid before the other arguments read them.
+        : this(
+            BuildJsonOptions(Validated(options)),
+            RegisteredStateDefinitions(options),
+            NativeErrors.Run(() => Native.ProsodyClient.NewBlocking(options.ToNative()))
+        ) { }
 
-    private static Native.ProsodyClient NewBlocking(ClientOptions options)
+    private static ClientOptions Validated(ClientOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
-        return NativeErrors.Run(() => Native.ProsodyClient.NewBlocking(options.ToNative()));
+        return options;
     }
 
     /// <summary>
@@ -96,9 +98,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         var native = options.ToNative();
         return new ProsodyClient(
-            await NativeErrors.RunAsync(() => Native.ProsodyClient.ProsodyClientAsync(native)).ConfigureAwait(false),
             BuildJsonOptions(options),
-            RegisteredStateDefinitions(options)
+            RegisteredStateDefinitions(options),
+            await NativeErrors.RunAsync(() => Native.ProsodyClient.ProsodyClientAsync(native)).ConfigureAwait(false)
         );
     }
 
