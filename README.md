@@ -198,7 +198,7 @@ For the complete configuration reference, see [CONFIGURATION.md](CONFIGURATION.m
 
 `ClientOptions` properties take precedence. Unset properties use environment variables, then library defaults.
 
-Client construction is asynchronous. Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync`.
+Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync` to create a client without blocking. The `ProsodyClient(ClientOptions)` constructor creates the same client and blocks the calling thread until the client is ready.
 
 ## Liveness and Readiness Probes
 
@@ -1400,6 +1400,7 @@ Fluent builder for configuring and creating a ProsodyClient. All `With*` methods
 ### ProsodyClient
 
 - `Task<ProsodyClient> ProsodyClient.CreateAsync(ClientOptions options)`: Create a client asynchronously.
+- `ProsodyClient(ClientOptions options)`: Create the same client and block the calling thread until it is ready.
 - `string SourceSystem { get; }`: Get the source system identifier configured for the client.
 - `Task<ConsumerState> GetConsumerStateAsync()`: Get the current state of the consumer.
 - `Task<uint> AssignedPartitionCountAsync()`: Get the number of partitions currently assigned to this consumer.

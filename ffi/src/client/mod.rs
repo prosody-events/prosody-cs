@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::executor::block_on;
 use tracing::field::Empty;
 use tracing::{Instrument, info_span};
 
@@ -72,6 +73,17 @@ impl ProsodyClient {
             Ok(Self { client })
         })
         .await
+    }
+
+    /// Creates a client like [`Self::new`] and blocks the calling thread until
+    /// it is ready.
+    ///
+    /// # Errors
+    ///
+    /// Returns the errors of [`Self::new`].
+    #[uniffi::constructor]
+    pub fn new_blocking(options: ClientOptions) -> Result<Self, FfiError> {
+        block_on(Self::new(options))
     }
 
     /// Opens a read-only published value collection.

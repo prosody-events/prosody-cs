@@ -69,6 +69,24 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Creates a new Prosody client with the given options and blocks the calling thread until it is ready.
+    /// </summary>
+    /// <param name="options">Configuration options for the client.</param>
+    /// <inheritdoc cref="CreateAsync(ClientOptions)" path="/exception|/remarks"/>
+    [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
+    [RequiresDynamicCode(DefaultResolverAotWarning)]
+    public ProsodyClient(ClientOptions options)
+        // Arguments evaluate left to right, so NewBlocking validates the options before they are read.
+        : this(NewBlocking(options), BuildJsonOptions(options), RegisteredStateDefinitions(options)) { }
+
+    private static Native.ProsodyClient NewBlocking(ClientOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Validate();
+        return NativeErrors.Run(() => Native.ProsodyClient.NewBlocking(options.ToNative()));
+    }
+
+    /// <summary>
     /// Creates a new ProsodyClient from pre-validated options, skipping redundant validation.
     /// </summary>
     [RequiresUnreferencedCode(DefaultResolverTrimWarning)]
