@@ -10,8 +10,7 @@ use prosody::consumer::KeyedStateConfiguration;
 use prosody::consumer::kafka_state::{message_deque_state, message_map_state, message_state};
 use prosody::loader::KafkaLoader;
 use prosody::state::descriptor::{
-    DequeDescriptor, MapDescriptor, SetDescriptor, StateDescriptor, deque_state, map_state,
-    set_state, value_state,
+    DequeDescriptor, StateDescriptor, deque_state, map_state, set_state, value_state,
 };
 use prosody::state::order_codec::Utf8KeyCodec;
 use prosody::subsystem::SubsystemName;
@@ -135,7 +134,9 @@ fn register_state_collection(
         } => {
             let descriptor = map_state::<Utf8KeyCodec, JsonBinaryCodec>(name);
             let descriptor = with_def(descriptor, ttl, collection);
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
         }
         StateKind::Map {
             payload: StatePayload::Message,
@@ -144,7 +145,9 @@ fn register_state_collection(
             let descriptor =
                 message_map_state::<Utf8KeyCodec, KafkaLoader<JsonBinaryMessageCodec>>(name);
             let descriptor = with_def(descriptor, ttl, collection);
-            let _ = keyed.register(with_keyset(descriptor, keyset_limit));
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
         }
         StateKind::Deque {
             payload: StatePayload::Json,
@@ -163,7 +166,9 @@ fn register_state_collection(
         }
         StateKind::Set { keyset_limit } => {
             let descriptor = with_def(set_state::<Utf8KeyCodec>(name), ttl, collection);
-            let _ = keyed.register(with_set_keyset(descriptor, keyset_limit));
+            let descriptor =
+                keyset_limit.map_or(descriptor, |limit| descriptor.keyset_limit(limit as usize));
+            let _ = keyed.register(descriptor);
         }
     }
 
@@ -203,28 +208,6 @@ fn with_def<D: StateDescriptor>(
         descriptor = descriptor.read_uncommitted();
     }
     descriptor.published(collection.published)
-}
-
-/// Applies the map keyset bound when configured.
-fn with_keyset<KC, V>(
-    descriptor: MapDescriptor<KC, V>,
-    keyset_limit: Option<u32>,
-) -> MapDescriptor<KC, V> {
-    match keyset_limit {
-        Some(limit) => descriptor.keyset_limit(limit as usize),
-        None => descriptor,
-    }
-}
-
-/// Applies the set keyset bound when configured.
-fn with_set_keyset<KC>(
-    descriptor: SetDescriptor<KC>,
-    keyset_limit: Option<u32>,
-) -> SetDescriptor<KC> {
-    match keyset_limit {
-        Some(limit) => descriptor.keyset_limit(limit as usize),
-        None => descriptor,
-    }
 }
 
 /// Applies the deque capacity bound when configured.
