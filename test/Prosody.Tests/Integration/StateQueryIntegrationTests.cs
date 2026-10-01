@@ -139,7 +139,7 @@ public sealed class StateQueryIntegrationTests(IntegrationTestFixture fixture) :
     }
 
     [Fact(Timeout = 60_000)]
-    public async Task DemandReportsTheRetryOrdinal()
+    public async Task DemandReportsTheRetryAttempt()
     {
         await using var ctx = await CreateTestContextAsync();
         var demands = new MessageChannel<Demand>();

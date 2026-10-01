@@ -41,7 +41,7 @@ public sealed class ProsodyContext
 
     /// <summary>
     /// Gets the demand that this handler call serves: a first attempt, or a retry after a failure
-    /// with its retry ordinal.
+    /// with its retry count.
     /// </summary>
     public Demand Demand => Demand.FromNative(_native.Demand());
 

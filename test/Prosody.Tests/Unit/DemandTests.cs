@@ -11,10 +11,10 @@ public sealed class DemandTests
     [InlineData(1U, DemandKind.Failure, 1)]
     [InlineData(7U, DemandKind.Failure, 7)]
     [InlineData(uint.MaxValue, DemandKind.Failure, int.MaxValue)]
-    public void DemandMapsTheKindAndRetryOrdinal(uint? failureRetryAttempt, DemandKind kind, int retryAttempt)
+    public void DemandMapsTheKindAndRetryAttempt(uint? failureRetryAttempt, DemandKind kind, int retryAttempt)
     {
-        Native.DemandType native = failureRetryAttempt is { } ordinal
-            ? new Native.DemandType.Failure(ordinal)
+        Native.DemandType native = failureRetryAttempt is { } attempt
+            ? new Native.DemandType.Failure(attempt)
             : new Native.DemandType.Normal();
 
         Assert.Equal(new Demand(kind, retryAttempt), Demand.FromNative(native));

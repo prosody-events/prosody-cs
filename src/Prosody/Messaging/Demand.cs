@@ -7,14 +7,14 @@ namespace Prosody.Messaging;
 /// </summary>
 /// <param name="Kind">Whether the call is a first attempt or a retry after a failure.</param>
 /// <param name="RetryAttempt">
-/// The retry ordinal. It is 0 for <see cref="DemandKind.Normal"/> and 1 on the first retry. It is an
+/// The retry count. It is 0 for <see cref="DemandKind.Normal"/> and 1 on the first retry. It is an
 /// estimate: it starts again at 1 when Prosody defers an event after immediate retries. Keep an exact
 /// attempt count in keyed state if the handler needs one.
 /// </param>
 [StructLayout(LayoutKind.Auto)]
 public readonly record struct Demand(DemandKind Kind, int RetryAttempt)
 {
-    /// <summary>Converts the native demand. A retry ordinal above <see cref="int.MaxValue"/> saturates.</summary>
+    /// <summary>Converts the native demand. A retry count above <see cref="int.MaxValue"/> saturates.</summary>
     internal static Demand FromNative(Native.DemandType demand) =>
         demand switch
         {

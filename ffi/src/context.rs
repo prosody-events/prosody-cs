@@ -36,7 +36,7 @@ pub enum DemandType {
     Normal,
     /// An attempt after one or more failures.
     Failure {
-        /// The retry ordinal. It is 1 on the first retry. It is an estimate.
+        /// The retry count. It is 1 on the first retry. It is an estimate.
         retry_attempt: u32,
     },
 }
