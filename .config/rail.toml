@@ -1,5 +1,10 @@
 [plan.work.ci]
-paths = [".config/rail.toml", ".github/**", "Cross.toml", "Makefile"]
+paths = [".config/rail.toml", ".github/**", "Makefile"]
+scope = "repository"
+
+# The Format job checks every TOML file with taplo.
+[plan.work.taplo]
+paths = ["**/*.toml"]
 scope = "repository"
 
 [plan.work.dotnet]
