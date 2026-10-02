@@ -27,6 +27,8 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       required-work: ${{ steps.rail.outputs.required-work }}
     steps:
@@ -36,27 +38,30 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Restore planning evidence
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: actions/cache/restore@v6
         with:
           path: target/planning-evidence
           key: cargo-rail-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.event.pull_request.base.sha || github.event.before }}
       # The Action rejects a missing evidence path. An empty directory after a cache miss only widens the plan.
-      - name: Create planning evidence directory
+      - name: Create the evidence directory
         run: mkdir -p target/planning-evidence
       - id: rail
         uses: loadingalias/cargo-rail-action@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
         with:
-          all: ${{ github.event_name == 'workflow_dispatch' }}
+          all: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           evidence: target/planning-evidence
 
-  # Records the inputs that each Cargo work item reads at this commit.
-  # The plan job of a later change restores it to skip work that the change cannot affect.
+  # This job records the inputs that each Cargo work item reads at this commit.
+  # The plan job of a later change restores them to skip work that the change cannot affect.
   # Keep the Cargo environment of this job equal to the plan job, or the evidence does not apply.
-  # A separate job records evidence on every push. The routed jobs can skip, and their RUSTFLAGS would not match the plan jobs.
+  # A separate job records evidence on every push. The routed jobs can skip, and their RUSTFLAGS would not match the plan job.
   evidence:
     name: Planning evidence
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,21 +76,20 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Setup Cargo-Rail
         uses: loadingalias/cargo-rail-action/setup@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
 
-      # Clippy evidence is not recorded: Cargo-Rail 0.30.1 marks it incomplete when the clippy::cargo lints run cargo metadata.
+      # Do not record Clippy evidence: Cargo-Rail 0.30.1 marks it incomplete when the clippy::cargo lints run cargo metadata.
+      # cargo.clippy and cargo.doc have no complete evidence. Their jobs route on cargo.build and cargo.test, whose evidence covers the same compiler inputs.
+      # Remove old evidence first: the recorder rejects a file from another commit, and the Rust cache can restore one.
       - name: Record planning evidence
         run: |
+          rm -rf target/planning-evidence
           cargo rail plan evidence --work cargo.build --output target/planning-evidence/cargo.build.json -- build --locked --workspace --all-features
           cargo rail plan evidence --work cargo.test --output target/planning-evidence/cargo.test.json -- test --locked --workspace --all-features --no-run
-
-      - name: Show evidence bindings
-        run: |
-          for file in target/planning-evidence/*.json; do
-            echo "$file"
-            jq '{source_base, cargo_identity, cargo_configuration_identity, toolchain_identity, target_identity, platform, work: (.work | keys)}' "$file"
-          done
 
       - name: Save planning evidence
         uses: actions/cache/save@v6
@@ -97,8 +101,7 @@ jobs:
     name: Test
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'ci')
@@ -206,8 +209,6 @@ jobs:
     name: .NET Lint
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
       contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'ci')
@@ -273,8 +274,6 @@ jobs:
     name: Format
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.fmt') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'taplo') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
@@ -320,8 +319,6 @@ jobs:
     name: Unused Dependencies
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
       contains(fromJSON(needs.plan.outputs.required-work), 'dependency-policy') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
@@ -361,9 +358,6 @@ jobs:
     name: Documentation
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.doc') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
@@ -396,9 +390,8 @@ jobs:
     name: Clippy
     needs: plan
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.clippy') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
