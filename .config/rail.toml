@@ -1,5 +1,10 @@
 [plan.work.ci]
-paths = [".config/rail.toml", ".github/**", "Cross.toml", "Makefile"]
+paths = [".config/rail.toml", ".github/**", "Makefile"]
+scope = "repository"
+
+# Only the TOML format check reads this file in CI. Release Package Validation filters on it by path.
+[plan.work.taplo]
+paths = ["Cross.toml"]
 scope = "repository"
 
 [plan.work.dotnet]

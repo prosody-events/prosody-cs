@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Restore planning evidence
@@ -40,15 +40,18 @@ jobs:
         with:
           path: target/planning-evidence
           key: cargo-rail-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.event.pull_request.base.sha || github.event.before }}
+      # The Action rejects a missing evidence path. An empty directory after a cache miss only widens the plan.
+      - name: Create planning evidence directory
+        run: mkdir -p target/planning-evidence
       - id: rail
         uses: loadingalias/cargo-rail-action@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
         with:
-          since: ${{ github.event_name == 'push' && github.event.before || '' }}
           evidence: target/planning-evidence
 
   # Records the inputs that each Cargo work item reads at this commit.
   # The plan job of a later change restores it to skip work that the change cannot affect.
   # Keep the Cargo environment of this job equal to the plan job, or the evidence does not apply.
+  # A separate job records evidence on every push. The routed jobs can skip, and their RUSTFLAGS would not match the plan jobs.
   evidence:
     name: Planning evidence
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -56,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install build dependencies
         uses: awalsh128/cache-apt-pkgs-action@v1.6.3
@@ -73,8 +76,8 @@ jobs:
       # Clippy evidence is not recorded: Cargo-Rail 0.30.1 marks it incomplete when the clippy::cargo lints run cargo metadata.
       - name: Record planning evidence
         run: |
-          cargo rail plan evidence --work cargo.build --output target/planning-evidence/cargo.build.json -- build --workspace --all-features
-          cargo rail plan evidence --work cargo.test --output target/planning-evidence/cargo.test.json -- test --workspace --all-features --no-run
+          cargo rail plan evidence --work cargo.build --output target/planning-evidence/cargo.build.json -- build --locked --workspace --all-features
+          cargo rail plan evidence --work cargo.test --output target/planning-evidence/cargo.test.json -- test --locked --workspace --all-features --no-run
 
       - name: Show evidence bindings
         run: |
@@ -272,6 +275,7 @@ jobs:
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.fmt') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'taplo') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
       contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
