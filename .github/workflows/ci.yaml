@@ -33,10 +33,61 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Restore planning evidence
+        uses: actions/cache/restore@v6
+        with:
+          path: target/planning-evidence
+          key: cargo-rail-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.event.pull_request.base.sha || github.event.before }}
       - id: rail
         uses: loadingalias/cargo-rail-action@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
         with:
           since: ${{ github.event_name == 'push' && github.event.before || '' }}
+          evidence: target/planning-evidence
+
+  # Records the inputs that each Cargo work item reads at this commit.
+  # The plan job of a later change restores it to skip work that the change cannot affect.
+  # Keep the Cargo environment of this job equal to the plan job, or the evidence does not apply.
+  evidence:
+    name: Planning evidence
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: cmake libcurl4-openssl-dev protobuf-compiler
+          version: 1.0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Cargo-Rail
+        uses: loadingalias/cargo-rail-action/setup@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
+
+      # Clippy evidence is not recorded: Cargo-Rail 0.30.1 marks it incomplete when the clippy::cargo lints run cargo metadata.
+      - name: Record planning evidence
+        run: |
+          cargo rail plan evidence --work cargo.build --output target/planning-evidence/cargo.build.json -- build --workspace --all-features
+          cargo rail plan evidence --work cargo.test --output target/planning-evidence/cargo.test.json -- test --workspace --all-features --no-run
+
+      - name: Show evidence bindings
+        run: |
+          for file in target/planning-evidence/*.json; do
+            echo "$file"
+            jq '{source_base, cargo_identity, cargo_configuration_identity, toolchain_identity, target_identity, platform, work: (.work | keys)}' "$file"
+          done
+
+      - name: Save planning evidence
+        uses: actions/cache/save@v6
+        with:
+          path: target/planning-evidence
+          key: cargo-rail-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
 
   test:
     name: Test
