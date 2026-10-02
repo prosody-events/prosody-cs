@@ -1177,6 +1177,8 @@ ProsodyLogging.ResetForTesting();
 
 ### Dependency Injection
 
+Prefer explicit construction and dependency passing. Pass required dependencies through constructors or method parameters, rather than retrieving them from a service provider inside application code. Create the Prosody client at application startup, await its initialization, and keep disposal with the code that creates it. This makes dependencies, initialization failures, and shutdown order visible. A DI container can pass the existing client to consumers while the application retains ownership.
+
 For ASP.NET Core or Generic Host applications, create the client before you build the host, and register that instance:
 
 ```csharp
