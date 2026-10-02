@@ -264,6 +264,42 @@ public sealed class MessageTests(IntegrationTestFixture fixture) : IntegrationTe
         Assert.Multiple(() => Assert.True(wasAborted), () => Assert.Equal(ConsumerState.Configured, state));
     }
 
+    // The bridge abandons one native OnCancel() future per handler call, and this test calls the same method.
+    // Its task completes only after the native future and its async handle-map entry are freed.
+    [Fact(Timeout = 60_000)]
+    public async Task CompletesOnCancelWhenHandlerCallEnds()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await using var ctx = await CreateTestContextAsync();
+
+        var onCancelTasks = new MessageChannel<Task>();
+        var attempts = 0;
+        var handler = new TestProsodyHandler<TestPayload>(
+            onMessage: async (context, _, _) =>
+            {
+                onCancelTasks.Send(context.OnCancelAsync());
+                if (Interlocked.Increment(ref attempts) == 1)
+                {
+                    throw new InvalidOperationException("Fail the first attempt so that the event retries.");
+                }
+                await context.ScheduleAsync(DateTimeOffset.UtcNow.AddSeconds(1));
+            },
+            onTimer: (context, _, _) =>
+            {
+                onCancelTasks.Send(context.OnCancelAsync());
+                return Task.CompletedTask;
+            }
+        );
+
+        await ctx.Client.SubscribeAsync(handler);
+        await ctx.Client.SendAsync(ctx.Topic, "key", new TestPayload(), cancellationToken);
+
+        // One task each from the failed attempt, the retry, and the timer.
+        await Task.WhenAll(
+            await onCancelTasks.ReceiveAsync(3, IntegrationTestFixture.DefaultTimeout, cancellationToken)
+        );
+    }
+
     [Fact(Timeout = 60_000)]
     public async Task PayloadRoundTrip_HonorsSnakeCaseOverride()
     {

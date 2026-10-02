@@ -72,7 +72,3 @@ public sealed class IntegrationTestFixture : IAsyncLifetime
         ) => Task.CompletedTask;
     }
 }
-
-/// <summary>Collection for tests that must run sequentially due to shared global state.</summary>
-[CollectionDefinition("Sequential", DisableParallelization = true)]
-public sealed class SequentialTestGroup;
