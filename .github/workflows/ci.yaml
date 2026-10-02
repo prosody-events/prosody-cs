@@ -84,10 +84,8 @@ jobs:
 
       # Do not record Clippy evidence: Cargo-Rail 0.30.1 marks it incomplete when the clippy::cargo lints run cargo metadata.
       # cargo.clippy and cargo.doc have no complete evidence. Their jobs route on cargo.build and cargo.test, whose evidence covers the same compiler inputs.
-      # Remove old evidence first: the recorder rejects a file from another commit, and the Rust cache can restore one.
       - name: Record planning evidence
         run: |
-          rm -rf target/planning-evidence
           cargo rail plan evidence --work cargo.build --output target/planning-evidence/cargo.build.json -- build --locked --workspace --all-features
           cargo rail plan evidence --work cargo.test --output target/planning-evidence/cargo.test.json -- test --locked --workspace --all-features --no-run
 
