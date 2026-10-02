@@ -28,23 +28,25 @@ jobs:
     name: Plan
     runs-on: ubuntu-latest
     outputs:
-      build: ${{ steps.rail.outputs.build }}
-      docs: ${{ steps.rail.outputs.docs }}
-      infra: ${{ steps.rail.outputs.infra }}
-      test: ${{ steps.rail.outputs.test }}
+      required-work: ${{ steps.rail.outputs.required-work }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: rail
-        uses: loadingalias/cargo-rail-action@ebc8ef2740efefe2cd5c42826344a8f1213113ae # v6
+        uses: loadingalias/cargo-rail-action@409962f05d90a78aae995ef6b1c8466010c0a460 # v10.1.1
         with:
           since: ${{ github.event_name == 'push' && github.event.before || '' }}
 
   test:
     name: Test
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold
@@ -148,7 +150,12 @@ jobs:
   dotnet-lint:
     name: .NET Lint
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold
@@ -210,7 +217,12 @@ jobs:
   fmt:
     name: Format
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.fmt') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'dotnet') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold
@@ -249,7 +261,13 @@ jobs:
   dependencies:
     name: Unused Dependencies
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'dependency-policy') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.test') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold
@@ -284,7 +302,12 @@ jobs:
   docs:
     name: Documentation
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.docs == 'true' || needs.plan.outputs.build == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.doc') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.build') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold
@@ -314,7 +337,11 @@ jobs:
   clippy:
     name: Clippy
     needs: plan
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.plan.outputs.build == 'true' || needs.plan.outputs.test == 'true' || needs.plan.outputs.infra == 'true'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'cargo.clippy') ||
+      contains(fromJSON(needs.plan.outputs.required-work), 'ci')
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -C target-cpu=x86-64-v3 -C link-arg=-fuse-ld=mold

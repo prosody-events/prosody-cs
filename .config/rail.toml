@@ -1,0 +1,18 @@
+[plan.work.ci]
+paths = [".config/rail.toml", ".github/**", "Cross.toml", "Makefile"]
+scope = "repository"
+
+[plan.work.dotnet]
+paths = [
+  ".config/dotnet-tools.json",
+  ".csharpierrc.json",
+  ".editorconfig",
+  "Directory.Build.props",
+  "examples/**",
+  "global.json",
+  "prosody-cs.slnx",
+  "src/**",
+  "test/**",
+  "uniffi.toml",
+]
+scope = "repository"
