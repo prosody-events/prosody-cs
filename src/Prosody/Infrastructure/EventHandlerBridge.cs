@@ -193,9 +193,9 @@ internal static class EventHandlerBridge
     /// <remarks>
     /// Races <paramref name="onCancel"/> against <paramref name="handlerDone"/> so the
     /// monitor exits promptly whether cancellation arrives or the handler completes first.
-    /// When the handler completes first, the <c>OnCancel()</c> task (which may block
-    /// indefinitely in native code) is observed via a fault-swallowing continuation to
-    /// prevent <see cref="TaskScheduler.UnobservedTaskException"/>.
+    /// When the handler completes first, a continuation observes faults of the <c>OnCancel()</c> task
+    /// to prevent <see cref="TaskScheduler.UnobservedTaskException"/>. Do not await that task here:
+    /// it completes only when the handler call returns to native code.
     /// Callers must <c>await</c> the returned task in a <see langword="finally"/> block after signalling
     /// <paramref name="handlerDone"/>.
     /// </remarks>
@@ -237,9 +237,6 @@ internal static class EventHandlerBridge
             }
             else
             {
-                // Handler completed first.
-                // The cancelTask may still be running (native OnCancel() can block indefinitely) or may fault later.
-                // Attach a continuation to observe any future fault and prevent UnobservedTaskException.
                 _ = cancelTask.ContinueWith(
                     static t => LogHelper.LogOnCancelLateFault(Logger, t.Exception),
                     CancellationToken.None,
