@@ -25,6 +25,8 @@ builder.Services.AddProsodyClient(options => options.Mock = true);
 
 The client is validated at startup via `ValidateOnStart()`. Invalid configuration throws `OptionsValidationException`.
 
+`AddProsodyClient` registers `ProsodyClientProvider`, not `ProsodyClient`. Inject the provider and call `GetAsync` to get the shared client. To inject `ProsodyClient` directly, see [Dependency Injection](README.md#dependency-injection) in the README. Do not combine the two.
+
 ## JSON Serialization
 
 Prosody serializes and deserializes payloads with these defaults:

@@ -15,6 +15,7 @@ namespace Prosody;
 
 /// <summary>
 /// Main client for interacting with the Prosody messaging system.
+/// One instance is safe for concurrent use from any thread. It holds one subscription at a time.
 /// </summary>
 public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 {
@@ -47,6 +48,8 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Creates a new Prosody client with the given options.
+    /// Validates the options and connects to Kafka, and to Cassandra when configured.
+    /// The returned client is connected but not subscribed.
     /// </summary>
     /// <param name="options">Configuration options for the client.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="options"/> is null.</exception>
@@ -116,7 +119,10 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
 
     private Task ShutdownCoreAsync() => NativeErrors.RunAsync(_native.Shutdown);
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Shuts the client down, flushes telemetry, and releases the native handle.
+    /// A shutdown failure is logged, not thrown. Repeated calls await the same shutdown.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         try
@@ -148,6 +154,9 @@ public sealed partial class ProsodyClient : IDisposable, IAsyncDisposable
         }
     }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Releases the native handle without stopping client services.
+    /// Prefer <see cref="DisposeAsync"/>.
+    /// </summary>
     public void Dispose() => _native.Dispose();
 }
