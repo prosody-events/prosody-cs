@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/prosody-events/prosody-cs/compare/v0.5.1...v0.6.0) (2026-10-02)
+
+
+### Features
+
+* **deps:** upgrade prosody to 0.7.0 ([#117](https://github.com/prosody-events/prosody-cs/issues/117)) ([7cad6f7](https://github.com/prosody-events/prosody-cs/commit/7cad6f7c8cb8f52100cfaad27a089bfe992d09d3))
+
+
+### Bug Fixes
+
+* contain logger exceptions in LogSinkBridge ([#104](https://github.com/prosody-events/prosody-cs/issues/104)) ([eac7990](https://github.com/prosody-events/prosody-cs/commit/eac79900e9e8b3ff81b3431c5999f6b985e1a53d))
+* **release:** match prosody-ffi in Cargo.lock ([#128](https://github.com/prosody-events/prosody-cs/issues/128)) ([db477c5](https://github.com/prosody-events/prosody-cs/commit/db477c591b0e339cfe6c1ff9587bc989597907a8))
+
 ## [0.5.1](https://github.com/prosody-events/prosody-cs/compare/v0.5.0...v0.5.1) (2026-08-20)
 
 
