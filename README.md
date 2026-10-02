@@ -198,7 +198,9 @@ For the complete configuration reference, see [CONFIGURATION.md](CONFIGURATION.m
 
 `ClientOptions` properties take precedence. Unset properties use environment variables, then library defaults.
 
-Client construction is asynchronous. Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync`.
+Client construction is asynchronous. Use `ProsodyClient.CreateAsync` or `ProsodyClientBuilder.BuildAsync`. Both validate the options, connect to Kafka, and connect to Cassandra when configured. They return a client that can send, request, and subscribe, or they throw. The client is not subscribed. The readiness probe reports ready only after `SubscribeAsync` receives partitions.
+
+One client is safe for concurrent use from any thread. It holds one subscription at a time. `SubscribeAsync` throws when the client is already subscribed, so one owner coordinates subscribe and unsubscribe calls. Concurrent and repeated `ShutdownAsync` calls await the same shutdown.
 
 ## Liveness and Readiness Probes
 
@@ -964,46 +966,15 @@ Strategies for achieving idempotence:
 
 ### Application shutdown
 
-A Prosody client runs a subscription, timers, and other services in the background. Before an application terminates, it must stop all client services. `UnsubscribeAsync()` stops only the active subscription.
+A Prosody client runs a subscription, timers, and other services in the background. Before an application terminates, it must stop all client services.
 
-Call `ShutdownAsync()` when the application terminates. It stops all client services and rejects new operations. Call `UnsubscribeAsync()` only when the application will use the client again. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
+The owner of the client calls `ShutdownAsync()` or `DisposeAsync()` when the application terminates. Both stop all client services and reject new operations. `ShutdownAsync()` stops the consumer after in-flight handlers finish, then stops the remaining client services. It has no time limit, so a handler that ignores its `CancellationToken` delays shutdown. `DisposeAsync()` calls `ShutdownAsync()`, flushes telemetry, and releases the native handle. It logs a shutdown failure instead of throwing it. Synchronous `Dispose()` releases the native handle only and does not stop client services. A component that does not own the client calls `UnsubscribeAsync()` instead. It stops the subscription, and the client can subscribe again later. You do not need to call `UnsubscribeAsync()` before `ShutdownAsync()`.
 
 ```csharp
 await client.ShutdownAsync();
 ```
 
-Handle application shutdown with `IHostedService` or `IHostApplicationLifetime`:
-
-```csharp
-using Microsoft.Extensions.Hosting;
-using Prosody;
-
-public class ProsodyWorker : BackgroundService
-{
-    private readonly ProsodyClientProvider _clients;
-
-    public ProsodyWorker(ProsodyClientProvider clients) => _clients = clients;
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        var client = await _clients.GetAsync();
-        await client.SubscribeAsync(new MyHandler());
-
-        try
-        {
-            // Wait for a shutdown signal.
-            await Task.Delay(Timeout.Infinite, stoppingToken);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // The host requested shutdown.
-        }
-
-        await client.ShutdownAsync();
-    }
-
-}
-```
+The example in [Dependency Injection](#dependency-injection) shows both. The worker unsubscribes when the host stops, and `Program.cs` disposes the client after the host exits.
 
 ### Error Handling
 
@@ -1206,37 +1177,47 @@ ProsodyLogging.ResetForTesting();
 
 ### Dependency Injection
 
-For ASP.NET Core or Generic Host applications:
+Prefer explicit construction and dependency passing. Pass required dependencies through constructors or method parameters, rather than retrieving them from a service provider inside application code. Create the Prosody client at application startup, await its initialization, and keep disposal with the code that creates it. This makes dependencies, initialization failures, and shutdown order visible. A DI container can pass the existing client to consumers while the application retains ownership.
 
-```csharp
-var builder = Host.CreateApplicationBuilder(args);
-
-// Auto-configures Prosody logging with the host's ILoggerFactory
-builder.Services.AddProsodyLogging();
-builder.Services.AddProsodyClient();
-
-var host = builder.Build();
-```
-
-Inject `ProsodyClientProvider` into hosted services. Call `GetAsync` to get the shared client.
-The provider disposes the client when the host stops.
-A failed `GetAsync` call does not poison the provider. A later call retries client construction.
-Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
-
-To inject `ProsodyClient` directly, create the client before you build the host, and register that instance:
+For ASP.NET Core or Generic Host applications, create the client before you build the host, and register that instance:
 
 ```csharp
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddProsodyLogging();
 
 var options = builder.Configuration.GetSection("Prosody").Get<ClientOptions>() ?? new ClientOptions();
+// Configuration binding cannot set StateCollections or ConfigureJsonOptions. Set them here.
 await using var client = await ProsodyClient.CreateAsync(options);
 builder.Services.AddSingleton(client);
+builder.Services.AddHostedService<Worker>();
 
 await builder.Build().RunAsync();
 ```
 
-The container does not dispose an instance that it did not create. The application owns the client, and `await using` disposes it after the host stops.
+The container does not dispose an instance that it did not create. The application owns the client, and `await using` disposes it after the host stops. Register the instance, not a factory. The container disposes the object a factory returns, and the application then no longer controls when the client stops.
+
+A worker receives the client through its constructor. It stops its subscription when the host stops, and it does not dispose the client:
+
+```csharp
+public sealed class Worker(ProsodyClient client) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        await client.SubscribeAsync(new MyHandler());
+
+        await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken)
+            .ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+        await client.UnsubscribeAsync();
+    }
+}
+```
+
+Without `UnsubscribeAsync`, the subscription stays active until the final `DisposeAsync`, and handlers can run after the host has disposed the services they use.
+
+`AddProsodyLogging` configures the log sink when the host starts and clears it when the host stops. Prosody discards native log events from `CreateAsync` and from the final `DisposeAsync`. To keep them, call `ProsodyLogging.Configure` with your own `ILoggerFactory` before `CreateAsync`, and omit `AddProsodyLogging`.
+
+`AddProsodyClient` is the alternative. It registers `ProsodyClientProvider`, which creates and owns its own client. Do not call both. Inject the provider into hosted services and call `GetAsync` to get the shared client. The provider disposes the client when the host stops. A failed `GetAsync` call does not poison the provider. A later call retries client construction. Use asynchronous host disposal when possible. Synchronous disposal starts client shutdown without blocking.
 
 Log messages are emitted under the `Prosody.Native` category.
 
@@ -1657,7 +1638,7 @@ Handler error classification:
 
 - `ClientOptions`: Contains the client settings in [Configuration](CONFIGURATION.md).
 - `Prosody.CreateClient()`: Create a `ProsodyClientBuilder`.
-- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register `ProsodyClientProvider` with dependency injection.
+- `ProsodyServiceCollectionExtensions.AddProsodyClient(...)`: Register `ProsodyClientProvider` with dependency injection. To inject `ProsodyClient` directly, see [Dependency Injection](#dependency-injection).
 - `ProsodyServiceCollectionExtensions.AddProsodyLogging()`: Register Prosody logging.
 - `ProsodyClientProvider.GetAsync()`: Get the shared client.
 - `ProsodyClientProvider.Dispose()` and `DisposeAsync()`: Dispose the shared client.
