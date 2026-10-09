@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:bookworm AS chef
+FROM public.ecr.aws/docker/library/rust:bookworm AS chef
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake libcurl4-openssl-dev mold protobuf-compiler \

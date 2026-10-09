@@ -131,7 +131,8 @@ jobs:
           --health-start-period 30s
 
       cassandra:
-        image: cassandra:latest
+        # The Docker official image, from ECR Public: no Docker Hub pull limit.
+        image: public.ecr.aws/docker/library/cassandra:latest
         ports:
           - 9042:9042
         options: >-
