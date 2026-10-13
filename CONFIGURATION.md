@@ -113,7 +113,7 @@ Set `Subsystem` to make this client answer requests. Without it, the client cons
 | Property / Environment Variable | Description | Default |
 |---|---|---|
 | `MaxConcurrency` / `PROSODY_MAX_CONCURRENCY` | Max messages being processed simultaneously | 32 |
-| `MaxUncommitted` / `PROSODY_MAX_UNCOMMITTED` | Max queued messages before pausing consumption | 64 |
+| `MaxUncommitted` / `PROSODY_MAX_UNCOMMITTED` | Max in-flight messages; at the limit, only a partition with a waiting message pauses | 64 |
 | `Timeout` / `PROSODY_TIMEOUT` | Cancel handler if it runs longer than this | 80% of stall threshold |
 | `CommitInterval` / `PROSODY_COMMIT_INTERVAL` | How often to save progress to Kafka | 1s |
 | `PollInterval` / `PROSODY_POLL_INTERVAL` | How often to fetch new messages from Kafka | 100ms |
