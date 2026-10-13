@@ -131,7 +131,7 @@ public sealed partial class ClientOptions
     public uint? MaxConcurrency { get; set; }
 
     /// <summary>
-    /// Maximum queued messages before pausing consumption.
+    /// Maximum in-flight messages. At the limit, only a partition with a waiting message pauses.
     /// Default: 64.
     /// </summary>
     public uint? MaxUncommitted { get; set; }
