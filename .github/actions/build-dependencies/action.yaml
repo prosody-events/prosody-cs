@@ -1,0 +1,17 @@
+name: Install build dependencies
+description: Install protoc and the libcurl headers that the Rust build needs on an x86-64 Ubuntu runner.
+
+# The runner image includes cmake. librdkafka includes curl/curl.h even when it builds without curl, so the build needs the libcurl headers.
+# Do not cache the apt packages: a failed install saves an empty cache, and each later job then builds without the packages.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        curl -sSfL -o "$RUNNER_TEMP/protoc.zip" \
+          https://github.com/protocolbuffers/protobuf/releases/download/v36.2/protoc-36.2-linux-x86_64.zip &
+        protoc=$!
+        sudo apt-get update -qq
+        sudo apt-get install -qq --yes --no-install-recommends libcurl4-openssl-dev
+        wait "$protoc"
+        sudo unzip -q -o "$RUNNER_TEMP/protoc.zip" 'bin/*' 'include/*' -d /usr/local
