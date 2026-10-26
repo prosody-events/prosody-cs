@@ -68,10 +68,7 @@ jobs:
           persist-credentials: false
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -145,10 +142,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -165,6 +159,9 @@ jobs:
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+        with:
+          # A pull request reads the main caches. Its own caches would evict them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install uniffi-bindgen-cs
         uses: baptiste0928/cargo-install@v3
@@ -217,10 +214,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -237,6 +231,9 @@ jobs:
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+        with:
+          # A pull request reads the main caches. Its own caches would evict them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install uniffi-bindgen-cs
         uses: baptiste0928/cargo-install@v3
@@ -299,9 +296,6 @@ jobs:
         with:
           crate: taplo-cli
 
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -328,13 +322,17 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Take the nightly from the stable release date. The Rust cache key hashes each toolchain, so the key then changes only with stable.
       - name: Setup Rust (nightly)
-        uses: dtolnay/rust-toolchain@nightly
+        run: |
+          nightly="nightly-$(rustc +stable -vV | sed -n 's/^commit-date: //p')"
+          rustup toolchain install "$nightly" --profile minimal
+          echo "RUST_NIGHTLY=$nightly" >> "$GITHUB_ENV"
 
       - name: Setup mold
         uses: rui314/setup-mold@10ca16bf91dc22e05ebdc935cad9c75ea248f621 # v1
@@ -343,6 +341,9 @@ jobs:
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+        with:
+          # A pull request reads the main caches. Its own caches would evict them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install cargo-udeps
         uses: baptiste0928/cargo-install@v3
@@ -350,7 +351,7 @@ jobs:
           crate: cargo-udeps
 
       - name: Check unused dependencies
-        run: cargo +nightly udeps
+        run: cargo "+$RUST_NIGHTLY" udeps
 
   docs:
     name: Documentation
@@ -365,10 +366,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -380,6 +378,9 @@ jobs:
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+        with:
+          # A pull request reads the main caches. Its own caches would evict them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build documentation
         run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
@@ -398,10 +399,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -415,6 +413,9 @@ jobs:
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
+        with:
+          # A pull request reads the main caches. Its own caches would evict them.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run clippy
         run: make lint-rust

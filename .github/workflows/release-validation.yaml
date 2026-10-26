@@ -7,6 +7,7 @@ on:
     paths:
       - .cargo/**
       - .dockerignore
+      - .github/actions/**
       - .github/docker/**
       - .github/workflows/release.yaml
       - .github/workflows/release-validation.yaml
@@ -64,8 +65,6 @@ jobs:
             RUST_TARGET=${{ matrix.target.rust_target }}
             RUSTFLAGS=${{ matrix.target.rustflags }}
           outputs: type=local,dest=ffi/artifacts/${{ matrix.target.rid }}
-          cache-from: type=gha,scope=linux-${{ matrix.target.rust_target }}
-          cache-to: type=gha,mode=max,scope=linux-${{ matrix.target.rust_target }}
 
       - name: Upload native library
         uses: actions/upload-artifact@v7
@@ -82,10 +81,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install build dependencies
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: cmake libcurl4-openssl-dev protobuf-compiler
-          version: 1.0
+        uses: ./.github/actions/build-dependencies
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -102,9 +98,6 @@ jobs:
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-
-      - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
 
       - name: Install uniffi-bindgen-cs
         uses: baptiste0928/cargo-install@v3
