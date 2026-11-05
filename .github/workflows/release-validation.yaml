@@ -104,7 +104,7 @@ jobs:
         with:
           crate: uniffi-bindgen-cs
           git: https://github.com/NordSecurity/uniffi-bindgen-cs.git
-          tag: v0.11.0+v0.31.0
+          tag: v0.11.1+v0.31.0
 
       - name: Install CSharpier globally
         run: dotnet tool install -g csharpier
