@@ -3,12 +3,13 @@ using Prosody.Messaging;
 namespace Prosody.Tests.TestHelpers;
 
 /// <summary>
-/// A typed handler that delegates messages and timers to optional lambdas. It has no
-/// <see cref="Prosody.Errors.PermanentErrorAttribute"/>, and its excise handler does nothing.
+/// A typed handler that delegates messages, excise records, and timers to optional lambdas.
+/// It has no <see cref="Prosody.Errors.PermanentErrorAttribute"/>.
 /// </summary>
 internal sealed class LambdaHandler<T>(
     Func<ProsodyContext, Message<T>, CancellationToken, Task>? onMessage = null,
-    Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null
+    Func<ProsodyContext, ProsodyTimer, CancellationToken, Task>? onTimer = null,
+    Func<ProsodyContext, ExciseMessage, CancellationToken, Task>? onExcise = null
 ) : IProsodyHandler<T>
 {
     public Task OnMessageAsync(
@@ -21,7 +22,7 @@ internal sealed class LambdaHandler<T>(
         ProsodyContext prosodyContext,
         ExciseMessage message,
         CancellationToken cancellationToken
-    ) => Task.CompletedTask;
+    ) => onExcise?.Invoke(prosodyContext, message, cancellationToken) ?? Task.CompletedTask;
 
     public Task OnTimerAsync(ProsodyContext prosodyContext, ProsodyTimer timer, CancellationToken cancellationToken) =>
         onTimer?.Invoke(prosodyContext, timer, cancellationToken) ?? Task.CompletedTask;

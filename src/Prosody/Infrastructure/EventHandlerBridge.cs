@@ -91,8 +91,8 @@ internal static class EventHandlerBridge
         };
 
     /// <summary>
-    /// Shared handler invocation logic: sets up CTS, bridges cancellation, invokes the handler,
-    /// and classifies any exception as permanent or transient.
+    /// Invokes a handler only if cancellation is not yet observed.
+    /// Classifies handler failures and waits for the cancellation monitor.
     /// </summary>
     internal static async Task<NativeResult> InvokeHandlerAsync(
         Func<CancellationToken, Task<byte[]>> handler,
@@ -101,7 +101,8 @@ internal static class EventHandlerBridge
         Dictionary<string, string> carrier,
         string activityName,
         string eventType = "handler",
-        Func<Dictionary<string, string>?>? buildSentryContext = null
+        Func<Dictionary<string, string>?>? buildSentryContext = null,
+        Func<bool>? shouldCancel = null
     )
     {
         PropagationContext propagation = TracePropagation.Extract(carrier);
@@ -122,6 +123,16 @@ internal static class EventHandlerBridge
 
         try
         {
+            // The native cancellation flag can precede completion of OnCancel().
+            if (shouldCancel?.Invoke() == true || cts.IsCancellationRequested)
+            {
+                return new NativeResult(
+                    NativeResultCode.TransientError,
+                    "Delivery was cancelled before the handler started.",
+                    JsonNull
+                );
+            }
+
             byte[] response = await handler(cts.Token).ConfigureAwait(false);
             return new NativeResult(NativeResultCode.Success, ErrorMessage: null, response);
         }
