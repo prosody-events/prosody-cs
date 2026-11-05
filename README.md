@@ -1357,8 +1357,9 @@ To contribute to a release:
 
 While the process is automated, manual intervention may sometimes be necessary:
 
-- You can manually trigger the release workflow from the GitHub Actions tab if needed (including the `release_as`
-  input to force a specific version, e.g. `2.2.0-beta.1`).
+- To publish an existing release again, for example after a fix to the release workflow, run the release workflow
+  from the GitHub Actions tab with `retry_version` set to that version.
+- To force the next version, put a `Release-As: x.y.z` line in the body of a squash-merge commit.
 - If you need to make changes to the release PR created by Release Please, you can do so before merging it.
 
 All releases are automatically published to nuget.org. Ensure you have thoroughly tested your changes before merging
