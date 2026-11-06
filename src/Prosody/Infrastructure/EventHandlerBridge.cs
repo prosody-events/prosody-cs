@@ -124,7 +124,7 @@ internal static class EventHandlerBridge
         try
         {
             // The native cancellation flag can precede completion of OnCancel().
-            if (shouldCancel?.Invoke() == true || cts.IsCancellationRequested)
+            if (IsCancellationRequested(shouldCancel, cts.Token))
             {
                 return new NativeResult(
                     NativeResultCode.TransientError,
@@ -164,6 +164,10 @@ internal static class EventHandlerBridge
             await cancelMonitor.ConfigureAwait(false);
         }
     }
+
+    /// <summary>Checks native cancellation before the managed token.</summary>
+    internal static bool IsCancellationRequested(Func<bool>? shouldCancel, CancellationToken cancellationToken) =>
+        shouldCancel?.Invoke() == true || cancellationToken.IsCancellationRequested;
 
     /// <summary>
     /// Captures an exception to Sentry with event context, swallowing any failure so

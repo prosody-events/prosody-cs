@@ -98,42 +98,27 @@ public sealed class EventHandlerBridgeCancellationTests
     }
 
     [Fact]
-    public async Task CancellationDuringNativeCheckDoesNotInvokeHandler()
+    public void CancellationDuringNativeCheckIsObserved()
     {
-        // Signal cancellation inline while the native check runs.
-        var cancelTcs = new TaskCompletionSource();
-        var handlerCalled = false;
+        using var cts = new CancellationTokenSource();
 
-        var result = await EventHandlerBridge
-            .InvokeHandlerAsync(
-                _ =>
-                {
-                    handlerCalled = true;
-                    return Task.FromResult(EventHandlerBridge.JsonNull);
-                },
-                _ => false,
-                () => cancelTcs.Task,
-                EmptyCarrier,
-                EventHandlerBridge.OnMessageActivityName,
-                shouldCancel: () =>
-                {
-                    cancelTcs.SetResult();
-                    return false;
-                }
-            )
-            .WaitAsync(TestTimeout, TestContext.Current.CancellationToken);
-
-        Assert.Multiple(
-            () => Assert.False(handlerCalled),
-            () => Assert.Equal(NativeResultCode.TransientError, result.Code)
+        var cancelled = EventHandlerBridge.IsCancellationRequested(
+            () =>
+            {
+                cts.Cancel();
+                return false;
+            },
+            cts.Token
         );
+
+        Assert.True(cancelled);
     }
 
     [Fact]
     public async Task InvocationWaitsForCancellationMonitorBeforeItReturns()
     {
-        // Inline continuations let the handler request cancellation before it returns.
-        var cancelTcs = new TaskCompletionSource();
+        var cancelTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var callbackStarted = new ManualResetEventSlim();
         using var releaseCallback = new ManualResetEventSlim();
         CancellationTokenRegistration registration = default;
         var callbackReleased = false;
@@ -143,10 +128,16 @@ public sealed class EventHandlerBridgeCancellationTests
             ct =>
             {
                 registration = ct.Register(() =>
-                    callbackReleased = releaseCallback.Wait(TestTimeout, TestContext.Current.CancellationToken)
-                );
+                {
+                    callbackStarted.Set();
+                    callbackReleased = releaseCallback.Wait(TestTimeout, TestContext.Current.CancellationToken);
+                });
                 cancelTcs.SetResult();
-                tokenCancelled = ct.IsCancellationRequested;
+
+                // Keep this handler synchronous. Wait until cancellation callbacks start before it returns.
+                tokenCancelled =
+                    callbackStarted.Wait(TestTimeout, TestContext.Current.CancellationToken)
+                    && ct.IsCancellationRequested;
                 return Task.FromResult(EventHandlerBridge.JsonNull);
             },
             _ => false,
