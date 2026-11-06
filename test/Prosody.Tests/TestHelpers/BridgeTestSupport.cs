@@ -24,7 +24,8 @@ internal static class BridgeTestSupport
     public static Task<NativeResult> HandleMessageAsync<T>(
         EventHandlerBridge<T> bridge,
         byte[]? payload = null,
-        Func<Task>? onCancel = null
+        Func<Task>? onCancel = null,
+        Func<bool>? shouldCancel = null
     ) =>
         bridge.HandleMessageAsync(
             AnyContext,
@@ -35,12 +36,30 @@ internal static class BridgeTestSupport
             DateTimeOffset.UnixEpoch,
             payload ?? AnyJson,
             onCancel ?? NeverCancel,
-            EmptyCarrier
+            EmptyCarrier,
+            shouldCancel: shouldCancel
+        );
+
+    /// <summary>Handles one excise record from <c>test-topic</c> with key <c>test-key</c>.</summary>
+    public static Task<NativeResult> HandleExciseAsync<T>(
+        EventHandlerBridge<T> bridge,
+        Func<Task>? onCancel = null,
+        Func<bool>? shouldCancel = null
+    ) =>
+        bridge.HandleExciseAsync(
+            AnyContext,
+            new ExciseMessage("test-topic", "test-key", 1, 2L, DateTimeOffset.UnixEpoch),
+            onCancel ?? NeverCancel,
+            EmptyCarrier,
+            shouldCancel
         );
 
     /// <summary>Handles one fire of <see cref="AnyTimer"/>.</summary>
-    public static Task<NativeResult> HandleTimerAsync<T>(EventHandlerBridge<T> bridge, Func<Task>? onCancel = null) =>
-        bridge.HandleTimerAsync(AnyContext, AnyTimer, onCancel ?? NeverCancel, EmptyCarrier);
+    public static Task<NativeResult> HandleTimerAsync<T>(
+        EventHandlerBridge<T> bridge,
+        Func<Task>? onCancel = null,
+        Func<bool>? shouldCancel = null
+    ) => bridge.HandleTimerAsync(AnyContext, AnyTimer, onCancel ?? NeverCancel, EmptyCarrier, shouldCancel);
 }
 
 /// <summary>A typed payload for the bridge decoding tests.</summary>
