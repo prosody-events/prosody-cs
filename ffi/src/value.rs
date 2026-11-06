@@ -39,6 +39,18 @@ impl JsonValueStateHandle {
         .await
     }
 
+    /// Reports whether a value exists, without decoding it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn contains(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.contains()).await }).await
+    }
+
     /// Buffers a JSON document write.
     ///
     /// # Errors
@@ -117,6 +129,18 @@ impl MessageValueStateHandle {
                 .map(|item| item.map(into_message))
         })
         .await
+    }
+
+    /// Reports whether a value exists, without fetching its Kafka message.
+    ///
+    /// # Errors
+    ///
+    /// Returns a state error if the read fails.
+    pub async fn contains(
+        self: Arc<Self>,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.state.contains()).await }).await
     }
 
     /// Buffers a Kafka message write.

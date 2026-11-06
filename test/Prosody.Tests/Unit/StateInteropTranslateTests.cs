@@ -34,6 +34,8 @@ public sealed class StateInteropTranslateTests
     {
         public Task<byte[]?> Get(Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
 
+        public Task<bool> Contains(Dictionary<string, string> carrier) => Task.FromResult(false);
+
         public Task Set(byte[] bytes, Dictionary<string, string> carrier) => Task.CompletedTask;
 
         public Task Clear(Dictionary<string, string> carrier) => Task.CompletedTask;

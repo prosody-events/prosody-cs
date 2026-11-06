@@ -27,6 +27,9 @@ internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload
         return StateInterop.RunAsync(carrier => _handle.Set(native, carrier), cancellationToken);
     }
 
+    public Task<bool> HasValueAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(_handle.Contains, cancellationToken);
+
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 

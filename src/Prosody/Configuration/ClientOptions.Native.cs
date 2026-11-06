@@ -32,6 +32,9 @@ public sealed partial class ClientOptions
     internal Native.ClientOptions ToNative() =>
         ToNativeBase() with
         {
+            PartitionPrefetch = PartitionPrefetch,
+            FetchMaxBytes = FetchMaxBytes,
+            FetchWait = Durations.ToNative(FetchWait),
             StateCollections = StateCollections is null
                 ? null
                 : Array.ConvertAll(StateCollections, definition => definition.ToNative()),

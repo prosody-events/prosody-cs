@@ -17,6 +17,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
     {
         public int Sequence { get; init; }
         public bool HasValue { get; init; }
+        public bool Present { get; init; }
         public string Value { get; init; } = "";
     }
 
@@ -43,6 +44,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
                     {
                         Sequence = 2,
                         HasValue = got.HasValue,
+                        Present = await cart.HasValueAsync(ct),
                         Value = got.GetValueOrDefault(new CartState()).V,
                     }
                 );
@@ -69,7 +71,11 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
             TestContext.Current.CancellationToken
         );
 
-        Assert.Multiple(() => Assert.True(obs.HasValue), () => Assert.Equal(v, obs.Value));
+        Assert.Multiple(
+            () => Assert.True(obs.HasValue),
+            () => Assert.True(obs.Present),
+            () => Assert.Equal(v, obs.Value)
+        );
     }
 
     [Fact(Timeout = 60_000)]
@@ -90,7 +96,14 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
                 }
 
                 var got = await cart.GetAsync(ct);
-                observations.Send(new ValueObservation { Sequence = 2, HasValue = got.HasValue });
+                observations.Send(
+                    new ValueObservation
+                    {
+                        Sequence = 2,
+                        HasValue = got.HasValue,
+                        Present = await cart.HasValueAsync(ct),
+                    }
+                );
             }
         );
 
@@ -114,7 +127,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
             TestContext.Current.CancellationToken
         );
 
-        Assert.False(obs.HasValue);
+        Assert.Multiple(() => Assert.False(obs.HasValue), () => Assert.False(obs.Present));
     }
 
     [Fact(Timeout = 60_000)]
@@ -128,7 +141,9 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
             {
                 var cart = context.State(StateTestSupport.Cart);
                 var got = await cart.GetAsync(ct);
-                observations.Send(new ValueObservation { HasValue = got.HasValue });
+                observations.Send(
+                    new ValueObservation { HasValue = got.HasValue, Present = await cart.HasValueAsync(ct) }
+                );
             }
         );
 
@@ -145,7 +160,7 @@ public sealed class StateValueCollectionTests(IntegrationTestFixture fixture) : 
             TestContext.Current.CancellationToken
         );
 
-        Assert.False(obs.HasValue);
+        Assert.Multiple(() => Assert.False(obs.HasValue), () => Assert.False(obs.Present));
     }
 
     [Fact(Timeout = 60_000)]

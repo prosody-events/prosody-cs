@@ -27,6 +27,9 @@ internal sealed class ValueState<T> : IValueState<T>
         return StateInterop.RunAsync(carrier => _handle.Set(bytes, carrier), cancellationToken);
     }
 
+    public Task<bool> HasValueAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(_handle.Contains, cancellationToken);
+
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
 

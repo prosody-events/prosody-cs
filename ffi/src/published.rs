@@ -43,6 +43,19 @@ impl PublishedValueHandle {
         })
         .await
     }
+
+    /// Reports whether a committed value exists, without decoding it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a categorized state error when the read fails.
+    pub async fn contains(
+        self: Arc<Self>,
+        key: String,
+        carrier: HashMap<String, String>,
+    ) -> Result<bool, FfiError> {
+        run(async move { traced(&self.propagator, carrier, self.reader.contains(key)).await }).await
+    }
 }
 
 #[derive(uniffi::Object)]
