@@ -57,7 +57,13 @@ public sealed class NativeErrorTests
     }
 
     public static TheoryData<string> InvalidConsumerOptions() =>
-        [nameof(ClientOptions.MaxUncommitted), nameof(ClientOptions.StatisticsInterval)];
+        [
+            nameof(ClientOptions.MaxUncommitted),
+            nameof(ClientOptions.StatisticsInterval),
+            nameof(ClientOptions.PartitionPrefetch),
+            nameof(ClientOptions.FetchMaxBytes),
+            nameof(ClientOptions.FetchWait),
+        ];
 
     [Theory]
     [MemberData(nameof(InvalidConsumerOptions))]
@@ -68,6 +74,15 @@ public sealed class NativeErrorTests
         {
             case nameof(ClientOptions.MaxUncommitted):
                 options.MaxUncommitted = 0;
+                break;
+            case nameof(ClientOptions.PartitionPrefetch):
+                options.PartitionPrefetch = "1 B";
+                break;
+            case nameof(ClientOptions.FetchMaxBytes):
+                options.FetchMaxBytes = "1 KiB";
+                break;
+            case nameof(ClientOptions.FetchWait):
+                options.FetchWait = TimeSpan.FromMinutes(1);
                 break;
             default:
                 options.StatisticsInterval = TimeSpan.FromHours(25);

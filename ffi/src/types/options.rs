@@ -61,8 +61,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_concurrency: Option<u32>,
 
-    /// Maximum in-flight messages. At the limit, only a partition with a
-    /// waiting message pauses.
+    /// Maximum in-flight messages. At the limit, partitions stop reading.
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
@@ -101,6 +100,19 @@ pub struct ClientOptions {
     /// Interval between librdkafka statistics reports.
     #[uniffi(default = None)]
     pub statistics_interval: Option<Duration>,
+
+    /// Bytes of fetched records that wait for each assigned partition, such
+    /// as `128 KiB`.
+    #[uniffi(default = None)]
+    pub partition_prefetch: Option<String>,
+
+    /// Maximum bytes in one fetch response from one broker, such as `50 MiB`.
+    #[uniffi(default = None)]
+    pub fetch_max_bytes: Option<String>,
+
+    /// How long a broker can hold a fetch request that finds no new records.
+    #[uniffi(default = None)]
+    pub fetch_wait: Option<Duration>,
 
     /// HTTP port for health check endpoints (`/livez`, `/readyz`).
     #[uniffi(default = None)]

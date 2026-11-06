@@ -19,6 +19,14 @@ public interface IValueState<T>
     Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Determines whether a value is present, without decoding it. A message-backed value does not
+    /// fetch its Kafka message.
+    /// </summary>
+    /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
+    /// <returns><see langword="true"/> when <see cref="GetAsync"/> would return a value.</returns>
+    Task<bool> HasValueAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Buffers a write of the value. A value that serializes to JSON <see langword="null"/> fails with
     /// a <see cref="PermanentStateException"/>. Use <see cref="ClearAsync"/> to delete.
     /// </summary>

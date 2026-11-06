@@ -14,6 +14,7 @@
 mod middleware;
 mod state;
 
+use prosody::ByteSize;
 use prosody::PeerConfiguration;
 use prosody::PeerEndpoint;
 use prosody::cassandra::config::CassandraConfigurationBuilder;
@@ -90,7 +91,8 @@ pub fn build_producer_config(options: &ClientOptions) -> ProducerConfigurationBu
 ///
 /// # Errors
 ///
-/// Returns [`FfiError::LoaderConfig`] if the Kafka loader tuning
+/// Returns [`FfiError::InvalidOperation`] if a byte size option cannot be
+/// parsed, and [`FfiError::LoaderConfig`] if the Kafka loader tuning
 /// derived from `loader_cache_size`, `loader_seek_timeout`, or
 /// `loader_discard_threshold` fails validation.
 fn build_consumer_config(
@@ -140,6 +142,18 @@ fn build_consumer_config(
 
     if let Some(statistics_interval) = options.statistics_interval {
         builder.statistics_interval(statistics_interval);
+    }
+
+    if let Some(size) = &options.partition_prefetch {
+        builder.partition_prefetch(byte_size(size, "PartitionPrefetch")?);
+    }
+
+    if let Some(size) = &options.fetch_max_bytes {
+        builder.fetch_max_bytes(byte_size(size, "FetchMaxBytes")?);
+    }
+
+    if let Some(fetch_wait) = options.fetch_wait {
+        builder.fetch_wait(fetch_wait);
     }
 
     if let Some(probe_port) = options.probe_port {
@@ -304,6 +318,18 @@ pub fn build_cassandra_config(options: &ClientOptions) -> CassandraConfiguration
     }
 
     builder
+}
+
+/// Parses a byte size option, such as `64 MiB`. A bare number is bytes.
+///
+/// # Errors
+///
+/// Returns [`FfiError::InvalidOperation`], prefixed with the option name, if
+/// the value is not a byte size.
+fn byte_size(value: &str, option: &str) -> Result<ByteSize, FfiError> {
+    value
+        .parse()
+        .map_err(|error| FfiError::InvalidOperation(format!("{option}: {error}")))
 }
 
 /// Converts the client mode option to prosody's internal mode type.

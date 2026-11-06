@@ -24,4 +24,15 @@ public sealed class PublishedValue<T>
         ArgumentNullException.ThrowIfNull(key);
         return StateInterop.ReadJsonAsync(carrier => _handle.Get(key, carrier), _typeInfo, cancellationToken);
     }
+
+    /// <summary>Determines whether a committed value is present for a user key, without decoding it.</summary>
+    /// <param name="key">The user key that owns the collection.</param>
+    /// <param name="cancellationToken">A token to observe before the operation dispatches.</param>
+    /// <returns><see langword="true"/> when <see cref="GetAsync"/> would return a value.</returns>
+    /// <inheritdoc cref="GetAsync(string, CancellationToken)" path="/exception"/>
+    public Task<bool> HasValueAsync(string key, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        return StateInterop.RunAsync(carrier => _handle.Contains(key, carrier), cancellationToken);
+    }
 }

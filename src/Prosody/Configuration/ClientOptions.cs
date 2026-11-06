@@ -131,7 +131,7 @@ public sealed partial class ClientOptions
     public uint? MaxConcurrency { get; set; }
 
     /// <summary>
-    /// Maximum in-flight messages. At the limit, only a partition with a waiting message pauses.
+    /// Maximum in-flight messages. At the limit, partitions stop reading, and their fetched records wait.
     /// Default: 64.
     /// </summary>
     public uint? MaxUncommitted { get; set; }
@@ -185,7 +185,7 @@ public sealed partial class ClientOptions
     public TimeSpan? PollInterval { get; set; }
 
     /// <summary>
-    /// How often to save progress (commit offsets) to Kafka.
+    /// How often to save progress (commit offsets) to Kafka. Prosody accepts 1 millisecond through 24 hours.
     /// Default: 1 second.
     /// </summary>
     public TimeSpan? CommitInterval { get; set; }
@@ -195,6 +195,32 @@ public sealed partial class ClientOptions
     /// Default: 5 seconds.
     /// </summary>
     public TimeSpan? StatisticsInterval { get; set; }
+
+    /// <summary>
+    /// Bytes of fetched records that wait for each assigned partition, such as <c>128 KiB</c>.
+    /// Fetched memory grows with the number of assigned partitions: about two times this value, plus
+    /// one batch, for each partition. Prosody accepts 1 KiB through 1 GB.
+    /// Uses <c>PROSODY_PARTITION_PREFETCH</c> when omitted.
+    /// Default: 128 KiB.
+    /// </summary>
+    public string? PartitionPrefetch { get; set; }
+
+    /// <summary>
+    /// Maximum bytes in one fetch response from one broker, such as <c>50 MiB</c>.
+    /// Prosody accepts 1 MB through 2147483135 bytes.
+    /// Uses <c>PROSODY_FETCH_MAX_BYTES</c> when omitted.
+    /// Default: 50 MiB.
+    /// </summary>
+    public string? FetchMaxBytes { get; set; }
+
+    /// <summary>
+    /// How long a broker can hold a fetch request when no new records are available. A shorter wait
+    /// lowers the delay for a partition that is behind, but an idle consumer sends more fetch requests.
+    /// Prosody accepts 1 millisecond through 59 seconds.
+    /// Uses <c>PROSODY_FETCH_WAIT</c> when omitted.
+    /// Default: 500 milliseconds.
+    /// </summary>
+    public TimeSpan? FetchWait { get; set; }
 
     /// <summary>
     /// HTTP port for health check probes (<c>/livez</c>, <c>/readyz</c>).

@@ -13,7 +13,7 @@ strategies, and integrated OpenTelemetry support for distributed tracing.
 - **Quality of Service**: Fair scheduling limits concurrency and prevents failures from starving fresh traffic. Pipeline mode adds deferred retry and monopolization detection
 - **Distributed Tracing**: OpenTelemetry integration for tracing message flow across services
 - **Error Monitoring**: Optional Sentry integration for automatic handler exception reporting
-- **Backpressure**: Pauses partitions when handlers fall behind
+- **Backpressure**: Stops reading a partition when handlers fall behind, and bounds fetched and decoded records
 - **Mocking**: In-memory Kafka broker for tests (`WithMock(true)`)
 - **Failure Handling**: Pipeline (retry forever), Low-Latency (dead letter), Best-Effort (log and skip)
 
@@ -114,7 +114,7 @@ Prosody enables efficient, parallel processing of Kafka messages while maintaini
 - **Partition-Level Parallelism**: Separate management of each Kafka partition
 - **Key-Based Queuing**: Ordered processing for each key within a partition
 - **Concurrent Processing**: Simultaneous processing of different keys
-- **Backpressure Management**: Pause consumption from backed-up partitions
+- **Backpressure Management**: Stop reading from backed-up partitions
 
 ## Quality of Service
 
@@ -737,7 +737,7 @@ Do not reuse a durable name for a different collection kind or payload type. Cre
 
 | Collection | JSON payload | Kafka message | Main operations |
 | --- | --- | --- | --- |
-| Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `SetAsync`, `ClearAsync` |
+| Value | `StateDefinition.Value<T>` | `StateDefinition.MessageValue<TPayload>` | `GetAsync`, `HasValueAsync`, `SetAsync`, `ClearAsync` |
 | Ordered string map | `StateDefinition.Map<TValue>` | `StateDefinition.MessageMap<TPayload>` | `GetAsync`, `GetManyAsync`, `ContainsKeyAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `SetAsync`, `RemoveAsync`, `EnumerateAsync`, `EnumerateKeysAsync`, `EnumerateValuesAsync`, `ClearAsync` |
 | Deque | `StateDefinition.Deque<T>` | `StateDefinition.MessageDeque<TPayload>` | `PushBackAsync`, `PushFrontAsync`, `PopBackAsync`, `PopFrontAsync`, `GetAsync`, `CountAsync`, `EnumerateAsync`, `ClearAsync` |
 | Ordered string set | `StateDefinition.Set` | - | `AddAsync`, `RemoveAsync`, `ContainsAsync`, `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, `ClearAsync` |
@@ -824,6 +824,7 @@ Use the subsystem and the same definition to open a reader:
 ```csharp
 PublishedValue<Order> orderReader = await client.StateAsync("checkout", currentOrder);
 StateValue<Order> value = await orderReader.GetAsync("customer-123", cancellationToken);
+bool hasOrder = await orderReader.HasValueAsync("customer-123", cancellationToken);
 ```
 
 The reader cannot see pending changes that exist only in a handler. It cannot change the collection. Each read takes an explicit key because no handler supplies one.
@@ -1547,11 +1548,12 @@ Each definition exposes its validated `Name`.
 The item type parameter (`T` / `TValue`) uses `notnull` on JSON collections. Thus, a nullable item type causes a compile-time error.
 Message collections use `Message<TPayload>`. Its payload can be null when `TPayload` permits a JSON null.
 
-Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync` (an `Index` such as `^1` counts from the back), `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
+Published JSON and set collections use the same definition for owned and read-only access. See [Published state](#published-state) for setup and examples. `PublishedValue<T>` provides `GetAsync` and `HasValueAsync`. `PublishedMap<TValue>` provides `GetAsync`, batched `GetManyAsync`, `ContainsKeyAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, `EnumerateAsync`, key-only `EnumerateKeysAsync`, and `EnumerateValuesAsync`. `PublishedSet` provides `ContainsAsync`, batched `ContainsManyAsync`, `IsEmptyAsync`, and `EnumerateAsync`. `PublishedDeque<T>` provides `GetAsync` (an `Index` such as `^1` counts from the back), `CountAsync`, `IsEmptyAsync`, `PeekFrontAsync`, `PeekBackAsync`, and `EnumerateAsync`. Each enumeration accepts a `ScanDirection` or a query.
 
 `IValueState<T> where T : notnull`:
 
 - `Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default)`
+- `Task<bool> HasValueAsync(CancellationToken cancellationToken = default)`: Reports whether a value is present, without decoding it. A message value does not fetch its Kafka message.
 - `Task SetAsync(T value, CancellationToken cancellationToken = default)`
 - `Task ClearAsync(CancellationToken cancellationToken = default)`
 - `Task<StoreOutcome> CommitAsync(CancellationToken cancellationToken = default)`
