@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/prosody-events/prosody-cs/compare/v0.6.1...v0.6.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* **deps:** upgrade dependencies ([#156](https://github.com/prosody-events/prosody-cs/issues/156)) ([f40382e](https://github.com/prosody-events/prosody-cs/commit/f40382e66d39a51651b3a5008de5e4185eb36e7b))
+
 ## [0.6.1](https://github.com/prosody-events/prosody-cs/compare/v0.6.0...v0.6.1) (2026-10-13)
 
 
