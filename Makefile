@@ -68,7 +68,7 @@ BINDINGS_DIR := src/Prosody/Generated
 
 # uniffi-bindgen-cs configuration
 BINDGEN_REPO := https://github.com/NordSecurity/uniffi-bindgen-cs.git
-BINDGEN_TAG := v0.11.0+v0.31.0
+BINDGEN_TAG := v0.11.1+v0.31.0
 
 # ==============================================================================
 # Help

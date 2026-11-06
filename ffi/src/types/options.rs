@@ -61,7 +61,8 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub max_concurrency: Option<u32>,
 
-    /// Maximum in-flight messages. At the limit, only a partition with a waiting message pauses.
+    /// Maximum in-flight messages. At the limit, only a partition with a
+    /// waiting message pauses.
     #[uniffi(default = None)]
     pub max_uncommitted: Option<u32>,
 
