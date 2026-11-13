@@ -89,7 +89,7 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub shutdown_timeout: Option<Duration>,
 
-    /// Interval between Kafka poll operations.
+    /// How often to serve Kafka events and store finished offsets.
     #[uniffi(default = None)]
     pub poll_interval: Option<Duration>,
 
