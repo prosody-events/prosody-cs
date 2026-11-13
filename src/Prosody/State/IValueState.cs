@@ -19,8 +19,8 @@ public interface IValueState<T>
     Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether a value is present, without decoding it. A message-backed value does not
-    /// fetch its Kafka message.
+    /// Determines whether a value is present, without decoding it. A message value does not fetch its
+    /// Kafka message.
     /// </summary>
     /// <param name="cancellationToken">A token to observe before dispatching the operation.</param>
     /// <returns><see langword="true"/> when <see cref="GetAsync"/> would return a value.</returns>

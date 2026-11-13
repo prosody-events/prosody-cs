@@ -21,14 +21,14 @@ internal sealed class MessageValueState<TPayload> : IValueState<Message<TPayload
     public Task<StateValue<Message<TPayload>>> GetAsync(CancellationToken cancellationToken = default) =>
         MessageInterop.ReadAsync(_handle.Get, _typeInfo, cancellationToken);
 
+    public Task<bool> HasValueAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(_handle.Contains, cancellationToken);
+
     public Task SetAsync(Message<TPayload> value, CancellationToken cancellationToken = default)
     {
         var native = MessageInterop.ToNative(value);
         return StateInterop.RunAsync(carrier => _handle.Set(native, carrier), cancellationToken);
     }
-
-    public Task<bool> HasValueAsync(CancellationToken cancellationToken = default) =>
-        StateInterop.RunAsync(_handle.Contains, cancellationToken);
 
     public Task ClearAsync(CancellationToken cancellationToken = default) =>
         StateInterop.RunAsync(carrier => _handle.Clear(carrier), cancellationToken);
