@@ -111,7 +111,7 @@ jobs:
 
           - rid: osx-arm64
             rust_target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-latest
             lib_prefix: lib
             lib_ext: .dylib
 
