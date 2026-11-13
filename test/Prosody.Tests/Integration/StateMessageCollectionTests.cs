@@ -99,6 +99,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
         await using var ctx = await CreateTestContextAsync(StateTestSupport.WithAllCollections());
         var originals = new MessageChannel<MsgFields>();
         var readBacks = new MessageChannel<MsgFields>();
+        var presence = new MessageChannel<bool>();
 
         var handler = new TestProsodyHandler<StateMessagePayload>(
             onMessage: async (context, msg, ct) =>
@@ -116,6 +117,7 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
                     return;
                 }
 
+                presence.Send(await last.HasValueAsync(ct));
                 var got = await last.GetAsync(ct);
                 readBacks.Send(MsgFields.From(got.Value));
             }
@@ -132,10 +134,15 @@ public sealed class StateMessageCollectionTests(IntegrationTestFixture fixture) 
             IntegrationTestFixture.DefaultTimeout,
             TestContext.Current.CancellationToken
         );
+        var present = await presence.ReceiveAsync(
+            IntegrationTestFixture.DefaultTimeout,
+            TestContext.Current.CancellationToken
+        );
 
         AssertDistinguishableCoordinates(original);
         AssertSameMessage(original, readBack);
         Assert.Equal("one", readBack.Content);
+        Assert.True(present);
     }
 
     [Fact(Timeout = 60_000)]
