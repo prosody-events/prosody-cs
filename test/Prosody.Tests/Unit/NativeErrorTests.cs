@@ -81,6 +81,18 @@ public sealed class NativeErrorTests
     }
 
     [Fact]
+    public async Task UnparseableFetchSizeFailsCreateWithInvalidOperationException()
+    {
+        var prefetch = MockOptions;
+        prefetch.PartitionPrefetch = "lots";
+        var fetchMaxBytes = MockOptions;
+        fetchMaxBytes.FetchMaxBytes = "lots";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ProsodyClient.CreateAsync(prefetch));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ProsodyClient.CreateAsync(fetchMaxBytes));
+    }
+
+    [Fact]
     public async Task LifecycleMistakesThrowInvalidOperationException()
     {
         var invalidSize = MockOptions;

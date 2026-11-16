@@ -19,6 +19,18 @@ public sealed class PublishedStateTests
     }
 
     [Fact]
+    public async Task ValuePresenceUsesTheNativeOperation()
+    {
+        var state = new PublishedValue<int>(new PublishedValueHandle(), TestJson.TypeInfo<int>());
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var present = await state.HasValueAsync("user-1", cancellationToken);
+        var absent = await state.HasValueAsync("user-2", cancellationToken);
+
+        Assert.Multiple(() => Assert.True(present), () => Assert.False(absent));
+    }
+
+    [Fact]
     public async Task DequeEndpointReadsUseTheTypedNativeOperations()
     {
         var state = new PublishedDeque<string>(new PublishedDequeHandle(), TestJson.TypeInfo<string>());
@@ -110,6 +122,13 @@ public sealed class PublishedStateTests
         );
 
         Assert.Equal(("user-1", PositionQuery.ToNative(query)), handle.ValuesRequest);
+    }
+
+    private sealed class PublishedValueHandle : Native.IPublishedValueHandle
+    {
+        public Task<byte[]?> Get(string key, Dictionary<string, string> carrier) => Task.FromResult<byte[]?>(null);
+
+        public Task<bool> Contains(string key, Dictionary<string, string> carrier) => Task.FromResult(key == "user-1");
     }
 
     private sealed class PublishedSetHandle : Native.IPublishedSetHandle

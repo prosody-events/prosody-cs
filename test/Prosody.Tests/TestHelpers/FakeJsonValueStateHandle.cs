@@ -11,6 +11,8 @@ internal sealed class FakeJsonValueStateHandle : Native.IJsonValueStateHandle
 
     public byte[]? GetResult { get; set; }
 
+    public bool ContainsResult { get; set; }
+
     public Dictionary<string, string>? LastCarrier { get; private set; }
 
     public Task<byte[]?> Get(Dictionary<string, string> carrier)
@@ -18,6 +20,8 @@ internal sealed class FakeJsonValueStateHandle : Native.IJsonValueStateHandle
         LastCarrier = carrier;
         return Task.FromResult(GetResult);
     }
+
+    public Task<bool> Contains(Dictionary<string, string> carrier) => Task.FromResult(ContainsResult);
 
     public Task Set(byte[] bytes, Dictionary<string, string> carrier)
     {

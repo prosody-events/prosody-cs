@@ -9,7 +9,11 @@ internal sealed class FakeMessageValueStateHandle : Native.IMessageValueStateHan
 
     public Native.Message? GetResult { get; set; }
 
+    public bool ContainsResult { get; set; }
+
     public Task<Native.Message?> Get(Dictionary<string, string> carrier) => Task.FromResult(GetResult);
+
+    public Task<bool> Contains(Dictionary<string, string> carrier) => Task.FromResult(ContainsResult);
 
     public Task Set(Native.Message message, Dictionary<string, string> carrier)
     {

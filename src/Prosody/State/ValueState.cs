@@ -21,6 +21,9 @@ internal sealed class ValueState<T> : IValueState<T>
     public Task<StateValue<T>> GetAsync(CancellationToken cancellationToken = default) =>
         StateInterop.ReadJsonAsync(_handle.Get, _typeInfo, cancellationToken);
 
+    public Task<bool> HasValueAsync(CancellationToken cancellationToken = default) =>
+        StateInterop.RunAsync(_handle.Contains, cancellationToken);
+
     public Task SetAsync(T value, CancellationToken cancellationToken = default)
     {
         var bytes = StateInterop.SerializeJson(value, _typeInfo);

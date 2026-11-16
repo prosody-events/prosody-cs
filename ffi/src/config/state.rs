@@ -4,7 +4,6 @@
 //! Every error here is [`FfiError::InvalidOperation`], because the options
 //! are invalid.
 
-use prosody::ByteSize;
 use prosody::codec::{JsonBinaryCodec, JsonBinaryMessageCodec};
 use prosody::consumer::KeyedStateConfiguration;
 use prosody::consumer::kafka_state::{message_deque_state, message_map_state, message_state};
@@ -19,6 +18,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::byte_size;
 use crate::error::FfiError;
 use crate::types::{ClientOptions, ReadCache, StateCollectionConfig, StateKind, StatePayload};
 
@@ -40,24 +40,15 @@ pub(super) fn build_keyed_state_config(
     }
 
     if let Some(size) = &options.state_owned_cache_size {
-        let size = size
-            .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("StateOwnedCacheSize: {error}")))?;
-        builder.owned_cache_size(Some(size));
+        builder.owned_cache_size(Some(byte_size(size, "StateOwnedCacheSize")?));
     }
 
     if let Some(size) = &options.state_memtable_size {
-        let size = size
-            .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("StateMemtableSize: {error}")))?;
-        builder.memtable_size(Some(size));
+        builder.memtable_size(Some(byte_size(size, "StateMemtableSize")?));
     }
 
     if let Some(size) = &options.state_read_cache_size {
-        let size = size
-            .parse::<ByteSize>()
-            .map_err(|error| FfiError::InvalidOperation(format!("StateReadCacheSize: {error}")))?;
-        builder.read_cache_size(Some(size));
+        builder.read_cache_size(Some(byte_size(size, "StateReadCacheSize")?));
     }
 
     match options.state_read_cache {
