@@ -163,6 +163,10 @@ public sealed class ProsodyClientBuilderTests : AsyncDisposalTestBase
     }
 
     [Fact]
+    public async Task ConfigureKafkaRack() =>
+        Assert.NotNull(await BuildAsync(MockBuilder().Configure(options => options.KafkaRack = "use1-az1")));
+
+    [Fact]
     public async Task ConfigureCassandraOptions()
     {
         var builder = MockBuilder()

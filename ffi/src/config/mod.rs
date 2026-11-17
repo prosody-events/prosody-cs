@@ -100,6 +100,10 @@ fn build_consumer_config(
 ) -> Result<ConsumerConfigurationBuilder, FfiError> {
     let mut builder = ConsumerConfigurationBuilder::default();
 
+    if let Some(rack) = &options.kafka_rack {
+        builder.rack(rack.clone());
+    }
+
     if let Some(servers) = &options.bootstrap_servers {
         builder.bootstrap_servers(servers.clone());
     }
