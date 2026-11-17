@@ -32,6 +32,7 @@ public sealed partial class ClientOptions
     internal Native.ClientOptions ToNative() =>
         ToNativeBase() with
         {
+            KafkaRack = KafkaRack,
             PartitionPrefetch = PartitionPrefetch,
             FetchMaxBytes = FetchMaxBytes,
             FetchWait = Durations.ToNative(FetchWait),

@@ -12,6 +12,11 @@ pub struct ClientOptions {
     #[uniffi(default = None)]
     pub bootstrap_servers: Option<Vec<String>>,
 
+    /// Availability zone (rack) of this process, sent to Kafka as
+    /// `client.rack` so fetches can use a replica in the same zone.
+    #[uniffi(default = None)]
+    pub kafka_rack: Option<String>,
+
     /// Consumer group ID, typically your application name.
     #[uniffi(default = None)]
     pub group_id: Option<String>,

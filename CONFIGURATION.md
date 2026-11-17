@@ -84,6 +84,7 @@ await client.SendAsync(topic, key, order, typeInfo, cancellationToken);
 | `SubscribedTopics` / `PROSODY_SUBSCRIBED_TOPICS` | Topics to read from. A client that only reads published state needs no topics. | - |
 | `AllowedEvents` / `PROSODY_ALLOWED_EVENTS` | Only process events matching these prefixes | (all) |
 | `SourceSystem` / `PROSODY_SOURCE_SYSTEM` | Tag for outgoing messages (prevents reprocessing) | `<GroupId>` |
+| `KafkaRack` / `PROSODY_KAFKA_RACK` | Availability zone of this process, sent to Kafka as `client.rack` so the consumer and loader fetch from a replica in the same zone. Or `PROSODY_KAFKA_RACK_FILE` to name a file that holds the value; the plain variable has priority; a blank file counts as unset. | - |
 | `Mock` / `PROSODY_MOCK` | Use in-memory Kafka for testing | false |
 | `Mode` / - | Processing mode: `Pipeline`, `LowLatency`, or `BestEffort` | `Pipeline` |
 | - / `PROSODY_LOG` | Rust log filter, such as `info` or `prosody=debug` | `info`, with `warn` for `scylla` and `opentelemetry` |
@@ -209,7 +210,7 @@ Persistent storage for timers, deferral, deduplication, and keyed state. It is n
 | `CassandraUser` / `PROSODY_CASSANDRA_USER` | Username | - |
 | `CassandraPassword` / `PROSODY_CASSANDRA_PASSWORD` | Password | - |
 | `CassandraDatacenter` / `PROSODY_CASSANDRA_DATACENTER` | Prefer this datacenter for queries | - |
-| `CassandraRack` / `PROSODY_CASSANDRA_RACK` | Prefer this rack for queries | - |
+| `CassandraRack` / `PROSODY_CASSANDRA_RACK` | Prefer this rack for queries. Or `PROSODY_CASSANDRA_RACK_FILE` to name a file that holds the value; the plain variable has priority; a blank file counts as unset. | - |
 | `CassandraRetention` / `PROSODY_CASSANDRA_RETENTION` | Delete data older than this | 1y |
 
 ## Keyed State

@@ -59,6 +59,13 @@ public sealed partial class ClientOptions
     public string[]? BootstrapServers { get; set; }
 
     /// <summary>
+    /// Availability zone (rack) of this process, sent to Kafka as <c>client.rack</c>.
+    /// The consumer and the deferred-message loader then fetch from a replica in the same zone.
+    /// Falls back to <c>PROSODY_KAFKA_RACK</c>, or to the file that <c>PROSODY_KAFKA_RACK_FILE</c> names.
+    /// </summary>
+    public string? KafkaRack { get; set; }
+
+    /// <summary>
     /// Consumer group ID. Should be set to your application name.
     /// Falls back to <c>PROSODY_GROUP_ID</c> environment variable.
     /// </summary>
