@@ -2291,7 +2291,7 @@ dependencies = [
 
 [[package]]
 name = "prosody-ffi"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "arc-swap",
  "async-trait",
