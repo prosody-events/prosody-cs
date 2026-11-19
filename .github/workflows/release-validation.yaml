@@ -164,6 +164,9 @@ jobs:
             runner: ubuntu-24.04-arm
         dotnet: ["8.0", "9.0", "10.0"]
     runs-on: ${{ matrix.target.runner }}
+    # Each JVM has a fixed heap below its memory limit. By default a JVM sizes
+    # its heap from the runner's memory, so Kafka, Cassandra, and the build can
+    # together use more memory than the runner has. The runner then stops.
     services:
       kafka:
         image: apache/kafka:latest
@@ -181,7 +184,9 @@ jobs:
           KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
           KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
           KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_HEAP_OPTS: -Xms768m -Xmx768m
         options: >-
+          --memory 1536m
           --health-cmd "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
           --health-interval 15s
           --health-timeout 10s
@@ -191,7 +196,11 @@ jobs:
         image: cassandra:latest
         ports:
           - 9042:9042
+        env:
+          MAX_HEAP_SIZE: 1536M
+          MAX_DIRECT_MEMORY_SIZE: 512M
         options: >-
+          --memory 3g
           --health-cmd "cqlsh -e 'SELECT cluster_name FROM system.local'"
           --health-interval 15s
           --health-timeout 10s
