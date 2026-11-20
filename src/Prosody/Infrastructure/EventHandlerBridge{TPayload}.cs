@@ -197,7 +197,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             carrier,
             message,
             sourceSystem,
-            isResponseRequested
+            isResponseRequested,
+            context.ShouldCancel
         );
     }
 
@@ -217,22 +218,12 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             message.SourceSystem(),
             message.IsResponseRequested()
         );
-        return EventHandlerBridge.InvokeHandlerAsync(
-            ct => _onExcise(new ProsodyContext(context, _jsonOptions, _stateDefinitions), record, ct),
-            _isExcisePermanent,
+        return HandleExciseAsync(
+            new ProsodyContext(context, _jsonOptions, _stateDefinitions),
+            record,
             context.OnCancel,
             carrier,
-            activityName: EventHandlerBridge.OnExciseActivityName,
-            eventType: SentryConstants.TagValues.EventTypeExcise,
-            buildSentryContext: SentryIntegration.IsEnabled
-                ? () =>
-                    EventHandlerBridge.BuildMessageSentryContext(
-                        record.Topic,
-                        record.Key,
-                        record.Partition,
-                        record.Offset
-                    )
-                : null
+            context.ShouldCancel
         );
     }
 
@@ -242,7 +233,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             new ProsodyContext(context, _jsonOptions, _stateDefinitions),
             new ProsodyTimer(timer),
             context.OnCancel,
-            carrier
+            carrier,
+            context.ShouldCancel
         );
 
     /// <summary>
@@ -262,7 +254,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         Dictionary<string, string> carrier,
         Native.Message? nativeMessage = null,
         string? sourceSystem = null,
-        bool isResponseRequested = false
+        bool isResponseRequested = false,
+        Func<bool>? shouldCancel = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             async ct =>
@@ -288,7 +281,37 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             eventType: SentryConstants.TagValues.EventTypeMessage,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () => EventHandlerBridge.BuildMessageSentryContext(topic, key, partition, offset)
-                : null
+                : null,
+            shouldCancel: shouldCancel
+        );
+
+    /// <summary>
+    /// Handles an excise record without access to native objects.
+    /// </summary>
+    internal Task<NativeResult> HandleExciseAsync(
+        ProsodyContext prosodyContext,
+        ExciseMessage record,
+        Func<Task> onCancel,
+        Dictionary<string, string> carrier,
+        Func<bool>? shouldCancel = null
+    ) =>
+        EventHandlerBridge.InvokeHandlerAsync(
+            ct => _onExcise(prosodyContext, record, ct),
+            _isExcisePermanent,
+            onCancel,
+            carrier,
+            activityName: EventHandlerBridge.OnExciseActivityName,
+            eventType: SentryConstants.TagValues.EventTypeExcise,
+            buildSentryContext: SentryIntegration.IsEnabled
+                ? () =>
+                    EventHandlerBridge.BuildMessageSentryContext(
+                        record.Topic,
+                        record.Key,
+                        record.Partition,
+                        record.Offset
+                    )
+                : null,
+            shouldCancel: shouldCancel
         );
 
     /// <summary>
@@ -298,7 +321,8 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
         ProsodyContext prosodyContext,
         ProsodyTimer wrappedTimer,
         Func<Task> onCancel,
-        Dictionary<string, string> carrier
+        Dictionary<string, string> carrier,
+        Func<bool>? shouldCancel = null
     ) =>
         EventHandlerBridge.InvokeHandlerAsync(
             ct => _onTimer(prosodyContext, wrappedTimer, ct),
@@ -309,6 +333,7 @@ internal sealed class EventHandlerBridge<TPayload> : NativeHandler
             eventType: SentryConstants.TagValues.EventTypeTimer,
             buildSentryContext: SentryIntegration.IsEnabled
                 ? () => EventHandlerBridge.BuildTimerSentryContext(wrappedTimer)
-                : null
+                : null,
+            shouldCancel: shouldCancel
         );
 }
